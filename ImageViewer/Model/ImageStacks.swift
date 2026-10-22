@@ -11,8 +11,13 @@ nonisolated enum ImageStacks {
     static func markDerived(_ copy: URL, from original: URL) {
         guard copy.deletingLastPathComponent().standardizedFileURL == original.deletingLastPathComponent().standardizedFileURL
         else { return }
-        let name = Array(original.lastPathComponent.utf8)
-        _ = name.withUnsafeBytes { setxattr(copy.path, attribute, $0.baseAddress, $0.count, 0, 0) }
+        setSource(original.lastPathComponent, of: copy)
+    }
+
+    /// Records the name of the file `copy` was made from.
+    static func setSource(_ name: String, of copy: URL) {
+        let bytes = Array(name.utf8)
+        _ = bytes.withUnsafeBytes { setxattr(copy.path, attribute, $0.baseAddress, $0.count, 0, 0) }
     }
 
     /// The name of the file `url` was made from, if it records one.

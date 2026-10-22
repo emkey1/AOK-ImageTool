@@ -63,6 +63,9 @@ struct ExportRequest: Identifiable {
     let urls: [URL]
 }
 
+/// The undo target for one image's edits (see `ViewerModel.editUndoTargets`).
+final class EditUndoTarget {}
+
 struct AlertInfo: Identifiable {
     let id = UUID()
     let title: String
@@ -91,7 +94,9 @@ final class ViewerModel {
     private(set) var hasLiveText = false
 
     // MARK: UI state
-    var viewMode: ViewMode = .viewer
+    var viewMode: ViewMode = .viewer {
+        didSet { if viewMode == .grid, activeTool != nil { activeTool = nil } }   // tools work in the viewer
+    }
     var showInspector = false
     var inspectorTab: InspectorTab = .info
     var showFilmstrip: Bool = Prefs.showFilmstrip {
@@ -101,7 +106,11 @@ final class ViewerModel {
     var showOriginal = false {
         didSet { if oldValue != showOriginal { refreshDisplay() } }
     }
-    var activeTool: ActiveTool?
+    var activeTool: ActiveTool? {
+        didSet { toolImage = activeTool == nil ? nil : currentURL }
+    }
+    /// The image the open tool was opened on.
+    @ObservationIgnored private var toolImage: URL?
     /// Set to open the Crop tool already extending, with this fill; the tool takes it when it appears.
     var pendingExtend: ExtendMethod?
     private(set) var isSlideshowRunning = false
@@ -173,6 +182,10 @@ final class ViewerModel {
 
     // MARK: Edits
     private(set) var edits: [URL: EditState] = [:]
+    /// Images being saved; they can't be edited until the save is done.
+    var savingURLs: Set<URL> = []
+    /// Each image's edit undos are registered with its own target, so saving it can drop just them.
+    @ObservationIgnored var editUndoTargets: [URL: EditUndoTarget] = [:]
     /// Progress (0...1) of the Extend fill being made, nil when idle.
     var extendProgress: Double?
     @ObservationIgnored var extendTask: Task<Void, Never>?
@@ -260,6 +273,13 @@ final class ViewerModel {
         guard self.window !== window else { return }
         self.window = window
         if DebugHooks.isActive { DebugScenes.prepare(window) }
+        // The default size is bigger than a small screen (or a VM's); keep the whole window on it.
+        if let screen = (window.screen ?? NSScreen.main)?.visibleFrame,
+           window.frame.width > screen.width || window.frame.height > screen.height {
+            let size = CGSize(width: min(window.frame.width, screen.width), height: min(window.frame.height, screen.height))
+            window.setFrame(CGRect(x: screen.midX - size.width / 2, y: screen.midY - size.height / 2, width: size.width, height: size.height),
+                            display: true)
+        }
         window.isDocumentEdited = hasUnsavedEdits
         installKeyMonitor()
         WindowCloseInterception.install(for: window)
@@ -334,6 +354,8 @@ final class ViewerModel {
         activeTool = nil
         folderURL = folder.standardizedFileURL
         self.restrictedTo = restrictedTo
+        expandedStacks = []
+        stackFront = [:]
         RecentFolders.add(folder)
         watcher.watch(folder)
         if !searchText.isEmpty { searchText = "" }
@@ -381,7 +403,6 @@ final class ViewerModel {
         let recursive = includeSubfolders
         let hidden = Prefs.showHiddenFiles
         let restricted = restrictedTo
-        let target = selecting ?? currentURL
         scanTask = Task {
             let scanned = await Task.detached(priority: .userInitiated) { () -> [ImageItem] in
                 var result = (try? FolderScanner.scan(folder: folder, recursive: recursive, showHidden: hidden)) ?? []
@@ -414,13 +435,16 @@ final class ViewerModel {
                 item.dateTaken = dates[item.url]
                 return item
             }
-            applySortAndFilter(selecting: target)
+            // (The image now on screen: the user may have moved on while the folder was scanned.)
+            applySortAndFilter(selecting: selecting ?? currentURL)
             if sortKey == .dateTaken { loadDatesTaken() }
             intelligence.itemsDidChange()
         }
     }
 
     func applySortAndFilter(selecting target: URL? = nil) {
+        let before = currentURL
+        defer { currentImageMoved(from: before) }
         let keep = target ?? currentURL
         var sorted = FolderScanner.sort(allItems, by: sortKey, ascending: sortAscending, scores: intelligence.qualityScores)
         let distances = intelligence.similarityDistances
@@ -533,6 +557,16 @@ final class ViewerModel {
         if let folderURL { LastViewed.remember(items[index].url, in: folderURL) }
     }
 
+    /// When re-sorting, filtering or a rescan puts another image on screen, what `show(index:)` resets for a
+    /// new image is reset too (an open tool belongs to the image it was opened on).
+    private func currentImageMoved(from before: URL?) {
+        gridAnchor = currentIndex
+        guard currentURL != before else { return }
+        if activeTool != nil { activeTool = nil }
+        pageIndex = 0
+        if showOriginal { showOriginal = false }
+    }
+
     func select(_ url: URL) {
         if let i = items.firstIndex(where: { $0.url == url }) { show(index: i) }
     }
@@ -570,6 +604,8 @@ final class ViewerModel {
     private func loadCurrent() {
         loadTask?.cancel()
         fullRenderTask?.cancel()
+        // A tool belongs to the image it was opened on (another one may now be current: a removed file, an undo).
+        if activeTool != nil, toolImage != currentURL { activeTool = nil }
         guard let item = currentItem else {
             clearDisplay()
             return
@@ -925,7 +961,12 @@ final class ViewerModel {
         items[index] = item
     }
 
+    /// Adds a file this window made (a copy, an export) to the list, if it belongs in it.
     func insertItem(_ item: ImageItem, select: Bool) {
+        guard let folderURL else { return }
+        let parent = item.url.deletingLastPathComponent().standardizedFileURL
+        guard parent == folderURL || (includeSubfolders && parent.path.hasPrefix(folderURL.path + "/")) else { return }
+        if restrictedTo != nil { restrictedTo?.insert(item.url.standardizedFileURL) }
         allItems.removeAll { $0.url == item.url }
         allItems.append(item)
         applySortAndFilter(selecting: select ? item.url : nil)
@@ -939,7 +980,12 @@ final class ViewerModel {
         if let i = allItems.firstIndex(where: { $0.url == old }) { allItems[i] = newItem }
         if let i = items.firstIndex(where: { $0.url == old }) { items[i] = newItem }
         if selection.remove(old) != nil { selection.insert(newItem.url) }
-        if stackOf[old] != nil { applySortAndFilter() }
+        if stackOf[old] != nil {
+            if expandedStacks.remove(old) != nil { expandedStacks.insert(newItem.url) }
+            if let front = stackFront.removeValue(forKey: old) { stackFront[newItem.url] = front }
+            for (root, front) in stackFront where front == old { stackFront[root] = newItem.url }
+            applySortAndFilter()
+        }
         ImagePipeline.shared.invalidate(old)
         ThumbnailCache.shared.invalidate(old)
         if decoded?.url == old { loadCurrent() }

@@ -75,6 +75,7 @@ final class IntelligenceModel {
 
     func folderDidChange(_ newFolder: URL) {
         cancelAll()
+        pendingReasons = []   // what was asked of the last folder
         flushSave()
         folder = newFolder.standardizedFileURL
         index = [:]
@@ -397,7 +398,7 @@ final class IntelligenceModel {
 
     func ask(_ question: String) {
         let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty, let viewer, let d = viewer.decoded, let url = viewer.currentURL else { return }
+        guard !q.isEmpty, !isAnswering, let viewer, let d = viewer.decoded, let url = viewer.currentURL, d.url == url else { return }
         refreshSupport()
         if case .unavailable(let reason) = support {
             chat.append(ChatMessage(role: .error, text: reason))
@@ -457,19 +458,19 @@ final class IntelligenceModel {
     }
 
     func toggleRemoveBackground() {
-        guard let viewer, let d = viewer.decoded else { return }
+        guard let viewer, let d = viewer.decoded, d.url == viewer.currentURL else { return }
         if viewer.currentEdits.cutout != nil {
             viewer.updateEdits("Restore Background") { $0.removeCutout() }
             return
         }
         withBusy("Finding the subject…") { [weak self] in
             _ = try await self?.subjectMask(for: d)
-            self?.viewer?.updateEdits("Remove Background") { $0.cutout = .subject }
+            self?.viewer?.updateEdits("Remove Background", of: d.url) { $0.cutout = .subject }
         }
     }
 
     func copySubject() {
-        guard let viewer, let d = viewer.decoded else { return }
+        guard let viewer, let d = viewer.decoded, d.url == viewer.currentURL else { return }
         withBusy("Lifting the subject…") { [weak self] in
             guard let self else { return }
             let mask = try await subjectMask(for: d)
@@ -519,7 +520,7 @@ final class IntelligenceModel {
     }
 
     func autoStraighten() {
-        guard let viewer, let d = viewer.decoded else { return }
+        guard let viewer, let d = viewer.decoded, d.url == viewer.currentURL else { return }
         let edits = viewer.currentEdits
         withBusy("Finding the horizon…") { [weak self] in
             guard let self, let proxy = await beforeCropProxy(d, edits: edits),
@@ -531,13 +532,13 @@ final class IntelligenceModel {
                 viewer.showToast("Already level", systemImage: "level")
                 return
             }
-            viewer.updateEdits("Straighten") { $0.straighten = min(max(angle, -45), 45) }
+            viewer.updateEdits("Straighten", of: d.url) { $0.straighten = min(max(angle, -45), 45) }
             viewer.showToast(String(format: "Straightened %.1f°", angle), systemImage: "level")
         }
     }
 
     func smartCrop() {
-        guard let viewer, let d = viewer.decoded else { return }
+        guard let viewer, let d = viewer.decoded, d.url == viewer.currentURL else { return }
         var edits = viewer.currentEdits
         edits.crop = nil
         withBusy("Finding the subject…") {
@@ -548,7 +549,7 @@ final class IntelligenceModel {
                 viewer.showToast("This image is already well framed", systemImage: "crop")
                 return
             }
-            viewer.updateEdits("Smart Crop") { $0.crop = crop }
+            viewer.updateEdits("Smart Crop", of: d.url) { $0.crop = crop }
         }
     }
 
@@ -577,7 +578,7 @@ final class IntelligenceModel {
     }
 
     func fixPerspective() {
-        guard let viewer, let d = viewer.decoded else { return }
+        guard let viewer, let d = viewer.decoded, d.url == viewer.currentURL else { return }
         if viewer.currentEdits.perspective != nil {
             viewer.updateEdits("Undo Document Fix") { $0.perspective = nil }
             return
@@ -586,7 +587,7 @@ final class IntelligenceModel {
         withBusy("Looking for a document…") { [weak self] in
             let small = await VisionServices.downscaled(image, maxDimension: 1536)
             guard let quad = await VisionServices.documentQuad(small) else { throw VisionError.noDocument }
-            self?.viewer?.updateEdits("Straighten Document") {
+            self?.viewer?.updateEdits("Straighten Document", of: d.url) {
                 $0.perspective = quad
                 $0.crop = nil
                 $0.straighten = 0

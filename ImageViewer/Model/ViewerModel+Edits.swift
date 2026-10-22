@@ -13,8 +13,10 @@ extension ViewerModel {
     // MARK: - Editing
 
     /// Applies a discrete edit (button press) with undo support.
-    func updateEdits(_ actionName: String, _ change: (inout EditState) -> Void) {
-        guard let url = currentURL else { return }
+    /// Changes the edits of `image` (the current image when nil: pass the image a slow operation started
+    /// on, so its result doesn't land on whatever is showing when it finishes).
+    func updateEdits(_ actionName: String, of image: URL? = nil, _ change: (inout EditState) -> Void) {
+        guard let url = image ?? currentURL else { return }
         let old = edits[url] ?? .identity
         var new = old
         change(&new)
@@ -41,6 +43,10 @@ extension ViewerModel {
     }
 
     func applyEdits(_ new: EditState, to url: URL, undoName: String?, previous: EditState) {
+        guard !savingURLs.contains(url) else {
+            NSSound.beep()
+            return
+        }
         setEditsDictionary(url, new.isIdentity ? nil : new)
         if let undoName { registerEditUndo(url: url, restoring: previous, redoState: new, name: undoName) }
         if url == currentURL {
@@ -52,11 +58,19 @@ extension ViewerModel {
 
     private func registerEditUndo(url: URL, restoring previous: EditState, redoState: EditState, name: String) {
         guard let undoManager else { return }
-        undoManager.registerUndo(withTarget: self) { model in
+        let target = editUndoTargets[url] ?? EditUndoTarget()
+        editUndoTargets[url] = target
+        undoManager.registerUndo(withTarget: target) { [weak self] _ in
+            guard let model = self else { return }
             if model.currentURL != url { model.select(url) }
             model.applyEdits(previous, to: url, undoName: name, previous: redoState)
         }
         undoManager.setActionName(name)
+    }
+
+    /// Once edits are in the file, undoing them would apply them again: forget that image's edit undos.
+    private func dropEditUndos(for url: URL) {
+        if let target = editUndoTargets.removeValue(forKey: url) { undoManager?.removeAllActions(withTarget: target) }
     }
 
     func rotate(clockwise: Bool) {
@@ -80,7 +94,8 @@ extension ViewerModel {
     }
 
     var canEdit: Bool {
-        decoded != nil && currentURL != nil && activeTool == nil
+        guard let url = currentURL else { return false }
+        return decoded != nil && activeTool == nil && !savingURLs.contains(url)
     }
 
     // MARK: - Saving
@@ -153,15 +168,21 @@ extension ViewerModel {
     /// Renders `e` at full resolution, replaces the file with it, then drops the saved edits.
     private func writeEdits(url: URL, decoded d: DecodedImage, edits e: EditState, format: ExportFormat) async throws {
         let trash = Prefs.trashOriginalOnSave
+        savingURLs.insert(url)
+        defer { savingURLs.remove(url) }
         try await Task.detached(priority: .userInitiated) {
             try await MaskStore.shared.prepare(e, for: d)
             guard let output = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil) else {
                 throw ImageWriteError.finalizeFailed
             }
+            // The new file is a new file: keep its record of what it was made from (it may be a stacked copy).
+            let source = ImageStacks.source(of: url)
             try ImageWriter.replace(original: url, with: output.image, format: format, quality: 0.93,
                                     sourceProperties: d.properties, trashOriginal: trash)
+            if let source { ImageStacks.setSource(source, of: url) }
         }.value
         setEditsDictionary(url, nil)
+        dropEditUndos(for: url)
         window?.isDocumentEdited = hasUnsavedEdits
         fileDidChange(url)
     }

@@ -79,7 +79,7 @@ enum SelfTest {
         // 3. Export with metadata stripping.
         print("\n[Export]")
         if let d = decodedByName["rotated-exif6.jpg"], let rendered = EditRenderer.shared.renderSync(d, edits: EditState(), maxDimension: 300) {
-            for format in [ExportFormat.jpeg, .heic, .avif, .png, .tiff] {
+            for format in [ExportFormat.jpeg, .heic, .avif, .png, .tiff] where ExportFormat.writable.contains(format) {
                 let url = out.appendingPathComponent("export.\(format.fileExtension)")
                 do {
                     try ImageWriter.write(rendered.image, to: url, format: format, quality: 0.8, sourceProperties: d.properties, metadata: .removeLocation)
@@ -167,6 +167,21 @@ enum SelfTest {
             }
             model.stacksEnabled = false
             check(model.items.count == 5, "stacking can be turned off")
+            model.select(model.items[4].url)   // the last of five…
+            model.stacksEnabled = true          // …then down to two
+            model.gridClick(model.items[0].url, modifiers: .shift)
+            check(model.selection.count <= 2, "a shift-click after the list got shorter stays within it")
+            if let elsewhere = FolderScanner.item(for: src) {
+                model.insertItem(elsewhere, select: true)
+                check(!model.items.contains { $0.url == elsewhere.url }, "a copy saved in another folder isn't added to this one")
+            }
+            let copyName = ImageStacks.source(of: holiday)
+            try? ImageWriter.replace(original: holiday, with: EditRenderer.shared.renderSync(try! ImageDecoder.decode(url: holiday, page: 0, allowHDR: false),
+                                                                                          edits: .identity, maxDimension: 200)!.image,
+                                     format: .jpeg, quality: 0.9, sourceProperties: [:], trashOriginal: false)
+            check(ImageStacks.source(of: holiday) == nil, "(replacing a file drops its extended attributes…)")
+            if let copyName { ImageStacks.setSource(copyName, of: holiday) }
+            check(ImageStacks.source(of: holiday) == copyName, "…so Save records the source again")
         }
 
         // 4c. Updates: which GitHub release is an update, and who may replace the app.

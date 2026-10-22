@@ -77,6 +77,15 @@ extension ViewerModel {
     }
 
     func handleKeyDown(_ event: NSEvent) -> Bool {
+        // ⌘⌫ and ⌘-arrows in a text field (here or in one of this window's sheets) edit the text; as menu
+        // shortcuts they'd move the image to the Trash or open the enclosing folder.
+        if let eventWindow = event.window, eventWindow === window || eventWindow.sheetParent === window,
+           event.modifierFlags.intersection([.command, .control, .option]) == .command,
+           let text = eventWindow.firstResponder as? NSTextView, text.isEditable,
+           [.delete, .deleteForward, .upArrow, .downArrow, .leftArrow, .rightArrow].contains(event.specialKey) {
+            text.keyDown(with: event)
+            return true
+        }
         guard let window, event.window === window, window.attachedSheet == nil else { return false }
         if isTextEditing {
             // Esc in an empty text field hands focus back to the image.
@@ -201,7 +210,7 @@ extension ViewerModel {
         let target = min(max(current + delta, 0), items.count - 1)
         guard target != current || currentIndex == nil else { return }
         if extend {
-            let anchor = gridAnchor ?? current
+            let anchor = min(gridAnchor ?? current, items.count - 1)
             let range = min(anchor, target)...max(anchor, target)
             let keepAnchor = anchor
             show(index: target)

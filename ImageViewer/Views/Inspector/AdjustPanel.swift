@@ -119,6 +119,7 @@ struct AdjustPanel: View {
                 .help("Auto enhance")
 
                 Button {
+                    model.viewMode = .viewer
                     model.activeTool = .crop
                 } label: {
                     Label("Crop", systemImage: "crop.rotate").frame(maxWidth: .infinity)

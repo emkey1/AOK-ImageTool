@@ -6,11 +6,16 @@ extension ViewerModel {
     func saveCopy(of url: URL, decoded d: DecodedImage, edits e: EditState, label: String, defaultFormat: ExportFormat,
                   working: String, systemImage: String, failure: String,
                   transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
-        let format = SupportedFormats.writableFormat(for: d.contentType).flatMap { [.jpeg, .heic, .avif, .png, .tiff].contains($0) ? $0 : nil }
+        var format = SupportedFormats.writableFormat(for: d.contentType).flatMap { [.jpeg, .heic, .avif, .png, .tiff].contains($0) ? $0 : nil }
             ?? defaultFormat
+        if e.hasTransparency && !format.supportsAlpha { format = .png }   // a cutout keeps its transparency
         let folder = url.deletingLastPathComponent()
         let name = url.deletingPathExtension().lastPathComponent + " (\(label))"
         showToast(working, systemImage: systemImage)
+        let show: (URL) -> Void = { [weak self] copy in
+            self?.activeTool = nil
+            self?.select(copy)
+        }
         Task {
             do {
                 let dest = try await Task.detached(priority: .userInitiated) { () async throws -> URL in
@@ -24,8 +29,16 @@ extension ViewerModel {
                     ImageStacks.markDerived(dest, from: url)
                     return dest
                 }.value
-                if let item = FolderScanner.item(for: dest) { insertItem(item, select: true) }
-                showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle")
+                // Shown straight away if you're still on the original with no tool open; otherwise offered.
+                let stillHere = currentURL == url && activeTool == nil
+                if let item = FolderScanner.item(for: dest) { insertItem(item, select: stillHere) }
+                if stillHere || !items.contains(where: { $0.url == dest.standardizedFileURL }) {
+                    showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle")
+                } else {
+                    showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle", actionTitle: "Show") {
+                        show(dest.standardizedFileURL)
+                    }
+                }
             } catch {
                 dismissToast()
                 showError(failure, error)

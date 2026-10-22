@@ -31,7 +31,7 @@ nonisolated enum SupportedFormats {
     /// Formats that a Save (overwrite in place) can write back without changing type.
     static func writableFormat(for type: UTType?) -> ExportFormat? {
         guard let type else { return nil }
-        return ExportFormat.allCases.first { type.conforms(to: $0.utType) }
+        return ExportFormat.writable.first { type.conforms(to: $0.utType) }
     }
 
     static var readableExtensionsSummary: String {
@@ -78,6 +78,12 @@ nonisolated enum ExportFormat: String, CaseIterable, Identifiable, Codable, Send
         default: utType.preferredFilenameExtension ?? rawValue
         }
     }
+
+    /// The formats this Mac can write (AVIF needs macOS 26).
+    static let writable: [ExportFormat] = {
+        let types = Set((CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? [])
+        return allCases.filter { types.contains($0.utType.identifier) }
+    }()
 
     var supportsQuality: Bool { [.jpeg, .heic, .avif, .jpeg2000].contains(self) }
     var supportsAlpha: Bool { [.png, .heic, .avif, .tiff, .gif, .jpeg2000].contains(self) }

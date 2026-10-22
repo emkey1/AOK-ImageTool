@@ -73,7 +73,8 @@ struct BlackAndWhiteSheet: View {
         }
         .padding(20)
         .frame(width: sheetSize.width, height: sheetSize.height)
-        .task {
+        .task(id: model.decoded?.url) {
+            // (Again once the image has decoded, if it hadn't when the sheet opened.)
             guard let d = model.decoded, d.url == model.currentURL else { return }
             let e = model.currentEdits
             base = await Task.detached(priority: .userInitiated) { () -> CGImage? in

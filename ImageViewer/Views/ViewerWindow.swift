@@ -52,32 +52,40 @@ struct ViewerWindow: View {
     }
 }
 
-/// Image Playground ("Reimagine") using the current image as the starting point.
+/// Image Playground: "Reimagine" (from the current image) and a scene to put behind a cutout
+/// (Intelligence ▸ Background ▸ Generate…). The sheets hang off a background view, so switching between
+/// having an image and not doesn't rebuild the window.
 private struct PlaygroundSheet: ViewModifier {
     @Bindable var model: ViewerModel
 
     func body(content: Content) -> some View {
         if #available(macOS 15.1, *) {
-            reimagine(content)
-                // A scene to put behind a cutout (Intelligence ▸ Background ▸ Generate…).
-                .imagePlaygroundSheet(isPresented: $model.showBackgroundPlayground, concepts: []) { url in
-                    model.useGeneratedBackground(from: url)
-                }
+            content.background { PlaygroundSheets(model: model) }
         } else {
             content
         }
     }
+}
 
-    @available(macOS 15.1, *)
-    @ViewBuilder
-    private func reimagine(_ content: Content) -> some View {
-        if let url = model.currentURL {
-            content.imagePlaygroundSheet(isPresented: $model.showPlayground, concepts: [], sourceImageURL: url) { result in
-                model.intelligence.savePlaygroundImage(from: result)
+@available(macOS 15.1, *)
+private struct PlaygroundSheets: View {
+    @Bindable var model: ViewerModel
+
+    var body: some View {
+        Group {
+            if let url = model.currentURL {
+                Color.clear.imagePlaygroundSheet(isPresented: $model.showPlayground, concepts: [], sourceImageURL: url) { result in
+                    model.intelligence.savePlaygroundImage(from: result)
+                }
+            } else {
+                Color.clear.imagePlaygroundSheet(isPresented: $model.showPlayground, concepts: []) { result in
+                    model.intelligence.savePlaygroundImage(from: result)
+                }
             }
-        } else {
-            content.imagePlaygroundSheet(isPresented: $model.showPlayground, concepts: []) { result in
-                model.intelligence.savePlaygroundImage(from: result)
+        }
+        .background {
+            Color.clear.imagePlaygroundSheet(isPresented: $model.showBackgroundPlayground, concepts: []) { url in
+                model.useGeneratedBackground(from: url)
             }
         }
     }

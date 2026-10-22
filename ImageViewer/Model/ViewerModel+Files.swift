@@ -97,7 +97,7 @@ extension ViewerModel {
                 show(index: index)
                 selection = keep.union([url])
             }
-        } else if modifiers.contains(.shift), let anchor = gridAnchor ?? currentIndex {
+        } else if modifiers.contains(.shift), let anchor = (gridAnchor ?? currentIndex).map({ min($0, items.count - 1) }) {
             let range = min(anchor, index)...max(anchor, index)
             show(index: index)
             gridAnchor = anchor
@@ -189,12 +189,20 @@ extension ViewerModel {
         let ext = item.url.pathExtension
         let dest = item.url.deletingLastPathComponent().appendingPathComponent(stem).appendingPathExtension(ext)
         guard dest != item.url else { return true }
-        if FileManager.default.fileExists(atPath: dest.path) {
+        // (A change of case only is the same file on a case-insensitive volume.)
+        if FileManager.default.fileExists(atPath: dest.path), dest.path.lowercased() != item.url.path.lowercased() {
             alert = AlertInfo(title: "A file named “\(dest.lastPathComponent)” already exists.", message: "Choose a different name.")
             return false
         }
         do {
-            try FileManager.default.moveItem(at: item.url, to: dest)
+            if dest.path.lowercased() == item.url.path.lowercased() {
+                // A change of case only: by way of another name, since to the volume it's the same file.
+                let step = dest.deletingLastPathComponent().appendingPathComponent(".renaming-\(UUID().uuidString)")
+                try FileManager.default.moveItem(at: item.url, to: step)
+                try FileManager.default.moveItem(at: step, to: dest)
+            } else {
+                try FileManager.default.moveItem(at: item.url, to: dest)
+            }
             let newURL = dest.standardizedFileURL
             relinkCopies(of: item.url, to: newURL)
             if let fresh = FolderScanner.item(for: dest) {

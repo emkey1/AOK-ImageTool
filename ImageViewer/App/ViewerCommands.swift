@@ -186,7 +186,7 @@ struct ViewerCommands: Commands {
                     .help("Save a color version of a black and white photo next to it")
             }
             Button("Black & White…") { viewer?.showBlackAndWhite = true }
-                .disabled(!hasImage)
+                .disabled(!canEdit)
                 .help("Save a black and white copy next to the original")
             Toggle("Show Original", isOn: Binding(get: { viewer?.showOriginal ?? false }, set: { viewer?.showOriginal = $0 }))
                 .disabled(!hasEdits)

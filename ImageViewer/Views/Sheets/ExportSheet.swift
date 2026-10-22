@@ -16,7 +16,7 @@ struct ExportSheet: View {
     @State private var progress: Double?
     @State private var errors: [String] = []
 
-    private var format: ExportFormat { ExportFormat(rawValue: formatRaw) ?? .jpeg }
+    private var format: ExportFormat { ExportFormat(rawValue: formatRaw).flatMap { ExportFormat.writable.contains($0) ? $0 : nil } ?? .jpeg }
     private var isSingle: Bool { request.urls.count == 1 }
     private var anyEdits: Bool { request.urls.contains { model.edits[$0] != nil } }
     private var anyCutout: Bool { request.urls.contains { model.edits[$0]?.hasTransparency == true } }
@@ -47,8 +47,9 @@ struct ExportSheet: View {
 
                 Section {
                     Picker("Format", selection: $formatRaw) {
-                        ForEach(ExportFormat.allCases) { Text($0.displayName).tag($0.rawValue) }
+                        ForEach(ExportFormat.writable) { Text($0.displayName).tag($0.rawValue) }
                     }
+                    .onAppear { if formatRaw != format.rawValue { formatRaw = format.rawValue } }   // e.g. AVIF on macOS 15
                     if format.supportsQuality {
                         LabeledContent("Quality") {
                             HStack {

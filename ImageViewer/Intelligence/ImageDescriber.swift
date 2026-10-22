@@ -240,6 +240,8 @@ nonisolated enum ImageDescriber {
 nonisolated final class ImageChat: @unchecked Sendable {
     /// A `LanguageModelSession` (macOS 26+), type-erased so this class exists on every supported system.
     private var session: AnyObject?
+    /// The image (or its description) has gone with a question that was answered.
+    private var contextSent = false
 
     /// Streams the answer, calling `partial` with the text so far. `describe` produces the text stand-in
     /// for the image when the model can't take images.
@@ -250,8 +252,9 @@ nonisolated final class ImageChat: @unchecked Sendable {
 
     @available(macOS 26, *)
     private func askModel(_ question: String, image: CGImage, describe: () async -> String, partial: (String) -> Void) async throws {
-        let isFirst = session == nil
-        let chat = (session as? LanguageModelSession) ?? ImageDescriber.chatSession()
+        // Until a question with the image has been answered, each try starts a fresh session with it.
+        let isFirst = !contextSent
+        let chat = (isFirst ? nil : session as? LanguageModelSession) ?? ImageDescriber.chatSession()
         session = chat
         let stream: LanguageModelSession.ResponseStream<String>
         if isFirst {
@@ -271,6 +274,7 @@ nonisolated final class ImageChat: @unchecked Sendable {
         for try await snapshot in stream {
             partial(snapshot.content)
         }
+        contextSent = true
     }
 }
 

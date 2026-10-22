@@ -219,6 +219,7 @@ struct IntelligencePanel: View {
                     ai.toggleRemoveBackground()
                 }
                 ActionButton("Select Object…", systemImage: "hand.point.up.left.and.text") {
+                    model.viewMode = .viewer
                     model.activeTool = .selectObject
                 }
                 ActionButton("Copy Subject", systemImage: "doc.on.clipboard") {
