@@ -1,0 +1,302 @@
+import ImagePlayground
+import SwiftUI
+import UniformTypeIdentifiers
+
+struct ViewerCommands: Commands {
+    @FocusedValue(\.viewer) private var viewer: ViewerModel?
+    @Environment(\.openWindow) private var openWindow
+    private var supportsImagePlayground: Bool { PlaygroundSupport.isAvailable }
+    @AppStorage(PrefKey.pixelatedZoom) private var pixelated = false
+    @AppStorage(PrefKey.upscaleSmallImages) private var enlargeSmall = false
+    @AppStorage(PrefKey.aiEnhanceEnlarged) private var aiEnhance = false
+    @AppStorage(PrefKey.canvasBackground) private var background = CanvasBackground.dark.rawValue
+
+    private var hasImage: Bool { viewer?.currentItem != nil }
+    private var hasEdits: Bool { !(viewer?.currentEdits.isIdentity ?? true) }
+    private var canEdit: Bool { viewer?.canEdit ?? false }
+
+    var body: some Commands {
+        CommandGroup(replacing: .newItem) {
+            Button("New Window") { openWindow(id: "viewer") }
+                .keyboardShortcut("n")
+            Button("Open…") { open() }
+                .keyboardShortcut("o")
+            Menu("Open Recent") {
+                ForEach(RecentFolders.all, id: \.self) { url in
+                    Button(url.lastPathComponent) { open([url]) }
+                }
+                Divider()
+                Button("Clear Menu") { RecentFolders.clear() }
+            }
+        }
+
+        CommandGroup(replacing: .saveItem) {
+            Button("Save") { viewer?.save() }
+                .keyboardShortcut("s")
+                .disabled(!hasEdits)
+            Button("Export…") { viewer?.requestExport() }
+                .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(!hasImage)
+            Button("Revert to Original") { viewer?.revertEdits() }
+                .disabled(!hasEdits)
+            Divider()
+            Button("Rename…") { viewer?.beginRename() }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+                .disabled(!hasImage)
+            Button("Move To…") { viewer?.moveOrCopySelection(copy: false) }
+                .disabled(!hasImage)
+            Button("Copy To…") { viewer?.moveOrCopySelection(copy: true) }
+                .disabled(!hasImage)
+            Button("Show in Finder") { viewer?.revealInFinder() }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(viewer?.folderURL == nil)
+            Button("Set as Desktop Picture") { viewer?.setAsDesktopPicture() }
+                .disabled(!hasImage)
+            Divider()
+            Button("Move to Trash") { viewer?.trashSelection() }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(!hasImage)
+        }
+
+        CommandGroup(replacing: .printItem) {
+            Button("Print…") { viewer?.printImage() }
+                .keyboardShortcut("p")
+                .disabled(!hasImage)
+        }
+
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Button("Copy Image") { viewer?.copyImage() }
+                .disabled(!hasImage)
+            Button("Copy Subject") { viewer?.intelligence.copySubject() }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(!hasImage)
+            Button("Copy File Path") { viewer?.copyPath() }
+                .disabled(!hasImage)
+        }
+
+        CommandGroup(before: .toolbar) {
+            Button("Viewer") { viewer?.viewMode = .viewer }
+                .keyboardShortcut("1")
+            Button("Grid") { viewer?.viewMode = .grid }
+                .keyboardShortcut("2")
+            Toggle("Show Filmstrip", isOn: Binding(get: { viewer?.showFilmstrip ?? true }, set: { viewer?.showFilmstrip = $0 }))
+            Divider()
+            Button("Zoom In") { viewer?.zoomIn() }
+                .keyboardShortcut("+")
+            Button("Zoom Out") { viewer?.zoomOut() }
+                .keyboardShortcut("-")
+            Button("Zoom to Fit") { viewer?.zoomToFit() }
+                .keyboardShortcut("9")
+            Button("Actual Size") { viewer?.zoomToActualSize() }
+                .keyboardShortcut("0")
+            Toggle("Enlarge Small Images to Fit Window", isOn: $enlargeSmall)
+                .keyboardShortcut("9", modifiers: [.command, .option])
+            if SuperResolution.isSupported {
+                Toggle("Sharpen Enlarged Images with AI", isOn: Binding(get: { aiEnhance }, set: { viewer?.setAIEnhancement($0) }))
+                    .disabled(viewer == nil)
+            }
+            Toggle("Lock Zoom Across Images", isOn: Binding(get: { viewer?.lockZoom ?? false }, set: { viewer?.lockZoom = $0 }))
+            Toggle("Show Pixels When Zoomed In", isOn: $pixelated)
+            Picker("Background", selection: $background) {
+                ForEach(CanvasBackground.allCases) { Text($0.title).tag($0.rawValue) }
+            }
+            Divider()
+            Picker("Sort By", selection: Binding(get: { viewer?.sortKey ?? .name }, set: { viewer?.sortKey = $0 })) {
+                ForEach(SortKey.allCases) { Text($0.title).tag($0) }
+            }
+            Toggle("Reverse Order", isOn: Binding(get: { !(viewer?.sortAscending ?? true) }, set: { viewer?.sortAscending = !$0 }))
+            Picker("Show", selection: Binding(get: { viewer?.flagFilter ?? .all }, set: { viewer?.flagFilter = $0 })) {
+                ForEach(FlagFilter.allCases) { Text($0.title).tag($0) }
+            }
+            Toggle("Include Subfolders", isOn: Binding(get: { viewer?.includeSubfolders ?? false }, set: { viewer?.includeSubfolders = $0 }))
+            Divider()
+            Button(viewer?.isSlideshowRunning == true ? "Stop Slideshow" : "Start Slideshow") { viewer?.toggleSlideshow() }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+            Button("Show Info") { viewer?.toggleInspector(.info) }
+                .keyboardShortcut("i")
+            Button("Show Adjustments") { viewer?.toggleInspector(.adjust) }
+                .keyboardShortcut("e")
+            Button("Show Intelligence") { viewer?.toggleInspector(.intelligence) }
+                .keyboardShortcut("j")
+            Divider()
+        }
+
+        CommandMenu("Go") {
+            Button("Next Image") { viewer?.next() }
+            Button("Previous Image") { viewer?.previous() }
+            Button("First Image") { viewer?.first() }
+            Button("Last Image") { viewer?.last() }
+            Divider()
+            Button("Next Page") { viewer?.nextPage() }
+                .disabled((viewer?.pageCount ?? 1) < 2)
+            Button("Previous Page") { viewer?.previousPage() }
+                .disabled((viewer?.pageCount ?? 1) < 2)
+            Divider()
+            Button("Enclosing Folder") { viewer?.openEnclosingFolder() }
+                .keyboardShortcut(.upArrow, modifiers: .command)
+                .disabled(viewer?.folderURL == nil)
+            Button("Next Folder") { viewer?.openSiblingFolder(1) }
+                .keyboardShortcut(.rightArrow, modifiers: [.command, .option])
+                .disabled(viewer?.folderURL == nil)
+            Button("Previous Folder") { viewer?.openSiblingFolder(-1) }
+                .keyboardShortcut(.leftArrow, modifiers: [.command, .option])
+                .disabled(viewer?.folderURL == nil)
+        }
+
+        CommandMenu("Image") {
+            Button("Rotate Left") { viewer?.rotate(clockwise: false) }
+                .keyboardShortcut("l")
+                .disabled(!canEdit)
+            Button("Rotate Right") { viewer?.rotate(clockwise: true) }
+                .keyboardShortcut("r")
+                .disabled(!canEdit)
+            Button("Flip Horizontal") { viewer?.flip(horizontal: true) }
+                .disabled(!canEdit)
+            Button("Flip Vertical") { viewer?.flip(horizontal: false) }
+                .disabled(!canEdit)
+            Divider()
+            Button("Crop & Straighten…") { viewer?.viewMode = .viewer; viewer?.activeTool = .crop }
+                .keyboardShortcut("k")
+                .disabled(!canEdit)
+            Button("Auto Enhance") { viewer?.toggleAutoEnhance() }
+                .keyboardShortcut("e", modifiers: [.command, .option])
+                .disabled(!canEdit)
+            Button("Adjust Color…") { viewer?.inspectorTab = .adjust; viewer?.showInspector = true }
+                .keyboardShortcut("c", modifiers: [.command, .option])
+                .disabled(!hasImage)
+            if Colorizer.isInstalled {
+                Button("Colorize") { viewer?.colorizeCurrent() }
+                    .disabled(!hasImage)
+                    .help("Save a color version of a black and white photo next to it")
+            }
+            Toggle("Black & White", isOn: Binding(
+                get: { viewer?.currentEdits.blackAndWhite != nil },
+                set: { on in viewer?.updateEdits(on ? "Black & White" : "Color") { $0.blackAndWhite = on ? BlackAndWhite() : nil } }
+            ))
+            .disabled(!canEdit)
+            Toggle("Show Original", isOn: Binding(get: { viewer?.showOriginal ?? false }, set: { viewer?.showOriginal = $0 }))
+                .disabled(!hasEdits)
+            if SuperResolution.isSupported {
+                Menu("Upscale with AI") {
+                    ForEach(SuperResolution.offeredScales, id: \.self) { scale in
+                        Button("\(scale)×") { viewer?.upscaleCurrent(by: scale) }
+                    }
+                }
+                .disabled(!hasImage)
+            }
+            Divider()
+            Menu("Flag") {
+                Button("Pick") { viewer?.setFlag(.pick) }
+                Button("Reject") { viewer?.setFlag(.reject) }
+                Button("Unflag") { viewer?.setFlag(.none) }
+                Divider()
+                Button("Move Rejects to Trash…") { viewer?.trashRejects() }
+            }
+            .disabled(!hasImage)
+        }
+
+        CommandMenu("Intelligence") {
+            Button("Describe Image") { showIntelligence(); viewer?.intelligence.describeCurrent() }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
+                .disabled(!hasImage)
+            Button("Ask About Image…") { showIntelligence() }
+                .disabled(!hasImage)
+            Button("Read Text in Image") { showIntelligence(); viewer?.intelligence.readTextCurrent() }
+                .disabled(!hasImage)
+            Divider()
+            Button(viewer?.currentEdits.cutout != nil ? "Restore Background" : "Remove Background") { viewer?.intelligence.toggleRemoveBackground() }
+                .keyboardShortcut("b", modifiers: [.command, .option])
+                .disabled(!canEdit)
+            Menu("Background") {
+                Button("Transparent") { viewer?.setBackground(nil, actionName: "Transparent Background") }
+                Button("White") { viewer?.setBackground(.color(red: 1, green: 1, blue: 1, alpha: 1), actionName: "Background Color") }
+                Button("Black") { viewer?.setBackground(.color(red: 0, green: 0, blue: 0, alpha: 1), actionName: "Background Color") }
+                Button("Blurred Original") { viewer?.setBackground(.blur(amount: 0.5), actionName: "Blurred Background") }
+                    .disabled(!(viewer?.canBlurOriginalBackground ?? false))
+                Divider()
+                Button("Picture…") { viewer?.chooseBackgroundPicture() }
+                if GenerativeModel.isInstalled {
+                    Button(supportsImagePlayground ? "Generate on This Mac…" : "Generate…") { viewer?.showGenerateBackground = true }
+                }
+                if supportsImagePlayground {
+                    Button(GenerativeModel.isInstalled ? "Generate with Image Playground…" : "Generate…") { viewer?.showBackgroundPlayground = true }
+                }
+                Divider()
+                Toggle("Match Lighting", isOn: Binding(
+                    get: { viewer?.currentEdits.matchLighting != nil },
+                    set: { on in viewer?.updateEdits("Match Lighting") { $0.matchLighting = on ? 0.6 : nil } }
+                ))
+                .disabled(viewer?.currentEdits.background?.isPicture != true)
+            }
+            .disabled(!(viewer?.canAddBackground ?? false))
+            Button("Select Object…") { viewer?.viewMode = .viewer; viewer?.activeTool = .selectObject }
+                .disabled(!canEdit)
+            Divider()
+            // Extend opens with the fill used last (Generate, once its model is installed).
+            Button("Extend…") { viewer?.beginExtend() }
+                .keyboardShortcut("k", modifiers: [.command, .shift])
+                .disabled(!(viewer?.canExtend ?? false))
+            Button("Try Another Extend Fill") { viewer?.tryAnotherExtendFill() }
+                .disabled(!(viewer?.currentEdits.cropExtendsBeyondImage ?? false))
+            Divider()
+            Button("Auto Straighten") { viewer?.intelligence.autoStraighten() }
+                .disabled(!canEdit)
+            Button("Smart Crop") { viewer?.intelligence.smartCrop() }
+                .disabled(!canEdit)
+            Button("Straighten Document") { viewer?.intelligence.fixPerspective() }
+                .disabled(!canEdit)
+            Divider()
+            if supportsImagePlayground {
+                Button("Reimagine in Image Playground…") { viewer?.showPlayground = true }
+                    .disabled(!hasImage)
+            }
+            Divider()
+            Button("Find Similar Images") { viewer?.intelligence.showSimilar() }
+                .disabled(!hasImage)
+            Button("Find Duplicates…") { viewer?.intelligence.findDuplicates() }
+                .disabled(viewer?.folderURL == nil)
+            Button("Rank Best Shots") { viewer?.sortKey = .quality }
+                .disabled(viewer?.folderURL == nil)
+            Button("Analyze Folder for Search") { viewer?.intelligence.analyzeFolder() }
+                .disabled(viewer?.folderURL == nil)
+        }
+
+        CommandGroup(replacing: .help) {
+            Button("\(GuideWindowController.appName) Guide") { GuideWindowController.shared.show() }
+                .keyboardShortcut("?", modifiers: .command)
+            Button("Editing") { GuideWindowController.shared.show(.editing) }
+            Button("Extend & Generative Fill") { GuideWindowController.shared.show(.extend) }
+            Button("Apple Intelligence") { GuideWindowController.shared.show(.intelligence) }
+            Divider()
+            Button("Keyboard Shortcuts") { viewer?.showShortcuts = true }
+                .keyboardShortcut("/", modifiers: .command)
+        }
+    }
+
+    private func showIntelligence() {
+        viewer?.inspectorTab = .intelligence
+        viewer?.showInspector = true
+    }
+
+    private func open(_ urls: [URL]? = nil) {
+        if let viewer {
+            if let urls { viewer.open(urls) } else { viewer.showOpenPanel() }
+            return
+        }
+        if let urls {
+            PendingOpen.urls = urls
+            openWindow(id: "viewer")
+            return
+        }
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.allowedContentTypes = SupportedFormats.readableTypes + [.folder]
+        if panel.runModal() == .OK {
+            PendingOpen.urls = panel.urls
+            openWindow(id: "viewer")
+        }
+    }
+}

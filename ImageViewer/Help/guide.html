@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AOK-ImageTool Guide</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --text: #1d1d1f; --muted: #6e6e73; --bg: #ffffff; --panel: #f5f5f7; --rule: #d2d2d7;
+    --accent: #0b7f86; --code-bg: #eef0f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --text: #f5f5f7; --muted: #a1a1a6; --bg: #1e1e20; --panel: #2a2a2d; --rule: #3a3a3d;
+            --accent: #4cc8cd; --code-bg: #333338; }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; font: 14px/1.55 -apple-system, BlinkMacSystemFont, sans-serif; color: var(--text); background: var(--bg); }
+  nav { position: fixed; top: 0; bottom: 0; left: 0; width: 210px; overflow-y: auto; padding: 20px 14px;
+        background: var(--panel); border-right: 1px solid var(--rule); }
+  nav a { display: block; padding: 4px 8px; border-radius: 6px; color: var(--text); text-decoration: none; }
+  nav a:hover { background: var(--rule); }
+  nav .title { font-weight: 600; padding: 0 8px 10px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  main { margin-left: 210px; padding: 28px 40px 80px; max-width: 900px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  h2 { font-size: 19px; margin: 38px 0 8px; padding-top: 8px; border-top: 1px solid var(--rule); }
+  h3 { font-size: 15px; margin: 22px 0 6px; }
+  p, li { max-width: 72ch; }
+  .lede { color: var(--muted); margin-top: 0; }
+  a { color: var(--accent); }
+  kbd { font: 12px ui-monospace, SFMono-Regular, monospace; background: var(--code-bg); border: 1px solid var(--rule);
+        border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; white-space: nowrap; }
+  code { font: 12.5px ui-monospace, SFMono-Regular, monospace; background: var(--code-bg); padding: 1px 4px; border-radius: 4px; }
+  /* Screenshots carry their own window shadow, so they sit a little outside the text column. */
+  .shot { display: block; width: 104%; max-width: 860px; height: auto; margin: 2px 0 6px -3%; }
+  pre { background: var(--code-bg); padding: 10px 14px; border-radius: 6px; overflow-x: auto; max-width: 760px; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; margin: 10px 0 16px; width: 100%; max-width: 760px; }
+  th, td { text-align: left; vertical-align: top; padding: 6px 10px; border-bottom: 1px solid var(--rule); }
+  th { font-weight: 600; color: var(--muted); font-size: 12px; }
+  td:first-child { white-space: nowrap; }
+  .note { background: var(--panel); border-left: 3px solid var(--accent); padding: 8px 14px; border-radius: 4px; max-width: 72ch; }
+  @media (max-width: 700px) { nav { display: none; } main { margin-left: 0; padding: 20px; } }
+</style>
+</head>
+<body>
+<nav>
+  <div class="title">AOK-ImageTool Guide</div>
+  <a href="#start">Getting around</a>
+  <a href="#viewing">Viewing</a>
+  <a href="#culling">Picking the keepers</a>
+  <a href="#search">Searching</a>
+  <a href="#editing">Editing</a>
+  <a href="#extend">Extend and Generate</a>
+  <a href="#cutouts">Subjects and backgrounds</a>
+  <a href="#intelligence">Apple Intelligence</a>
+  <a href="#files">Saving, exporting and files</a>
+  <a href="#settings">Settings</a>
+  <a href="#keys">Keyboard shortcuts</a>
+  <a href="#macos">Which macOS has what</a>
+  <a href="#model">The generative fill model</a>
+  <a href="#privacy">Privacy</a>
+</nav>
+<main>
+
+<h1>AOK-ImageTool Guide</h1>
+<p class="lede">A fast, keyboard-first image viewer and editor for macOS, with Apple's on-device intelligence built in.</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="guide-viewer-dark.heic">
+  <img class="shot" src="guide-viewer-light.heic" alt="An AOK-ImageTool window: the folder sidebar, a photo of a mountain lake, and the filmstrip of the folder's other photos.">
+</picture>
+
+<h2 id="start">Getting around</h2>
+<ul>
+  <li><b>Open pictures.</b> <b>File › Open…</b> <kbd>⌘O</kbd> takes images or a whole folder; you can also drop them on the window or the Dock icon. Opening one image shows the rest of its folder too, so you can browse on from it.</li>
+  <li><b>Browse with the arrow keys.</b> <kbd>←</kbd> <kbd>→</kbd> step through the folder; so do <kbd>↑</kbd> <kbd>↓</kbd> (or they zoom, if you choose that in <a href="#settings">Settings</a>), <kbd>Space</kbd> and <kbd>⇧Space</kbd>. <kbd>Home</kbd> and <kbd>End</kbd> jump to the first and last image. When the whole image is visible, a trackpad swipe or the scroll wheel steps through images too.</li>
+  <li><b>Fast.</b> The images on either side of the one you're looking at are decoded ahead of time, in the direction you're going. Holding an arrow key flips through thumbnails and decodes the full image when you stop. RAW files show their built-in preview first.</li>
+  <li><b>The sidebar</b> (toolbar button, top left) shows the current folder, its enclosing folder and subfolders, your recent folders, and common places such as Pictures and Downloads. Right-click a folder for <b>Show in Finder</b> or <b>Open in New Window</b>.</li>
+  <li><b>Folders.</b> <b>Go › Enclosing Folder</b> <kbd>⌘↑</kbd>. <b>Go › Next Folder</b> and <b>Previous Folder</b> (<kbd>⌥⌘→</kbd> <kbd>⌥⌘←</kbd>) walk the folders beside this one, which is handy for date-named photo folders. <b>View › Include Subfolders</b> shows everything below the folder as one list.</li>
+  <li><b>Each folder remembers</b> the last image you looked at, and opens there next time. <b>File › Open Recent</b> lists recent folders.</li>
+  <li><b>Windows.</b> <kbd>⌘N</kbd> opens another window, for comparing two folders side by side.</li>
+</ul>
+
+<h2 id="viewing">Viewing</h2>
+<ul>
+  <li><b>Formats.</b> Everything macOS can read: JPEG, PNG, HEIC, AVIF, JPEG XL, WebP, TIFF, GIF, BMP, PSD, OpenEXR and 30+ camera RAW formats, plus PDF and SVG. <b>Settings › General</b> lists them all.</li>
+  <li><b>Zoom.</b> <kbd>Z</kbd> or a double-click toggles between fitting the window and actual size; <kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>0</kbd> fits, <kbd>1</kbd> is 100%. Pinch, or hold <kbd>⌘</kbd> or <kbd>⌥</kbd> and scroll, to zoom at the pointer. Drag to pan.</li>
+  <li><b>Lock Zoom</b> (<kbd>L</kbd>) keeps the same zoom and position as you move between images: the quickest way to compare focus across a burst of shots.</li>
+  <li><b>Small images.</b> <b>View › Enlarge Small Images to Fit Window</b> <kbd>⌥⌘9</kbd> scales them up. <b>Sharpen Enlarged Images with AI</b> shows them through Apple's on-device upscaler instead of plain smoothing.</li>
+  <li><b>HDR.</b> HDR photos, like those from iPhone, show their full brightness on displays that can show it. A small HDR badge says so.</li>
+  <li><b>Animations and pages.</b> Animated GIF, PNG, WebP and HEIC play. Multi-page TIFFs and PDFs have page buttons; <kbd>Page Up</kbd> and <kbd>Page Down</kbd> turn pages.</li>
+  <li><b>Live Text.</b> Select and copy text right on the image, and click the Look Up button for plants, pets, landmarks and more.</li>
+  <li><b>Grid</b> (<kbd>G</kbd>, or <kbd>⌘2</kbd>) shows the folder as thumbnails; the slider in the toolbar sets their size. <kbd>Return</kbd> or a double-click opens the selected image. <kbd>⌘1</kbd> goes back to the viewer.</li>
+  <li><b>Filmstrip</b> (<kbd>T</kbd>), <b>full screen</b> (<kbd>F</kbd>) and <b>slideshow</b> (<kbd>S</kbd>; <kbd>Space</kbd> pauses it, <kbd>Esc</kbd> stops it). The time per slide is in <a href="#settings">Settings</a>.</li>
+  <li><b>Info</b> (<kbd>I</kbd>) shows a histogram, the camera and lens, exposure, dates, size and color details, a map for photos that know where they were taken, and every bit of metadata under <b>All Metadata</b>. At the bottom, the folder's totals: how many images, picks and rejects.</li>
+  <li><b>Canvas background.</b> <b>View › Background</b> chooses black, dark gray, gray, light gray, white or the window color. Transparent images show over a checkerboard.</li>
+</ul>
+
+<h2 id="culling">Picking the keepers</h2>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="guide-grid-dark.heic">
+  <img class="shot" src="guide-grid-light.heic" alt="Grid view: thumbnails of a folder of photos, with green pick and red reject flags on some of them.">
+</picture>
+<ul>
+  <li><b>Flag as you go.</b> <kbd>P</kbd> picks, <kbd>X</kbd> rejects, <kbd>U</kbd> unflags, and the next image comes up (you can turn that off in Settings). Flags are Finder color labels, green and red, so Finder and other apps see them too.</li>
+  <li><b>Filter.</b> The Sort &amp; Filter button in the toolbar (or <b>View › Show</b>) shows only picks, only rejects or only unflagged images.</li>
+  <li><b>Move Rejects to Trash</b> (<b>Image › Flag</b>, or the Info panel) clears them out in one go. Moving to the Trash can be undone.</li>
+  <li><b>Sort</b> by name, date taken, date created or modified, size, kind, at random, or <b>Best Shots</b>: Apple's on-device judgment of how good each photo is. <b>Reverse Order</b> flips any of them.</li>
+  <li><b>Select several</b> in the grid with <kbd>⇧</kbd>-click, <kbd>⌘</kbd>-click or <kbd>⇧</kbd> and the arrow keys. Flagging, moving, copying, trashing, sharing and exporting work on the whole selection.</li>
+  <li><b>Duplicates.</b> <b>Intelligence › Find Duplicates…</b> groups identical and near-identical shots, best first. Slide toward <b>Loose</b> to catch similar shots too, then <b>Keep Best of Each Group</b> marks the rest for the Trash.</li>
+  <li><b>Find Similar Images</b> (Intelligence menu) shows the images that look like the one you're on; <b>Show All</b> goes back.</li>
+</ul>
+
+<h2 id="search">Searching</h2>
+<p>Type in the search field in the toolbar. It matches file names, and, once the folder has been analyzed, <b>what's in the pictures</b> (“owl”, “beach”, “receipt”) and <b>text inside them</b>.</p>
+<ul>
+  <li><b>Analyzing</b> happens on this Mac, the first time you search a folder or when you choose <b>Intelligence › Analyze Folder for Search</b>. A progress ring in the toolbar shows how far it's got. Each folder is analyzed once and remembered.</li>
+  <li><b>Related words count.</b> If nothing matches exactly, close words are tried: “puppy” finds dogs.</li>
+  <li><b>Keywords</b> from a description (see <a href="#intelligence">Apple Intelligence</a>) are clickable: a click searches the folder for that word.</li>
+  <li><b>Ending a search:</b> clear the field, or press <kbd>Esc</kbd> with the image focused. <kbd>Return</kbd> in the field takes you back to the image.</li>
+</ul>
+
+<h2 id="editing">Editing</h2>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="guide-adjust-dark.heic">
+  <img class="shot" src="guide-adjust-light.heic" alt="The Adjust panel beside an edited photo: Light and Color sliders, and filter previews.">
+</picture>
+<p>Edits never touch the file until you <a href="#files">Save</a>. Every change can be undone (<kbd>⌘Z</kbd>), and unsaved edits are still there after you quit and reopen the app.</p>
+<ul>
+  <li><b>Adjust</b> (<kbd>E</kbd>, or the toolbar button) has <b>Light</b> (exposure, brightness, contrast, highlights, shadows), <b>Color</b> (saturation, vibrance, warmth, tint), <b>Detail</b> (sharpness, noise reduction, vignette) and 13 <b>filters</b>, each previewed on your photo. Double-click a slider's name to reset it.</li>
+  <li><b>Black &amp; White</b> (in Adjust, or <b>Image › Black &amp; White</b>) converts the darkroom way. A <b>filter</b> decides which colors turn light or dark: <b>Red</b> makes blue skies dark and dramatic and smooths skin, <b>Yellow</b> is milder, <b>Green</b> separates foliage, <b>Blue</b> brightens skies and darkens skin. <b>Toning</b> (sepia, warm or cool) tints the grays, as much as you like. The other adjustments still work on it, and switching it off brings the color back.</li>
+  <li><b>Colorize</b> (<b>Image › Colorize</b>, or in the Intelligence panel) turns a black and white photo to color and saves the result next to it, as “… (Colorized)”. The colors come from DDColor, a model made for colorizing that runs on this Mac (once its <a href="#model">model</a> is installed); all the light and detail are the original's, so faces and textures stay exactly as they were. The colors are a well-informed guess: a sweater may come out a different color than it was.</li>
+  <li><b>Auto</b> enhances the photo in one click (<kbd>⌥⌘E</kbd>). Click it again to take it off.</li>
+  <li><b>Before and after.</b> Click the eye button, or press <kbd>\</kbd>, to see the original; again to go back.</li>
+  <li><b>Rotate and flip.</b> <kbd>R</kbd> and <kbd>⇧R</kbd> rotate (also <kbd>]</kbd> <kbd>[</kbd>, <kbd>⌘R</kbd> <kbd>⌘L</kbd>); flips are in the Image menu.</li>
+  <li><b>Crop and straighten</b> (<kbd>C</kbd> or <kbd>⌘K</kbd>). Drag the corners and edges, or pick an aspect (Square, 16:9, 4:3…; the button beside it swaps portrait and landscape). The slider straightens; <b>Auto</b> levels it for you, from the horizon or from upright lines such as walls and door frames. <b>Smart Crop</b> frames the subject. <kbd>Return</kbd> applies, <kbd>Esc</kbd> cancels.</li>
+  <li><b>Straighten Document</b> (Intelligence menu) finds a page, sign or whiteboard and squares it up.</li>
+  <li><b>Revert to Original</b> (File menu) drops every edit; <b>Reset Adjustments</b> in the panel keeps the crop and drops the rest.</li>
+</ul>
+
+<h2 id="extend">Extend and Generate</h2>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="guide-extend-dark.heic">
+  <img class="shot" src="guide-extend-light.heic" alt="The Crop tool extending a square photo to 16:9, with Fill set to Generate and the new area generated on both sides.">
+</picture>
+<p>Extend makes a photo bigger than it was: wider for a 16:9 screen, taller for a phone wallpaper, or just with more room around the subject. Your original pixels stay exactly as they were; only the new area is made up.</p>
+<ol>
+  <li><b>Intelligence › Extend…</b> <kbd>⇧⌘K</kbd> opens the Crop tool with <b>Extend</b> turned on, using the fill you chose last. (Or press <kbd>C</kbd> and click <b>Extend</b> in the bar at the bottom, or click <b>Generative Extend</b> in the Intelligence panel.)</li>
+  <li><b>Drag the frame's edges past the photo</b>, up to about a third of its size on each side, or choose an <b>Aspect</b> such as 16:9 to widen it to that shape.</li>
+  <li><b>Choose a Fill</b> (Extend starts with the one you used last; Generate, once its model is installed):
+    <ul>
+      <li><b>Match Photo</b> continues the photo's own texture by copying it: skies, grass, sand, water, plain walls. It takes a moment and works on any Mac, but it can't invent objects or structure, so tiles, furniture and people beside the edge come out scrambled; use Generate for those.</li>
+      <li><b>Generate</b> draws new content that continues the scene, with an image model that runs on this Mac. Apple Intelligence describes the photo's setting (“a restaurant with wooden floors, tables and chairs”, never the people in it), and Generate continues that; the description field shows what it's using. To ask for something else, type it (“sandy beach and blue sky”) and press <kbd>Return</kbd>. It needs Apple silicon and the <a href="#model">generative fill model</a>; without Apple Intelligence it continues the scene from the picture alone.</li>
+    </ul>
+  </li>
+  <li><b>Look at the preview.</b> Match Photo previews right away. Generate takes about 15–25 seconds, with its progress at the top. Not quite right? <b>Try Again</b> (at the top, or in the bar at the bottom) makes a different one.</li>
+  <li><b>Done</b> keeps it, and the final fill is made in the background (“Extending…” or “Generating…” at the top right). For Generate, the preview shows right away, then a second pass redraws the new area at higher resolution and blends it into the photo's edges, which takes about another half minute. Save waits until it's done.</li>
+</ol>
+<ul>
+  <li><b>Adjustments apply to the new area too</b>, so you can extend first and adjust later.</li>
+  <li><b>Rotating, straightening or a bigger frame</b> make a new fill; a smaller frame inside the extended area reuses the one you have. The same edits always make the same fill again, even after a relaunch.</li>
+  <li><b>Intelligence › Try Another Extend Fill</b> fills the same frame differently without opening the Crop tool. Undo goes back to the previous fill.</li>
+  <li><b>Scans of prints.</b> If the photo has a print's white (or black) border, Extend continues the picture inside it, and the border, with any date stamp on it, is replaced by the extended scene.</li>
+  <li><b>Photos with see-through areas</b> can't be extended until they have a background (see <a href="#cutouts">below</a>), since there's nothing to continue.</li>
+</ul>
+<p class="note">Generated content is new, not recovered: it's the model's idea of what might be there. It can add things, such as another flower or something on the floor, so check the result before you share it, and try again if it isn't right. The bigger the frame, the more it has to make up: modest extensions look most natural. On a big photo the new area is a little softer than the original.</p>
+
+<h2 id="cutouts">Subjects and backgrounds</h2>
+<ul>
+  <li><b>Remove Background</b> (<kbd>⌥⌘B</kbd>, or in the Intelligence panel) keeps the subject: a person, pet, object or several. Choose it again to restore the background.</li>
+  <li><b>Select Object…</b> (Intelligence menu) lets you pick exactly what to keep. Click an object to select it, click more to add, <kbd>⌥</kbd>-click to leave something out. Then <b>Cut Out</b> (keeps only the selection, still undoable), <b>Copy</b>, or <b>Save as PNG…</b>.</li>
+  <li><b>Copy Subject</b> <kbd>⇧⌘C</kbd> puts just the subject on the clipboard, ready to paste into Keynote, Messages or a document.</li>
+  <li><b>A new background.</b> With the background removed, or for a picture that already has transparency (a logo, a saved cutout), choose what goes behind it in the Intelligence panel or <b>Intelligence › Background</b>: transparent, a color, the original blurred (a portrait look), a picture of your own, or a generated one:
+    <ul>
+      <li><b>Generate on This Mac…</b> (with the <a href="#model">generative fill model</a>) paints the scene around your subject, so its framing, eye level and light suit them. Describe the scene (“a sunny beach with palm trees”, or pick a suggestion); Apple Intelligence describes the subject (“a smiling woman with grey hair and a blue shirt”), which you can correct, and both go to the model. <b>Try Again</b> makes another; <b>Use Background</b> puts it behind the cutout.</li>
+      <li><b>Generate with Image Playground…</b> makes a stand-alone picture from a few words, in Image Playground's styles.</li>
+    </ul>
+  </li>
+  <li><b>Match Lighting</b> (with a picture background) blends the subject's brightness, light color and edges with the new scene, so it looks like it was there. The slider sets how much.</li>
+</ul>
+
+<h2 id="intelligence">Apple Intelligence</h2>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="guide-intelligence-dark.heic">
+  <img class="shot" src="guide-intelligence-light.heic" alt="The Intelligence panel with a title, caption and keywords describing a photo of a red fox.">
+</picture>
+<p>Everything here runs on this Mac. The Intelligence panel (<kbd>A</kbd>, or <kbd>⌘J</kbd>) gathers it; most of it is also in the Intelligence menu.</p>
+<ul>
+  <li><b>Describe Image</b> <kbd>⇧⌘D</kbd> writes a title, an alt-text caption and keywords. <b>Copy Alt Text</b> for a website or document; <b>Add Finder Tags</b> makes the keywords Finder tags, which Spotlight finds; <b>Rename to “…”</b> takes the suggested file name. Settings can describe each image automatically while the panel is open.</li>
+  <li><b>Ask About This Image.</b> Type a question (“What breed is this?”, “Where could this be?”) or click a suggestion. Follow-up questions remember the conversation.</li>
+  <li><b>Text in Image.</b> <b>Read Text</b> finds all the text in a photo (signs, receipts, slides) to copy or <b>Translate…</b>.</li>
+  <li><b>Smart Fixes:</b> Auto Enhance, Straighten (levels the horizon or upright lines), Smart Crop, Fix Document, and, with their models installed, Generative Extend and Colorize.</li>
+  <li><b>Reimagine in Image Playground…</b> turns the photo into an animation, illustration or sketch, saved next to the original.</li>
+  <li><b>Upscale with AI</b> (Image menu: 2×, 3× or 4×) saves a sharper, larger copy, such as “Fox (4×).heic”, next to the original. Images larger than 1920 × 1920 are upscaled in overlapping tiles; the result can be up to 16,384 pixels on a side. macOS downloads Apple's upscaling model the first time.</li>
+  <li><b>Shot Quality</b> scores the photo; <b>Best Shots</b> sorts the folder by that score.</li>
+  <li><b>This Folder:</b> Analyze Folder (for search), Best Shots, Find Similar and Duplicates.</li>
+  <li><b>Rename…</b> <kbd>⌥⌘R</kbd> (File menu) has <b>Suggest a Name</b>, from what's in the picture.</li>
+</ul>
+<p class="note">Describe, Ask and naming need Apple Intelligence turned on, on a Mac that has it (macOS 26 or later). Image Playground needs it too. Everything else in the panel uses Vision, which every Mac has. See <a href="#macos">Which macOS has what</a>.</p>
+
+<h2 id="files">Saving, exporting and files</h2>
+<ul>
+  <li><b>Save</b> <kbd>⌘S</kbd> writes your edits into the file, in the same format, keeping its metadata. Before it does, it asks (you can turn that off), and the original goes to the Trash, so you can always get it back. If the format can't be written (RAW, PDF, or JPEG with see-through areas), use Export.</li>
+  <li><b>Export…</b> <kbd>⇧⌘E</kbd> saves a copy as JPEG, HEIC, AVIF, PNG, TIFF, GIF, BMP or JPEG 2000, with a quality setting and an optional size limit. <b>Metadata</b>: keep everything, <b>remove the location</b> (good for posting online), or remove it all. With several images selected in the grid, they're all exported at once.</li>
+  <li><b>Unsaved edits</b> survive quitting. The app tells you how many are waiting when you quit, and the image shows an “Edited” badge.</li>
+  <li><b>File menu:</b> Rename… (<kbd>⌥⌘R</kbd>), Move To…, Copy To…, Show in Finder (<kbd>⇧⌘R</kbd>), Set as Desktop Picture, Print… (<kbd>⌘P</kbd>) and Move to Trash (<kbd>⌘⌫</kbd>, undoable).</li>
+  <li><b>Edit menu:</b> Copy Image (with your edits), Copy Subject, Copy File Path. <b>Share</b> is in the toolbar.</li>
+</ul>
+
+<h2 id="settings">Settings</h2>
+<p><b>AOK-ImageTool › Settings…</b> (<kbd>⌘,</kbd>):</p>
+<ul>
+  <li><b>General:</b> what <kbd>↑</kbd> <kbd>↓</kbd> do (browse or zoom); whether <kbd>Space</kbd> shows the next image; wrapping around at the end of a folder; moving on after a pick or reject; including subfolders and hidden files; slideshow timing; and the list of supported formats.</li>
+  <li><b>Viewing:</b> the canvas background, the checkerboard behind transparency, enlarging small images, crisp pixels when zoomed in, HDR, and file names under thumbnails.</li>
+  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, and the <a href="#model">generative fill and colorizing models</a>: their status, <b>Install from Folder…</b> and <b>Remove…</b>.</li>
+  <li><b>Intelligence:</b> whether Apple Intelligence is available, describing images automatically, Live Text, and <b>Clear Cached Analysis</b> (search analysis is made again when needed).</li>
+</ul>
+
+<h2 id="keys">Keyboard shortcuts</h2>
+<p>Single keys work whenever the image or grid has the focus. They never take typing away from the search field or other text fields; <kbd>Esc</kbd> in an empty field gives the focus back to the image. Press <kbd>?</kbd> for this list in a window.</p>
+<table>
+  <tr><th>Shortcut</th><th>Action</th></tr>
+  <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></td><td>Previous / next image (<kbd>⇧Space</kbd> goes back)</td></tr>
+  <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First / last image</td></tr>
+  <tr><td><kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Previous / next page (PDF, multi-page TIFF)</td></tr>
+  <tr><td><kbd>G</kbd> <kbd>⌘1</kbd> <kbd>⌘2</kbd></td><td>Toggle grid / viewer / grid</td></tr>
+  <tr><td><kbd>Z</kbd> <kbd>0</kbd> <kbd>1</kbd> <kbd>+</kbd> <kbd>−</kbd></td><td>Fit or actual size, fit, 100%, zoom in, zoom out</td></tr>
+  <tr><td><kbd>L</kbd></td><td>Lock zoom across images</td></tr>
+  <tr><td><kbd>F</kbd> <kbd>S</kbd> <kbd>T</kbd></td><td>Full screen, slideshow, filmstrip</td></tr>
+  <tr><td><kbd>I</kbd> <kbd>E</kbd> <kbd>A</kbd></td><td>Info, Adjust, Intelligence panel</td></tr>
+  <tr><td><kbd>P</kbd> <kbd>X</kbd> <kbd>U</kbd></td><td>Pick, reject, unflag</td></tr>
+  <tr><td><kbd>R</kbd> <kbd>⇧R</kbd></td><td>Rotate right / left</td></tr>
+  <tr><td><kbd>C</kbd> <kbd>⌘K</kbd> <kbd>⇧⌘K</kbd></td><td>Crop &amp; straighten, Extend</td></tr>
+  <tr><td><kbd>\</kbd></td><td>Show the original</td></tr>
+  <tr><td><kbd>⌥⌘E</kbd> <kbd>⌥⌘C</kbd></td><td>Auto enhance, adjust color</td></tr>
+  <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
+  <tr><td><kbd>⌘S</kbd> <kbd>⇧⌘E</kbd></td><td>Save, export</td></tr>
+  <tr><td><kbd>⌥⌘R</kbd> <kbd>⇧⌘R</kbd> <kbd>⌘⌫</kbd></td><td>Rename, show in Finder, move to Trash</td></tr>
+  <tr><td><kbd>⌘↑</kbd> <kbd>⌥⌘←</kbd> <kbd>⌥⌘→</kbd></td><td>Enclosing folder, previous / next folder</td></tr>
+  <tr><td><kbd>⇧⌘F</kbd></td><td>Start or stop the slideshow</td></tr>
+  <tr><td><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></td><td>Undo, redo (edits, renames, moves to the Trash)</td></tr>
+  <tr><td><kbd>Return</kbd> <kbd>Esc</kbd></td><td>In a tool: apply, cancel. Otherwise <kbd>Esc</kbd> stops the slideshow, leaves full screen or clears the search</td></tr>
+  <tr><td><kbd>?</kbd> <kbd>⌘/</kbd> <kbd>⌘?</kbd></td><td>Shortcut list, shortcut list, this guide</td></tr>
+</table>
+
+<h2 id="macos">Which macOS has what</h2>
+<p>AOK-ImageTool runs on macOS 15 and later. Everything not in this table works on all of them: viewing, culling, editing, Extend (both fills), search, Live Text, translation, and every Vision feature (background removal, duplicates, best shots, Smart Crop, horizon and documents). What a Mac can't do is hidden or explained, never broken.</p>
+<table>
+  <tr><th>Feature</th><th>macOS 15</th><th>15.1+</th><th>26</th><th>27</th></tr>
+  <tr><td>Image Playground (Reimagine, generated backgrounds)</td><td>—</td><td>✓¹</td><td>✓¹</td><td>✓¹</td></tr>
+  <tr><td>Describe, Ask, suggested names</td><td>—</td><td>—</td><td>✓¹ from Vision's labels</td><td>✓¹ looks at the image</td></tr>
+  <tr><td>Upscale with AI, Sharpen Enlarged Images</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+  <tr><td>Select Object refining with more clicks</td><td>the object under the click</td><td>same</td><td>same</td><td>✓</td></tr>
+  <tr><td>Extend › Generate, Background › Generate on This Mac</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">generative fill model</a> is installed. With Apple Intelligence (macOS 26 and later), it also describes the setting and the subject for the model.</td></tr>
+  <tr><td>Colorize</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">colorizing model</a> is installed</td></tr>
+</table>
+<p>¹ On a Mac with Apple Intelligence, turned on in System Settings.</p>
+
+<h2 id="model">The generative fill and colorizing models</h2>
+<p>Generate uses <b>Stable Diffusion 1.5 Inpainting</b>, converted to run with Core ML on Apple silicon. It isn't built into the app because it's large (about 2 GB). <b>Settings › Editing</b> shows whether it's installed.</p>
+<ul>
+  <li><b>Installing.</b> The model is made from the official weights by a script in the app's project, <code>scripts/convert-inpainting-model.sh</code>. It downloads what it needs into a folder you name, converts the model in a few minutes, and with <code>--install</code> puts it in place. Without <code>--install</code>, choose the folder it made in <b>Settings › Editing › Install from Folder…</b>.</li>
+  <li><b>Where it lives:</b> <code>~/Library/Application Support/com.oneopa.ImageViewer/Models</code>. <b>Remove…</b> in Settings deletes it.</li>
+  <li><b>Memory.</b> While you use Generate the model takes about 2.5 GB of memory; it's let go after a few idle minutes. The first generation after installing takes a few seconds longer while macOS prepares the model for this Mac.</li>
+  <li><b>License.</b> The model's license is CreativeML Open RAIL-M, which asks that it not be used for harmful content.</li>
+  <li><b>Colorize</b> uses a second model, DDColor (Apache 2.0, about 460 MB), built the same way with <code>scripts/convert-colorize-model.sh</code> and shown in <b>Settings › Editing › Colorize</b>.</li>
+</ul>
+
+<h2 id="privacy">Privacy</h2>
+<p>Your pictures never leave your Mac. Descriptions, questions, search analysis, background removal, upscaling, colorizing, generated fills and backgrounds all run on this Mac. The only downloads are the ones macOS makes itself (Apple's upscaling model, the first time you use it) and the generative fill and colorizing models, if you install them. Search analysis is kept in <code>~/Library/Caches/com.oneopa.ImageViewer</code>; unsaved edits, backgrounds you choose and Extend fills in <code>~/Library/Application Support/com.oneopa.ImageViewer</code>.</p>
+
+</main>
+</body>
+</html>
