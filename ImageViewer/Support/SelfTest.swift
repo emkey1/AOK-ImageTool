@@ -198,17 +198,17 @@ enum SelfTest {
             reloaded.flush()
             check(!fm.fileExists(atPath: storeURL.path), "empty store removes its file")
         }
-        if let owl = decodedByName["Owl.heic"] {
+        if let fox = decodedByName["Red Fox.heic"] {
             var e = EditState()
             e.cutout = .subject
-            MaskStore.shared.forget(owl.url)
-            try? await MaskStore.shared.prepare(e, for: owl)
-            check(MaskStore.shared.subjectMask(for: owl.url) != nil, "restored background removal recomputes its subject mask")
+            MaskStore.shared.forget(fox.url)
+            try? await MaskStore.shared.prepare(e, for: fox)
+            check(MaskStore.shared.subjectMask(for: fox.url) != nil, "restored background removal recomputes its subject mask")
         }
 
         // 6. Backgrounds behind a cutout.
         print("\n[Backgrounds]")
-        if let owl = decodedByName["Owl.heic"] {
+        if let fox = decodedByName["Red Fox.heic"] {
             /// RGBA (sRGB) of the pixel at (x, y), counted from the top left.
             func pixel(_ image: CGImage, _ x: Int, _ y: Int) -> [UInt8] {
                 var px = [UInt8](repeating: 0, count: 4)
@@ -221,10 +221,10 @@ enum SelfTest {
                 var e = EditState()
                 e.cutout = .subject
                 e.background = background
-                guard let out = EditRenderer.shared.renderSync(owl, edits: e, maxDimension: nil) else { return [] }
+                guard let out = EditRenderer.shared.renderSync(fox, edits: e, maxDimension: nil) else { return [] }
                 return pixel(out.image, 2, 2)
             }
-            try? await MaskStore.shared.prepare({ var e = EditState(); e.cutout = .subject; return e }(), for: owl)
+            try? await MaskStore.shared.prepare({ var e = EditState(); e.cutout = .subject; return e }(), for: fox)
             check(corner(nil).last == 0, "cutout alone leaves the corner transparent")
             let red = corner(.color(red: 1, green: 0, blue: 0, alpha: 1))
             check(red.count == 4 && red[0] > 235 && red[1] < 25 && red[2] < 25 && red[3] == 255, "color background shows red, opaque \(red)")
@@ -243,7 +243,7 @@ enum SelfTest {
             check(!opaque.hasTransparency, "opaque background means no transparency (JPEG can save in place)")
 
             // Transparency baked into a file (a saved cutout or an upscaled copy of one): backgrounds use its alpha.
-            if let baked = EditRenderer.shared.renderSync(owl, edits: { var e = EditState(); e.cutout = .subject; return e }(), maxDimension: nil)?.image {
+            if let baked = EditRenderer.shared.renderSync(fox, edits: { var e = EditState(); e.cutout = .subject; return e }(), maxDimension: nil)?.image {
                 let file = out.appendingPathComponent("baked-cutout.png")
                 try? ImageWriter.write(baked, to: file, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)
                 if let reopened = try? ImageDecoder.decode(url: file, page: 0, allowHDR: false) {
@@ -253,7 +253,8 @@ enum SelfTest {
                     if let filled = EditRenderer.shared.renderSync(reopened, edits: e, maxDimension: nil)?.image {
                         let c = pixel(filled, 2, 2)
                         check(c.count == 4 && c[0] > 235 && c[1] < 25 && c[3] == 255, "background fills a file's own transparency, no cutout needed \(c)")
-                        let face = (pixel(filled, 256, 330), pixel(baked, 256, 330))
+                        let (cx, cy) = (Int(0.72 * Double(baked.width)), Int(0.42 * Double(baked.height)))   // the fox's chest
+                        let face = (pixel(filled, cx, cy), pixel(baked, cx, cy))
                         check(zip(face.0, face.1).allSatisfy { abs(Int($0) - Int($1)) <= 3 }, "the subject itself is unchanged \(face.0) vs \(face.1)")
                     } else {
                         check(false, "render a background behind baked transparency")
@@ -265,7 +266,7 @@ enum SelfTest {
             }
 
             // Matching the subject's light to a dark, stormy picture pulls its brightness toward the picture's.
-            if let storm = decodedByName["Lightning.heic"] {
+            if let storm = decodedByName["Rainy Street.heic"] {
                 func brightness(_ image: CGImage, _ rect: CGRect) -> Double {
                     let w = Int(rect.width), h = Int(rect.height)
                     var px = [UInt8](repeating: 0, count: w * h * 4)
@@ -279,11 +280,12 @@ enum SelfTest {
                 var e = EditState()
                 e.cutout = .subject
                 e.background = .image(path: storm.url.path)
-                let plain = EditRenderer.shared.renderSync(owl, edits: e, maxDimension: nil)?.image
+                let plain = EditRenderer.shared.renderSync(fox, edits: e, maxDimension: nil)?.image
                 e.matchLighting = 1
-                let matched = EditRenderer.shared.renderSync(owl, edits: e, maxDimension: nil)?.image
+                let matched = EditRenderer.shared.renderSync(fox, edits: e, maxDimension: nil)?.image
                 if let plain, let matched {
-                    let center = CGRect(x: 156, y: 306, width: 200, height: 150)   // owl's face and chest
+                    let w = CGFloat(plain.width), h = CGFloat(plain.height)
+                    let center = CGRect(x: 0.62 * w, y: 0.32 * h, width: 0.18 * w, height: 0.16 * h)   // the fox's chest
                     let (before, after, sky) = (brightness(plain, center), brightness(matched, center), brightness(plain, CGRect(x: 0, y: 0, width: 40, height: 40)))
                     check(abs(after - sky) < abs(before - sky),
                           String(format: "matched lighting moves the subject toward the background (%.0f → %.0f, background %.0f)", before, after, sky))
@@ -313,10 +315,17 @@ enum SelfTest {
             }
             return Double(sum) / Double(height * 3)
         }
-        for name in ["Zen.heic", "Lightning.heic", "Lotus.heic"] {
-            guard let d = decodedByName[name] ?? (try? ImageDecoder.decode(url: URL(fileURLWithPath: "/Library/User Pictures/Nature/\(name)"), page: 0, allowHDR: false))
-            else { continue }
-            let src = d.cgImage
+        for name in ["Mountain Lake.heic", "Desert Canyon.heic", "Sunflowers.heic"] {
+            guard let d = decodedByName[name] else { continue }
+            let src: CGImage = {
+                // At 768 px, opaque.
+                let w = 768, h = 768 * d.cgImage.height / d.cgImage.width
+                let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                    bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+                ctx.interpolationQuality = .high
+                ctx.draw(d.cgImage, in: CGRect(x: 0, y: 0, width: w, height: h))
+                return ctx.makeImage()!
+            }()
             let pad = src.width * 3 / 10
             let t0 = Date()
             guard let out = try? ContentAwareFill.extend(src, width: src.width + 2 * pad, height: src.height,
@@ -346,27 +355,29 @@ enum SelfTest {
         }
         func out_(_ name: String) -> URL { out.appendingPathComponent("extend-" + name.replacingOccurrences(of: ".heic", with: ".png")) }
 
-        if let owl = decodedByName["Owl.heic"] {
+        if let fox = decodedByName["Red Fox.heic"] {
             var e = EditState()
             e.crop = CGRect(x: -0.2, y: 0, width: 1.4, height: 1)
             e.extendSeed = 42
             check(e.cropExtendsBeyondImage && e.needsExtendFill, "a crop past the edges needs a fill")
-            let extendedSize = EditRenderer.shared.outputSize(owl, edits: e)
-            check(abs(extendedSize.width - 717) <= 2 && extendedSize.height == 512, "extended output is 1.4× wide (\(Int(extendedSize.width))×\(Int(extendedSize.height)))")
-            if let unfilled = EditRenderer.shared.renderSync(owl, edits: e, maxDimension: nil)?.image {
+            let extendedSize = EditRenderer.shared.outputSize(fox, edits: e)
+            check(abs(extendedSize.width - fox.pixelSize.width * 1.4) <= 2 && extendedSize.height == fox.pixelSize.height,
+                  "extended output is 1.4× wide (\(Int(extendedSize.width))×\(Int(extendedSize.height)))")
+            if let unfilled = EditRenderer.shared.renderSync(fox, edits: e, maxDimension: nil)?.image {
                 check(rgbaPixels(unfilled)[3] == 0, "until it's filled, the new area is transparent")
             }
             do {
-                let made = try await ExtendRenderer.makeFill(owl, edits: e)
+                let made = try await ExtendRenderer.makeFill(fox, edits: e)
                 e.extendFill = made.extendFill(try ExtendFillStore.save(made.fill))
                 check(!e.needsExtendFill, "the fill covers the crop")
-                if let filled = EditRenderer.shared.renderSync(owl, edits: e, maxDimension: nil)?.image,
-                   let plain = EditRenderer.shared.renderSync(owl, edits: EditState(), maxDimension: nil)?.image {
+                if let filled = EditRenderer.shared.renderSync(fox, edits: e, maxDimension: nil)?.image,
+                   let plain = EditRenderer.shared.renderSync(fox, edits: EditState(), maxDimension: nil)?.image {
                     let f = rgbaPixels(filled), p = rgbaPixels(plain)
-                    let i = (256 * filled.width + 102 + 256) * 4, j = (256 * plain.width + 256) * 4
+                    let (cx, cy) = (plain.width / 2, plain.height / 2)
+                    let i = (cy * filled.width + (filled.width - plain.width) / 2 + cx) * 4, j = (cy * plain.width + cx) * 4
                     check(f[3] == 255 && f[f.count - 1] == 255, "filled corners are opaque")
                     check(abs(Int(f[i]) - Int(p[j])) <= 2 && abs(Int(f[i + 1]) - Int(p[j + 1])) <= 2, "the original sits unchanged in the middle")
-                    try? ImageWriter.write(filled, to: out.appendingPathComponent("extend-owl.png"), format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)
+                    try? ImageWriter.write(filled, to: out.appendingPathComponent("extend-fox.png"), format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)
                 }
                 var brighter = e
                 brighter.exposure = 0.7
@@ -383,30 +394,37 @@ enum SelfTest {
                 let roundTrip = try? JSONDecoder().decode(EditState.self, from: JSONEncoder().encode(e))
                 check(roundTrip == e, "Extend edits survive encoding (pending edits)")
             } catch {
-                check(false, "extend owl: \(error.localizedDescription)")
+                check(false, "extend fox: \(error.localizedDescription)")
             }
 
             // Through the model: applying an extended crop makes the fill in the background.
             let model = ViewerModel()
-            model.openFolder(folder, selecting: owl.url)
-            for _ in 0..<100 where model.decoded?.url != owl.url { try? await Task.sleep(for: .milliseconds(50)) }
+            model.openFolder(folder, selecting: fox.url)
+            for _ in 0..<100 where model.decoded?.url != fox.url { try? await Task.sleep(for: .milliseconds(50)) }
             var extended = EditState()
             extended.crop = CGRect(x: 0, y: -0.25, width: 1, height: 1.5)
             extended.extendSeed = 9
-            model.applyEdits(extended, to: owl.url, undoName: nil, previous: .identity)
-            for _ in 0..<200 where model.edits[owl.url]?.needsExtendFill == true { try? await Task.sleep(for: .milliseconds(50)) }
-            check(model.edits[owl.url]?.extendFill != nil && model.extendProgress == nil, "the model fills an Extend edit by itself")
-            model.applyEdits(.identity, to: owl.url, undoName: nil, previous: extended)
+            model.applyEdits(extended, to: fox.url, undoName: nil, previous: .identity)
+            for _ in 0..<200 where model.edits[fox.url]?.needsExtendFill == true { try? await Task.sleep(for: .milliseconds(50)) }
+            check(model.edits[fox.url]?.extendFill != nil && model.extendProgress == nil, "the model fills an Extend edit by itself")
+            model.applyEdits(.identity, to: fox.url, undoName: nil, previous: extended)
         }
 
         // 6a2. Black and white: gray, filters that change which colors are light, and toning.
-        if let parrot = decodedByName["Parrot.heic"] {
-            let color = EditRenderer.shared.renderSync(parrot, edits: .identity, maxDimension: 256)?.image
+        do {
+            // Red, green and blue thirds.
+            let stripes = CGContext(data: nil, width: 240, height: 120, bitsPerComponent: 8, bytesPerRow: 0,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            for (i, c) in [(0.85, 0.1, 0.1), (0.1, 0.7, 0.15), (0.1, 0.2, 0.85)].enumerated() {
+                stripes.setFillColor(CGColor(red: c.0, green: c.1, blue: c.2, alpha: 1))
+                stripes.fill(CGRect(x: i * 80, y: 0, width: 80, height: 120))
+            }
+            let color = stripes.makeImage()
             func mean(_ bw: BlackAndWhite) -> (r: Double, g: Double, b: Double)? {
                 guard let color, let image = EditRenderer.shared.blackAndWhite(color, bw) else { return nil }
                 let px = rgbaPixels(image)
                 var sum = (r: 0.0, g: 0.0, b: 0.0)
-                // The red feathers (left middle of the picture).
+                // The red third.
                 for y in (image.height / 3)..<(image.height * 2 / 3) {
                     for x in 0..<(image.width / 3) {
                         let i = (y * image.width + x) * 4
@@ -422,7 +440,7 @@ enum SelfTest {
             let sepia = mean(BlackAndWhite(filter: .neutral, toning: .sepia, toningAmount: 1))
             if let neutral, let red, let green, let sepia {
                 check(abs(neutral.r - neutral.b) < 1.5 && abs(neutral.g - neutral.b) < 1.5, "black & white is gray")
-                check(red.r > green.r + 20, String(format: "a red filter lightens the red feathers (%.0f vs %.0f with green)", red.r, green.r))
+                check(red.r > green.r + 20, String(format: "a red filter lightens reds (%.0f vs %.0f with green)", red.r, green.r))
                 check(sepia.r > sepia.b + 10, "sepia toning warms the grays")
             } else {
                 check(false, "black & white renders")
@@ -430,8 +448,8 @@ enum SelfTest {
         }
 
         // 6a3. Colorize (when its model is installed): color from the model, light and detail kept.
-        if Colorizer.isInstalled, let parrot = decodedByName["Parrot.heic"] {
-            if let color = EditRenderer.shared.renderSync(parrot, edits: .identity, maxDimension: 512)?.image,
+        if Colorizer.isInstalled, let fruit = decodedByName["Fruit Bowl.heic"] {
+            if let color = EditRenderer.shared.renderSync(fruit, edits: .identity, maxDimension: 512)?.image,
                let bw = EditRenderer.shared.blackAndWhite(color, BlackAndWhite()) {
                 do {
                     let t0 = Date()
@@ -445,7 +463,7 @@ enum SelfTest {
                         lightError += abs(y - Double(g[i]))
                     }
                     let n = Double(a.count / 4)
-                    try? ImageWriter.write(colored, to: out.appendingPathComponent("colorized-parrot.png"), format: .png, quality: 1,
+                    try? ImageWriter.write(colored, to: out.appendingPathComponent("colorized-fruit.png"), format: .png, quality: 1,
                                            sourceProperties: [:], metadata: .keepAll)
                     check(colored.width == bw.width && chroma / n > 25 && lightError / n < 12,
                           String(format: "colorized a black and white photo in %.1f s: color %.0f, lightness kept within %.1f levels",
@@ -457,13 +475,13 @@ enum SelfTest {
         }
 
         // 6b2. A scanned print's border: Extend continues the picture inside it; a document's margin is left alone.
-        if let lotus = decodedByName["Lotus.heic"] {
+        if let lighthouse = decodedByName["Lighthouse.heic"] {
             let w = 600, h = 760
             let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
                                 bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
             ctx.setFillColor(CGColor(red: 0.98, green: 0.97, blue: 0.93, alpha: 1))
             ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
-            ctx.draw(lotus.cgImage, in: CGRect(x: 30, y: 60, width: 540, height: 670))   // a wider margin at the bottom, like a print
+            ctx.draw(lighthouse.cgImage, in: CGRect(x: 30, y: 60, width: 540, height: 670))   // a wider margin at the bottom, like a print
             let print = ctx.makeImage()!
             let found = PhotoBorder.content(of: print)
             check(found.map { abs($0.minX - 0.05) < 0.02 && abs($0.minY - 30.0 / 760) < 0.02 && abs($0.maxY - 700.0 / 760) < 0.02 } == true,
@@ -517,7 +535,7 @@ enum SelfTest {
             brighter.exposure = 1
             check(brighter.extendSourceKey == prompted.extendSourceKey, "adjustments don't change what a generated fill is made from")
         }
-        if GenerativeModel.isInstalled, let lotus = decodedByName["Lotus.heic"] ?? decodedByName["Owl.heic"] {
+        if GenerativeModel.isInstalled, let lighthouse = decodedByName["Lighthouse.heic"] {
             do {
                 let dir = GenerativeModel.directory
                 let tokenizer = try CLIPTokenizer(vocabulary: dir.appendingPathComponent("vocab.json"), merges: dir.appendingPathComponent("merges.txt"))
@@ -530,10 +548,10 @@ enum SelfTest {
                 e.extendSeed = 42
                 e.extendMethod = .generate
                 let t0 = Date()
-                let made = try await ExtendRenderer.makeFill(lotus, edits: e)
+                let made = try await ExtendRenderer.makeFill(lighthouse, edits: e)
                 let seconds = Date().timeIntervalSince(t0)
                 let fill = made.fill
-                try? ImageWriter.write(fill, to: out.appendingPathComponent("generate-" + lotus.url.deletingPathExtension().lastPathComponent + ".png"),
+                try? ImageWriter.write(fill, to: out.appendingPathComponent("generate-" + lighthouse.url.deletingPathExtension().lastPathComponent + ".png"),
                                        format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)
                 let px = rgbaPixels(fill)
                 let pad = Int((0.25 * CGFloat(fill.width) / 1.5).rounded())
@@ -545,38 +563,38 @@ enum SelfTest {
                 check(opaque && made.canvas == e.crop && seam < max(interior * 2.5, 5),
                       String(format: "generated a %d×%d fill in %.1f s: seam step %.1f vs interior %.1f", fill.width, fill.height, seconds, seam, interior))
                 let t1 = Date()
-                _ = try await ExtendRenderer.makeFill(lotus, edits: e)
+                _ = try await ExtendRenderer.makeFill(lighthouse, edits: e)
                 check(Date().timeIntervalSince(t1) < 3, String(format: "the same edits reuse the generation (%.2f s)", Date().timeIntervalSince(t1)))
                 check(made.feather != nil, "the photo cross-fades into a generated fill")
 
                 // Through the model: a draft shows first, then the final fill replaces it.
                 let model = ViewerModel()
-                model.openFolder(folder, selecting: lotus.url)
-                for _ in 0..<100 where model.decoded?.url != lotus.url { try? await Task.sleep(for: .milliseconds(50)) }
+                model.openFolder(folder, selecting: lighthouse.url)
+                for _ in 0..<100 where model.decoded?.url != lighthouse.url { try? await Task.sleep(for: .milliseconds(50)) }
                 var other = e
                 other.extendSeed = 77
-                model.applyEdits(other, to: lotus.url, undoName: nil, previous: .identity)
+                model.applyEdits(other, to: lighthouse.url, undoName: nil, previous: .identity)
                 var sawDraft = false
-                for _ in 0..<1800 where model.edits[lotus.url]?.needsExtendFill == true {
-                    if model.edits[lotus.url]?.extendFill?.isDraft == true { sawDraft = true }
+                for _ in 0..<1800 where model.edits[lighthouse.url]?.needsExtendFill == true {
+                    if model.edits[lighthouse.url]?.extendFill?.isDraft == true { sawDraft = true }
                     try? await Task.sleep(for: .milliseconds(100))
                 }
-                let final = model.edits[lotus.url]?.extendFill
+                let final = model.edits[lighthouse.url]?.extendFill
                 check(sawDraft && final != nil && final?.isDraft == nil && final?.feather != nil,
                       "a draft shows while the final generated fill is made, then the final replaces it")
-                model.applyEdits(.identity, to: lotus.url, undoName: nil, previous: other)
+                model.applyEdits(.identity, to: lighthouse.url, undoName: nil, previous: other)
 
                 // A background painted around a cut-out subject, at the photo's proportions.
-                if let owl = decodedByName["Owl.heic"], let mask = try? await VisionServices.subjectMask(for: owl.cgImage) {
+                if let fox = decodedByName["Red Fox.heic"], let mask = try? await VisionServices.subjectMask(for: fox.cgImage) {
                     let t2 = Date()
-                    let scene = try await GenerativeImage.background(owl.cgImage, subject: mask, scene: "a forest at dusk",
-                                                                     subjectDescription: "an owl", seed: 3)
-                    try? ImageWriter.write(scene, to: out.appendingPathComponent("generated-background-owl.png"), format: .png, quality: 1,
+                    let scene = try await GenerativeImage.background(fox.cgImage, subject: mask, scene: "a forest at dusk",
+                                                                     subjectDescription: "a red fox", seed: 3)
+                    try? ImageWriter.write(scene, to: out.appendingPathComponent("generated-background-fox.png"), format: .png, quality: 1,
                                            sourceProperties: [:], metadata: .keepAll)
-                    let ratio = Double(scene.width) / Double(scene.height), expected = Double(owl.cgImage.width) / Double(owl.cgImage.height)
+                    let ratio = Double(scene.width) / Double(scene.height), expected = Double(fox.cgImage.width) / Double(fox.cgImage.height)
                     check(abs(ratio - expected) < 0.01, String(format: "generated a background around the subject: %d×%d in %.1f s",
                                                                scene.width, scene.height, Date().timeIntervalSince(t2)))
-                    check(GenerativeImage.backgroundPrompt(scene: "a beach", subject: "an owl") == "a high quality photo of an owl, a beach in the background",
+                    check(GenerativeImage.backgroundPrompt(scene: "a beach", subject: "an fox") == "a high quality photo of an fox, a beach in the background",
                           "the background prompt names the subject and the scene")
                 }
             } catch {
@@ -588,44 +606,44 @@ enum SelfTest {
 
         // 7. Vision.
         print("\n[Vision]")
-        if let owl = decodedByName["Owl.heic"] {
+        if let fox = decodedByName["Red Fox.heic"] {
             do {
-                let mask = try await VisionServices.subjectMask(for: owl.cgImage)
-                let bounds = VisionServices.maskBounds(mask, imageSize: owl.pixelSize)
+                let mask = try await VisionServices.subjectMask(for: fox.cgImage)
+                let bounds = VisionServices.maskBounds(mask, imageSize: fox.pixelSize)
                 check(bounds != nil, "subject mask \(Int(mask.extent.width))×\(Int(mask.extent.height)), bounds \(bounds.map { "\($0.integral)" } ?? "none")")
-                let png = try await IntelligenceModel().cutoutPNG(of: owl, mask: mask)
+                let png = try await IntelligenceModel().cutoutPNG(of: fox, mask: mask)
                 check(png.count > 1000, "cutout PNG \(png.count / 1024) KB")
             } catch {
                 check(false, "subject mask: \(error.localizedDescription)")
             }
-            let small = VisionServices.downscaledSync(owl.cgImage, maxDimension: 512)
-            if #available(macOS 27, *), let obj = try? await VisionServices.objectMask(for: small, included: [CGPoint(x: 0.5, y: 0.55)], excluded: []) {
+            let small = VisionServices.downscaledSync(fox.cgImage, maxDimension: 512)
+            if #available(macOS 27, *), let obj = try? await VisionServices.objectMask(for: small, included: [CGPoint(x: 0.75, y: 0.5)], excluded: []) {
                 check(true, "click-to-select (iterative segmentation) mask \(Int(obj.extent.width))×\(Int(obj.extent.height))")
             } else {
                 print("  • iterative segmentation unavailable; trying the instance fallback")
             }
             // The macOS 15/26 path: pick the foreground instance under the click.
-            let inst = try? await VisionServices.instanceMask(for: small, at: CGPoint(x: 0.5, y: 0.55))
+            let inst = try? await VisionServices.instanceMask(for: small, at: CGPoint(x: 0.75, y: 0.5))
             check(inst != nil, "click-to-select fallback (foreground instance under the click)")
         }
         var prints: [(URL, Data)] = []
-        for name in ["sale-sign.jpg", "Cactus.heic", "Cactus-dup.jpg", "Owl.heic", "Eagle.heic"] {
+        for name in ["sale-sign.jpg", "Sailboat.heic", "Sailboat-dup.jpg", "Red Fox.heic", "Hummingbird.heic"] {
             guard let item = items.first(where: { $0.name == name }), let thumb = ImageDecoder.thumbnail(url: item.url, maxPixelSize: 768) else { continue }
             let r = await VisionServices.analyzeForIndex(thumb)
             if let fp = r.featurePrint { prints.append((item.url, fp)) }
             print("  • \(name): labels [\(r.labels.prefix(5).joined(separator: ", "))] score \(r.score.map { String(format: "%.2f", $0) } ?? "-") utility \(r.isUtility.map { "\($0)" } ?? "-") text “\(r.text.prefix(40).replacingOccurrences(of: "\n", with: " / "))”")
             if name == "sale-sign.jpg" { check(r.text.localizedCaseInsensitiveContains("Grand Opening"), "OCR reads the sign") }
-            if name == "Owl.heic" { check(r.labels.contains { $0.contains("owl") || $0.contains("bird") }, "classifier recognizes the owl") }
+            if name == "Red Fox.heic" { check(r.labels.contains { $0.contains("fox") || $0.contains("canine") }, "classifier recognizes the fox") }
         }
-        if let cactus = prints.first(where: { $0.0.lastPathComponent == "Cactus.heic" }) {
-            let d = VisionServices.distances(from: cactus.1, to: prints)
-            for (url, dist) in d.sorted(by: { $0.value < $1.value }) { print(String(format: "  • distance Cactus → %@: %.3f", url.lastPathComponent, dist)) }
+        if let boat = prints.first(where: { $0.0.lastPathComponent == "Sailboat.heic" }) {
+            let d = VisionServices.distances(from: boat.1, to: prints)
+            for (url, dist) in d.sorted(by: { $0.value < $1.value }) { print(String(format: "  • distance Sailboat → %@: %.3f", url.lastPathComponent, dist)) }
             let groups = VisionServices.clusterDuplicates(prints, threshold: 0.3)
-            check(groups.contains { Set($0.map(\.lastPathComponent)) == ["Cactus.heic", "Cactus-dup.jpg"] }, "duplicate detection groups the cactus copies only")
+            check(groups.contains { Set($0.map(\.lastPathComponent)) == ["Sailboat.heic", "Sailboat-dup.jpg"] }, "duplicate detection groups the sailboat copies only")
         }
-        if let eagle = decodedByName["Eagle.heic"], let salient = await VisionServices.salientRegion(eagle.cgImage) {
-            let crop = IntelligenceModel.cropRect(around: salient, imageSize: eagle.pixelSize)
-            print("  • eagle salient \(salient), smart crop \(crop.map { "\($0)" } ?? "none (well framed)")")
+        if let bird = decodedByName["Hummingbird.heic"], let salient = await VisionServices.salientRegion(bird.cgImage) {
+            let crop = IntelligenceModel.cropRect(around: salient, imageSize: bird.pixelSize)
+            print("  • hummingbird salient \(salient), smart crop \(crop.map { "\($0)" } ?? "none (well framed)")")
         }
         // Straightening: a sea horizon turned by known angles should be measured back, and a picture with
         // no straight lines (lightning) should get no answer rather than a wrong one.
@@ -657,8 +675,8 @@ enum SelfTest {
                 if m == nil || abs(m! - tilt) > 0.5 { ok = false }
             }
             check(ok, "straighten measures a horizon's tilt: " + results.joined(separator: ", "))
-            if let lightning = decodedByName["Lightning.heic"] {
-                check(VisionServices.tiltFromLines(lightning.cgImage) == nil, "no straight lines in a lightning photo, so no false horizon")
+            if let bird = decodedByName["Hummingbird.heic"] {
+                check(VisionServices.tiltFromLines(bird.cgImage) == nil, "no straight lines in a photo of a bird and flowers, so no false horizon")
             }
         }
         print("  • query expansion puppy → \(QueryExpander.shared.variants(of: "puppy"))")
@@ -681,16 +699,14 @@ enum SelfTest {
             model.searchText = q
             return Set(model.items.map(\.name))
         }
-        let owl = search("owl")
-        check(owl.contains("Owl.heic") && owl.allSatisfy { $0.hasPrefix("Owl") }, "“owl” → \(owl.sorted())")
-        let raptor = search("raptor")
-        check(raptor.isSuperset(of: ["Owl.heic", "Eagle.heic"]), "“raptor” → \(raptor.sorted())")
+        let foxes = search("fox")
+        check(foxes == ["Red Fox.heic"], "“fox” → \(foxes.sorted())")
         let sign = search("grand opening")
         check(sign == ["sale-sign.jpg"], "“grand opening” (text in image) → \(sign.sorted())")
         let birds = search("bird")
-        check(birds.count >= 3, "“bird” → \(birds.sorted())")
+        check(birds.contains("Hummingbird.heic"), "“bird” → \(birds.sorted())")
         let kitten = search("kitten")
-        print("  • “kitten” (expanded) → \(kitten.sorted())")
+        check(kitten.contains("Sleeping Cat.heic"), "“kitten” (expanded to cat) → \(kitten.sorted())")
         model.searchText = ""
         model.sortKey = .quality
         print("  • best shots: \(model.items.prefix(4).map(\.name))")
@@ -741,21 +757,21 @@ enum SelfTest {
                 check(false, "AI upscale: \(error.localizedDescription)")
             }
         }
-        if ImageDescriber.support.isAvailable, let lotus = decodedByName["Lotus.heic"] {
-            let small = VisionServices.downscaledSync(lotus.cgImage, maxDimension: 1024)
+        if ImageDescriber.support.isAvailable, let lighthouse = decodedByName["Lighthouse.heic"] {
+            let small = VisionServices.downscaledSync(lighthouse.cgImage, maxDimension: 1024)
             let labels = ImageDescriber.support == .vision ? [] : await VisionServices.classify(small)
             let setting = await ImageDescriber.describeSetting(small, labels: labels)
             check(!(setting ?? "").isEmpty, "Extend's setting description: \(setting ?? "none")")
         }
-        if ImageDescriber.support.isAvailable, let penguin = decodedByName["Penguin.heic"] {
+        if ImageDescriber.support.isAvailable, let animal = decodedByName["Red Fox.heic"] {
             do {
-                let small = VisionServices.downscaledSync(penguin.cgImage, maxDimension: 1024)
+                let small = VisionServices.downscaledSync(animal.cgImage, maxDimension: 1024)
                 let labels = await VisionServices.classify(small)
                 let t0 = Date()
                 let desc = try await ImageDescriber.describe(small, labels: labels, text: "")
                 print(String(format: "  • %.1f s", Date().timeIntervalSince(t0)))
                 print("  • title: \(desc.title)\n  • caption: \(desc.caption)\n  • keywords: \(desc.keywords)\n  • file name: \(desc.fileName)")
-                check(desc.caption.localizedCaseInsensitiveContains("penguin") || desc.title.localizedCaseInsensitiveContains("penguin"), "description mentions the penguin")
+                check(desc.caption.localizedCaseInsensitiveContains("fox") || desc.title.localizedCaseInsensitiveContains("fox"), "description mentions the fox")
             } catch {
                 check(false, "describe: \(ImageDescriber.friendlyError(error))")
             }
