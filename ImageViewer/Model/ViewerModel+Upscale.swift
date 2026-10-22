@@ -24,30 +24,10 @@ extension ViewerModel {
     }
 
     private func saveUpscaled(url: URL, decoded d: DecodedImage, edits e: EditState, scale: Int) {
-        let format = SupportedFormats.writableFormat(for: d.contentType).flatMap { [.jpeg, .heic, .avif, .png, .tiff].contains($0) ? $0 : nil }
-            ?? .png
-        let folder = url.deletingLastPathComponent()
-        let name = url.deletingPathExtension().lastPathComponent + " (\(scale)×)"
-        showToast("Upscaling…", systemImage: "arrow.up.left.and.arrow.down.right")
-        Task {
-            do {
-                let dest = try await Task.detached(priority: .userInitiated) { () async throws -> URL in
-                    try await MaskStore.shared.prepare(e, for: d)
-                    guard let rendered = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil) else {
-                        throw ImageWriteError.finalizeFailed
-                    }
-                    let upscaled = try await SuperResolution.upscale(rendered.image, scale: CGFloat(scale))
-                    let dest = ImageWriter.uniqueURL(in: folder, baseName: name, ext: format.fileExtension)
-                    try ImageWriter.write(upscaled, to: dest, format: format, quality: 0.92,
-                                          sourceProperties: d.properties, metadata: .keepAll)
-                    return dest
-                }.value
-                if let item = FolderScanner.item(for: dest) { insertItem(item, select: true) }
-                showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle")
-            } catch {
-                dismissToast()
-                showError("Couldn't upscale “\(url.lastPathComponent)”", error)
-            }
+        saveCopy(of: url, decoded: d, edits: e, label: "\(scale)×", defaultFormat: .png,
+                 working: "Upscaling…", systemImage: "arrow.up.left.and.arrow.down.right",
+                 failure: "Couldn't upscale “\(url.lastPathComponent)”") {
+            try await SuperResolution.upscale($0, scale: CGFloat(scale))
         }
     }
 

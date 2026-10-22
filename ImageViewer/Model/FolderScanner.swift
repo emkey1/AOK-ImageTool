@@ -46,7 +46,8 @@ nonisolated enum FolderScanner {
             creationDate: values.creationDate,
             modificationDate: values.contentModificationDate,
             flag: Flag(labelNumber: values.labelNumber),
-            dateTaken: nil
+            dateTaken: nil,
+            source: ImageStacks.source(of: url)
         )
     }
 

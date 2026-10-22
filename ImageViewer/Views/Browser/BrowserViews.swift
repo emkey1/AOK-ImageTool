@@ -57,18 +57,42 @@ struct FlagBadge: View {
 struct FilmstripView: View {
     @Environment(ViewerModel.self) private var model
 
+    /// An image on its own, or a spread-out stack's images together.
+    private struct Segment: Identifiable {
+        var items: [ImageItem]
+        /// The stack, when spread out.
+        let stack: URL?
+        var id: String { stack.map { "stack:" + $0.path } ?? items[0].url.path }
+    }
+
+    private var segments: [Segment] {
+        var result: [Segment] = []
+        for item in model.items {
+            let stack = model.stackOf[item.url].flatMap { model.expandedStacks.contains($0) ? $0 : nil }
+            if let stack, result.last?.stack == stack {
+                result[result.count - 1].items.append(item)
+            } else {
+                result.append(Segment(items: [item], stack: stack))
+            }
+        }
+        return result
+    }
+
     var body: some View {
+        let segments = segments
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 6) {
-                    ForEach(model.items) { item in
-                        FilmstripCell(item: item,
-                                      isCurrent: item.url == model.currentURL,
-                                      isEdited: model.edits[item.url] != nil)
-                            .id(item.url)
-                            .onTapGesture { model.select(item.url) }
-                            .contextMenu { ItemContextMenu(item: item) }
-                            .onDrag { NSItemProvider(object: item.url as NSURL) }
+                    ForEach(segments) { segment in
+                        if segment.stack != nil {
+                            HStack(spacing: 2) {
+                                ForEach(segment.items) { cell($0) }
+                            }
+                            .background(RoundedRectangle(cornerRadius: 9).fill(.quaternary))
+                            .id(segment.id)
+                        } else {
+                            cell(segment.items[0]).id(segment.id)
+                        }
                     }
                 }
                 .padding(.horizontal, 10)
@@ -78,9 +102,66 @@ struct FilmstripView: View {
             .background(.bar)
             .onChange(of: model.currentURL, initial: true) { _, url in
                 guard let url else { return }
-                withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(url, anchor: .center) }
+                guard let target = segments.first(where: { $0.items.contains { $0.url == url } })?.id else { return }
+                withAnimation(.easeOut(duration: 0.18)) { proxy.scrollTo(target, anchor: .center) }
             }
         }
+    }
+
+    private func cell(_ item: ImageItem) -> some View {
+        FilmstripCell(item: item,
+                      isCurrent: item.url == model.currentURL,
+                      isEdited: model.edits[item.url] != nil,
+                      stack: model.stackBadge(for: item.url))
+            .onTapGesture { model.select(item.url) }
+            .contextMenu { ItemContextMenu(item: item) }
+            .onDrag { NSItemProvider(object: item.url as NSURL) }
+    }
+}
+
+/// Marks a stack: its edges peeking out above a closed stack, and a count that opens or closes it.
+struct StackDecoration: ViewModifier {
+    @Environment(ViewerModel.self) private var model
+    let url: URL
+    let stack: ViewerModel.StackBadge?
+    /// The tile's width.
+    let width: CGFloat
+
+    func body(content: Content) -> some View {
+        let compact = width < 100
+        return content
+            .overlay(alignment: .top) {
+                if let stack, !stack.expanded {
+                    VStack(spacing: 2) {
+                        Capsule().frame(width: width * 0.6, height: 2.5)
+                        Capsule().frame(width: width * 0.78, height: 2.5)
+                    }
+                    .foregroundStyle(.secondary)
+                    .offset(y: -7)
+                    .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .bottomLeading) {
+                if let stack, !stack.expanded || stack.position == 0 {
+                    Button {
+                        model.toggleStack(url)
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: stack.expanded ? "chevron.backward" : "square.stack.fill")
+                            Text("\(stack.count)").monospacedDigit()
+                        }
+                        .font(.system(size: compact ? 9 : 11, weight: .bold))
+                        .padding(.horizontal, compact ? 4 : 6).padding(.vertical, compact ? 2 : 3)
+                        .background(stack.expanded ? AnyShapeStyle(.tint) : AnyShapeStyle(.black.opacity(0.6)), in: Capsule())
+                        .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(compact ? 3 : 6)
+                    .help(stack.expanded
+                          ? "Stack these \(stack.count) images again"
+                          : "\(stack.count) images: this, and the copies made from it or its original. Click to see them all; ⌥← and ⌥→ step through them.")
+                }
+            }
     }
 }
 
@@ -88,6 +169,7 @@ struct FilmstripCell: View {
     let item: ImageItem
     let isCurrent: Bool
     let isEdited: Bool
+    var stack: ViewerModel.StackBadge?
 
     var body: some View {
         ThumbnailView(item: item, tier: .small)
@@ -107,6 +189,7 @@ struct FilmstripCell: View {
                 }
             }
             .padding(2)
+            .modifier(StackDecoration(url: item.url, stack: stack, width: 64))
             .overlay {
                 RoundedRectangle(cornerRadius: 7)
                     .strokeBorder(isCurrent ? Color.accentColor : .clear, lineWidth: 2.5)
@@ -167,6 +250,7 @@ struct GridCell: View {
         let selected = model.selection.contains(item.url)
         let current = model.currentURL == item.url
         let score = model.intelligence.index[item.url]?.score
+        let stack = model.stackBadge(for: item.url)
         VStack(spacing: 5) {
             ThumbnailView(item: item, tier: size > 150 ? .large : .small)
                 .frame(width: size, height: size)
@@ -194,7 +278,9 @@ struct GridCell: View {
                     }
                 }
                 .padding(4)
-                .background(RoundedRectangle(cornerRadius: 9).fill(selected ? Color.accentColor.opacity(0.22) : .clear))
+                .modifier(StackDecoration(url: item.url, stack: stack, width: size))
+                .background(RoundedRectangle(cornerRadius: 9).fill(selected ? Color.accentColor.opacity(0.22)
+                                                                   : stack?.expanded == true ? Color.secondary.opacity(0.14) : .clear))
                 .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(current ? Color.accentColor : .clear, lineWidth: 2))
                 .opacity(item.flag == .reject ? 0.55 : 1)
             if showLabel {
@@ -228,6 +314,9 @@ struct ItemContextMenu: View {
         Button("Open") {
             model.select(item.url)
             model.viewMode = .viewer
+        }
+        if let stack = model.stackBadge(for: item.url) {
+            Button(stack.expanded ? "Close Stack" : "Show All \(stack.count) Images in Stack") { model.toggleStack(item.url) }
         }
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(targets) }
         Button("Copy") {

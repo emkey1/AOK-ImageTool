@@ -261,14 +261,14 @@
 <p>Generate uses <b>Stable Diffusion 1.5 Inpainting</b>, converted to run with Core ML on Apple silicon. It isn't built into the app because it's large (about 2 GB). <b>Settings › Editing</b> shows whether it's installed.</p>
 <ul>
   <li><b>Installing.</b> The model is made from the official weights by a script in the app's project, <code>scripts/convert-inpainting-model.sh</code>. It downloads what it needs into a folder you name, converts the model in a few minutes, and with <code>--install</code> puts it in place. Without <code>--install</code>, choose the folder it made in <b>Settings › Editing › Install from Folder…</b>.</li>
-  <li><b>Where it lives:</b> <code>~/Library/Application Support/com.oneopa.ImageViewer/Models</code>. <b>Remove…</b> in Settings deletes it.</li>
+  <li><b>Where it lives:</b> <code>~/Library/Application Support/com.oneopa.AOK-ImageTool/Models</code>. <b>Remove…</b> in Settings deletes it.</li>
   <li><b>Memory.</b> While you use Generate the model takes about 2.5 GB of memory; it's let go after a few idle minutes. The first generation after installing takes a few seconds longer while macOS prepares the model for this Mac.</li>
   <li><b>License.</b> The model's license is CreativeML Open RAIL-M, which asks that it not be used for harmful content.</li>
   <li><b>Colorize</b> uses a second model, DDColor (Apache 2.0, about 460 MB), built the same way with <code>scripts/convert-colorize-model.sh</code> and shown in <b>Settings › Editing › Colorize</b>.</li>
 </ul>
 
 <h2 id="privacy">Privacy</h2>
-<p>Your pictures never leave your Mac. Descriptions, questions, search analysis, background removal, upscaling, colorizing, generated fills and backgrounds all run on this Mac. The only downloads are the ones macOS makes itself (Apple's upscaling model, the first time you use it) and the generative fill and colorizing models, if you install them. Search analysis is kept in <code>~/Library/Caches/com.oneopa.ImageViewer</code>; unsaved edits, backgrounds you choose and Extend fills in <code>~/Library/Application Support/com.oneopa.ImageViewer</code>.</p>
+<p>Your pictures never leave your Mac. Descriptions, questions, search analysis, background removal, upscaling, colorizing, generated fills and backgrounds all run on this Mac. The only downloads are the ones macOS makes itself (Apple's upscaling model, the first time you use it) and the generative fill and colorizing models, if you install them. Search analysis is kept in <code>~/Library/Caches/com.oneopa.AOK-ImageTool</code>; unsaved edits, backgrounds you choose and Extend fills in <code>~/Library/Application Support/com.oneopa.AOK-ImageTool</code>.</p>
 
 </main>
 </body>

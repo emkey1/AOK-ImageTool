@@ -21,7 +21,7 @@ W="$SD/weights"
 OUT="$SD/out"
 R="$OUT/Resources"
 CONVERTER_COMMIT="ea2805dc1945be20561c77e5f6d1d9a5a637cda2"
-BUNDLE_ID="com.oneopa.ImageViewer"
+BUNDLE_ID="com.oneopa.AOK-ImageTool"
 log() { echo "[$(date +%H:%M:%S)] $*"; }
 mkdir -p "$SD" "$OUT"
 

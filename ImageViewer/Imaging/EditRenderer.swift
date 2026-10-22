@@ -244,9 +244,8 @@ nonisolated final class EditRenderer: @unchecked Sendable {
             }
         }
 
-        // 7. Light & color, and black and white.
+        // 7. Light & color.
         img = applyLightAndColor(img, e)
-        if let bw = e.blackAndWhite { img = blackAndWhite(img, bw) }
 
         // 8. Detail.
         if e.noiseReduction > 0 {
@@ -268,6 +267,14 @@ nonisolated final class EditRenderer: @unchecked Sendable {
             ])
         }
         return img
+    }
+
+    /// A black and white version of `picture` (a rendered image; Black & White makes a copy).
+    func blackAndWhite(_ picture: CGImage, _ bw: BlackAndWhite) -> CGImage? {
+        let rect = CGRect(x: 0, y: 0, width: picture.width, height: picture.height)
+        return context.createCGImage(blackAndWhite(CIImage(cgImage: picture), bw), from: rect,
+                                     format: picture.bitsPerComponent > 8 ? .RGBAh : .RGBA8,
+                                     colorSpace: picture.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!)
     }
 
     /// Colors to grays through the chosen camera filter (in linear light, like a filter on a lens), then

@@ -241,6 +241,7 @@ extension ViewerModel {
                     let dest = ImageWriter.uniqueURL(in: folder, baseName: name, ext: options.format.fileExtension)
                     try ImageWriter.write(rendered.image, to: dest, format: options.format, quality: options.quality,
                                           sourceProperties: d.properties, metadata: options.metadata)
+                    ImageStacks.markDerived(dest, from: url)    // (when it's beside the original)
                     return dest
                 }.value
                 written.append(out)

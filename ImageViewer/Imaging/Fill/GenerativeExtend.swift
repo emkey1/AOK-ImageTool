@@ -15,11 +15,8 @@ nonisolated enum GenerativeModel {
         }
     }
 
-    /// The real Application Support folder, even for isolated test runs and test copies with another
-    /// bundle ID: the model is large, only read, and shared by every build.
     static var directory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("com.oneopa.ImageViewer/Models/StableDiffusionInpainting")
+        AppStorageLocation.models.appendingPathComponent("StableDiffusionInpainting")
     }
 
     /// Apple silicon only: on an Intel Mac one fill would take many minutes.

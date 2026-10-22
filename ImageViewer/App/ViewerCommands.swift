@@ -110,6 +110,7 @@ struct ViewerCommands: Commands {
                 ForEach(FlagFilter.allCases) { Text($0.title).tag($0) }
             }
             Toggle("Include Subfolders", isOn: Binding(get: { viewer?.includeSubfolders ?? false }, set: { viewer?.includeSubfolders = $0 }))
+            Toggle("Stack Copies with Originals", isOn: Binding(get: { viewer?.stacksEnabled ?? true }, set: { viewer?.stacksEnabled = $0 }))
             Divider()
             Button(viewer?.isSlideshowRunning == true ? "Stop Slideshow" : "Start Slideshow") { viewer?.toggleSlideshow() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
@@ -132,6 +133,16 @@ struct ViewerCommands: Commands {
                 .disabled((viewer?.pageCount ?? 1) < 2)
             Button("Previous Page") { viewer?.previousPage() }
                 .disabled((viewer?.pageCount ?? 1) < 2)
+            Divider()
+            // ⌥← and ⌥→ (handled with the single-key shortcuts, so they still move by word in text fields).
+            Button("Newer Copy in Stack") { viewer?.stepInStack(-1) }
+                .disabled((viewer?.currentStackPosition?.index ?? 0) == 0)
+            Button("Older Copy in Stack") { viewer?.stepInStack(1) }
+                .disabled(viewer?.currentStackPosition.map { $0.index + 1 >= $0.count } ?? true)
+            Button(viewer?.currentURL.map { viewer?.isStackExpanded($0) ?? false } ?? false ? "Close Stack" : "Show All Copies in Stack") {
+                if let url = viewer?.currentURL { viewer?.toggleStack(url) }
+            }
+            .disabled(viewer?.currentStackPosition == nil)
             Divider()
             Button("Enclosing Folder") { viewer?.openEnclosingFolder() }
                 .keyboardShortcut(.upArrow, modifiers: .command)
@@ -170,11 +181,9 @@ struct ViewerCommands: Commands {
                     .disabled(!hasImage)
                     .help("Save a color version of a black and white photo next to it")
             }
-            Toggle("Black & White", isOn: Binding(
-                get: { viewer?.currentEdits.blackAndWhite != nil },
-                set: { on in viewer?.updateEdits(on ? "Black & White" : "Color") { $0.blackAndWhite = on ? BlackAndWhite() : nil } }
-            ))
-            .disabled(!canEdit)
+            Button("Black & White…") { viewer?.showBlackAndWhite = true }
+                .disabled(!hasImage)
+                .help("Save a black and white copy next to the original")
             Toggle("Show Original", isOn: Binding(get: { viewer?.showOriginal ?? false }, set: { viewer?.showOriginal = $0 }))
                 .disabled(!hasEdits)
             if SuperResolution.isSupported {

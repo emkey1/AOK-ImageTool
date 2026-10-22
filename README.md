@@ -65,7 +65,7 @@ open build/Build/Products/Release/AOK-ImageTool.app
 | Reimagine in Image Playground | ImagePlayground (macOS 15.1+) |
 | Read & translate text in images | Vision OCR + Translation |
 
-Folder analysis is cached in `~/Library/Caches/com.oneopa.ImageViewer/Index`, so each folder is only analyzed once.
+Folder analysis is cached in `~/Library/Caches/com.oneopa.AOK-ImageTool/Index`, so each folder is only analyzed once.
 
 ### What works on which macOS
 
@@ -89,7 +89,7 @@ Extend ▸ Generate uses [Stable Diffusion 1.5 Inpainting](https://huggingface.c
 scripts/convert-inpainting-model.sh ~/Downloads/sd-inpainting --install
 ```
 
-The script uses a throwaway Python environment inside that folder, Apple's [ml-stable-diffusion](https://github.com/apple/ml-stable-diffusion) converter at a pinned commit, and the fp16 weights (no safety checker). It takes a few minutes. `--install` copies the result to `~/Library/Application Support/com.oneopa.ImageViewer/Models/StableDiffusionInpainting`. Without `--install`, choose the `Resources` folder it made in **Settings ▸ Editing ▸ Install from Folder…**, which also shows the model's status and can remove it. Delete the work folder afterwards.
+The script uses a throwaway Python environment inside that folder, Apple's [ml-stable-diffusion](https://github.com/apple/ml-stable-diffusion) converter at a pinned commit, and the fp16 weights (no safety checker). It takes a few minutes. `--install` copies the result to `~/Library/Application Support/com.oneopa.AOK-ImageTool/Models/StableDiffusionInpainting`. Without `--install`, choose the `Resources` folder it made in **Settings ▸ Editing ▸ Install from Folder…**, which also shows the model's status and can remove it. Delete the work folder afterwards.
 
 How a generated fill is made (`Imaging/Fill/`):
 

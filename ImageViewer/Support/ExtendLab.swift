@@ -41,9 +41,7 @@ enum ExtendLab {
             let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])
             guard let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false) else { exit(1) }
             let photo = d.cgImage
-            var e = EditState()
-            e.blackAndWhite = BlackAndWhite()
-            guard let bw = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil)?.image else { exit(1) }
+            guard let bw = EditRenderer.shared.blackAndWhite(photo, BlackAndWhite()) else { exit(1) }
             let t0 = Date()
             do {
                 let made = try await Colorizer.colorize(ProcessInfo.processInfo.environment["AS_IS"] != nil ? photo : bw)

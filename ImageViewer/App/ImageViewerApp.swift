@@ -4,6 +4,10 @@ import SwiftUI
 struct ImageViewerApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
+    init() {
+        LegacyMigration.runIfNeeded()
+    }
+
     var body: some Scene {
         WindowGroup(id: "viewer") {
             ViewerWindow()

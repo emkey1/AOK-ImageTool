@@ -65,7 +65,7 @@ log "5/5 Compiling"
 rm -rf "$D/out/DDColor.mlmodelc"
 xcrun coremlcompiler compile "$D/out/DDColor.mlpackage" "$D/out" >/dev/null
 if [[ "$INSTALL" == "--install" ]]; then
-    DEST="$HOME/Library/Application Support/com.oneopa.ImageViewer/Models/Colorize"
+    DEST="$HOME/Library/Application Support/com.oneopa.AOK-ImageTool/Models/Colorize"
     mkdir -p "$DEST"
     rm -rf "$DEST/DDColor.mlmodelc"
     cp -cR "$D/out/DDColor.mlmodelc" "$DEST/"

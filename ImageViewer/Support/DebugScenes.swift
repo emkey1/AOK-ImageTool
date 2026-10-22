@@ -76,6 +76,12 @@ enum DebugScenes {
         case "info":
             model.inspectorTab = .info
             model.showInspector = true
+        case "stack-open":
+            Task {
+                // The folder is still being scanned when the first image appears.
+                for _ in 0..<100 where model.isScanning || model.stacks.isEmpty { try? await Task.sleep(for: .milliseconds(100)) }
+                if let root = model.stacks.keys.sorted(by: { $0.path < $1.path }).first { model.toggleStack(root) }
+            }
         default:
             break
         }

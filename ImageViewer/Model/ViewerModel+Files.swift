@@ -196,6 +196,7 @@ extension ViewerModel {
         do {
             try FileManager.default.moveItem(at: item.url, to: dest)
             let newURL = dest.standardizedFileURL
+            relinkCopies(of: item.url, to: newURL)
             if let fresh = FolderScanner.item(for: dest) {
                 replaceURL(item.url, with: fresh)
                 intelligence.rename(from: item.url, to: fresh.url)

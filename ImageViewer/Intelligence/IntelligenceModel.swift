@@ -668,9 +668,10 @@ final class IntelligenceModel {
         guard let viewer, let folder = viewer.folderURL else { return }
         let base = (viewer.currentURL?.deletingPathExtension().lastPathComponent ?? "Image") + " (Playground)"
         let ext = tempURL.pathExtension.isEmpty ? "heic" : tempURL.pathExtension
-        let dest = ImageWriter.uniqueURL(in: folder, baseName: base, ext: ext)
+        let dest = ImageWriter.uniqueURL(in: viewer.currentURL?.deletingLastPathComponent() ?? folder, baseName: base, ext: ext)
         do {
             try FileManager.default.copyItem(at: tempURL, to: dest)
+            if let original = viewer.currentURL { ImageStacks.markDerived(dest, from: original) }
             if let item = FolderScanner.item(for: dest) {
                 viewer.insertItem(item, select: true)
             }

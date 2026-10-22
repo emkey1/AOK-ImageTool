@@ -22,10 +22,8 @@ nonisolated enum Colorizer {
         }
     }
 
-    /// Shared by every build, like the generative fill model.
     static var directory: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("com.oneopa.ImageViewer/Models/Colorize")
+        AppStorageLocation.models.appendingPathComponent("Colorize")
     }
 
     static var isInstalled: Bool {

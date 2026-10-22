@@ -95,7 +95,7 @@ nonisolated enum ExtendMethod: String, Codable, CaseIterable, Identifiable, Send
 }
 
 /// Black and white, the darkroom way: a camera filter decides how colors become grays (a red filter turns
-/// blue skies dark), and the print can be toned.
+/// blue skies dark), and the print can be toned. Image ▸ Black & White makes a copy with it.
 nonisolated struct BlackAndWhite: Codable, Equatable, Hashable, Sendable {
     enum Filter: String, Codable, CaseIterable, Identifiable, Sendable {
         case neutral, red, orange, yellow, green, blue
@@ -165,6 +165,15 @@ nonisolated struct BlackAndWhite: Codable, Equatable, Hashable, Sendable {
     var filter = Filter.neutral
     var toning = Toning.none
     var toningAmount = 0.6
+
+    /// The choice used last (Black & White starts from it).
+    static var last: BlackAndWhite {
+        get {
+            UserDefaults.standard.data(forKey: PrefKey.blackAndWhite).flatMap { try? JSONDecoder().decode(BlackAndWhite.self, from: $0) }
+                ?? BlackAndWhite()
+        }
+        set { Prefs.set(try? JSONEncoder().encode(newValue), PrefKey.blackAndWhite) }
+    }
 }
 
 /// Four corners in normalized, lower-left-origin coordinates (Vision / Core Image convention).
@@ -216,8 +225,6 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     var vibrance: Double = 0            // -1...1
     var temperature: Double = 0         // -1...1 (warm positive)
     var tint: Double = 0                // -1...1 (magenta positive)
-    /// nil: color.
-    var blackAndWhite: BlackAndWhite?
 
     // Detail & effects
     var sharpness: Double = 0           // 0...1

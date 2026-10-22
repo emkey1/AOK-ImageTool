@@ -123,6 +123,7 @@ final class ViewerModel {
     var showBackgroundPlayground = false
     /// The on-device model's background sheet (GenerateSheets.swift).
     var showGenerateBackground = false
+    var showBlackAndWhite = false
     var showDuplicates = false
     var alert: AlertInfo?
     private(set) var toast: ToastMessage?
@@ -152,6 +153,23 @@ final class ViewerModel {
             rescan()
         }
     }
+
+    // MARK: Stacks (ViewerModel+Stacks.swift)
+    /// Copies made from an image stack with it (see `ImageStacks`).
+    var stacksEnabled: Bool = Prefs.stackCopies {
+        didSet {
+            Prefs.setBool(stacksEnabled, PrefKey.stackCopies)
+            applySortAndFilter()
+        }
+    }
+    /// The stacks in `items`, by their original: newest copy first, the original last.
+    private(set) var stacks: [URL: [URL]] = [:]
+    /// The stack (by its original) of each stacked item.
+    private(set) var stackOf: [URL: URL] = [:]
+    /// Stacks shown spread out, every copy side by side.
+    var expandedStacks: Set<URL> = []
+    /// Which copy a closed stack shows, by its original (the newest when not set).
+    @ObservationIgnored var stackFront: [URL: URL] = [:]
 
     // MARK: Edits
     private(set) var edits: [URL: EditState] = [:]
@@ -224,6 +242,7 @@ final class ViewerModel {
             return folderURL == nil ? "" : "No images"
         }
         var parts = ["\(i + 1) of \(items.count)"]
+        if let p = currentStackPosition { parts.append("Stack \(p.index + 1)/\(p.count)") }
         if let shown = display, shown.url == currentURL, !shown.isPlaceholder {
             parts.append(MetadataFormatting.dimensions(shown.logicalSize))
         } else if let d = decoded, d.url == currentURL {
@@ -416,7 +435,10 @@ final class ViewerModel {
             let terms = intelligence.searchTerms(for: query)
             filtered = filtered.filter { intelligence.matches($0, terms: terms) }
         }
-        items = filtered
+        let stacked = stacked(filtered, keeping: keep)
+        items = stacked.items
+        stacks = stacked.stacks
+        stackOf = stacked.stackOf
         let present = Set(items.map(\.url))
         selection = selection.intersection(present)
 
@@ -877,6 +899,12 @@ final class ViewerModel {
         let oldIndex = currentIndex ?? 0
         let currentRemoved = currentURL.map(urls.contains) ?? false
         allItems.removeAll { urls.contains($0.url) }
+        if urls.contains(where: { stackOf[$0] != nil }) {
+            // A stack shows its next copy in place of a removed one.
+            for url in urls where edits[url] != nil { setEditsDictionary(url, nil) }
+            applySortAndFilter(selecting: currentRemoved ? nil : currentURL)
+            return
+        }
         items.removeAll { urls.contains($0.url) }
         selection.subtract(urls)
         for url in urls where edits[url] != nil { setEditsDictionary(url, nil) }
@@ -890,6 +918,11 @@ final class ViewerModel {
         } else if let url = decoded?.url, let i = items.firstIndex(where: { $0.url == url }) {
             currentIndex = i
         }
+    }
+
+    /// Puts another item (one of a stack's copies) in the list at `index`.
+    func replaceListedItem(at index: Int, with item: ImageItem) {
+        items[index] = item
     }
 
     func insertItem(_ item: ImageItem, select: Bool) {
@@ -906,6 +939,7 @@ final class ViewerModel {
         if let i = allItems.firstIndex(where: { $0.url == old }) { allItems[i] = newItem }
         if let i = items.firstIndex(where: { $0.url == old }) { items[i] = newItem }
         if selection.remove(old) != nil { selection.insert(newItem.url) }
+        if stackOf[old] != nil { applySortAndFilter() }
         ImagePipeline.shared.invalidate(old)
         ThumbnailCache.shared.invalidate(old)
         if decoded?.url == old { loadCurrent() }

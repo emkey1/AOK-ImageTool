@@ -14,6 +14,7 @@ extension ViewerModel {
             Shortcut(keys: "← →", action: "Previous / next image"),
             Shortcut(keys: "↑ ↓", action: "Previous / next image (configurable)"),
             Shortcut(keys: "Space  ⇧Space", action: "Next / previous image"),
+            Shortcut(keys: "⌥← ⌥→", action: "Newer / older copy in a stack"),
             Shortcut(keys: "Home  End", action: "First / last image"),
             Shortcut(keys: "Page Up / Down", action: "Previous / next page"),
             Shortcut(keys: "Swipe  ·  Scroll wheel", action: "Previous / next (when image fits)"),
@@ -86,6 +87,18 @@ extension ViewerModel {
             return false
         }
         let mods = event.modifierFlags.intersection([.command, .control, .option])
+        if mods == .option, activeTool == nil {
+            switch event.specialKey {
+            case .leftArrow?, .upArrow?:
+                stepInStack(-1)
+                return true
+            case .rightArrow?, .downArrow?:
+                stepInStack(1)
+                return true
+            default:
+                return false
+            }
+        }
         guard mods.isEmpty else { return false }
         let shift = event.modifierFlags.contains(.shift)
 

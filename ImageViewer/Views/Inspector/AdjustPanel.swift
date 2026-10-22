@@ -26,8 +26,6 @@ struct AdjustPanel: View {
                     slider("Tint", \.tint, -1...1)
                 }
 
-                blackAndWhiteSection(e)
-
                 PanelSection(title: "Detail", systemImage: "camera.filters") {
                     slider("Sharpness", \.sharpness, 0...1)
                     slider("Noise Reduction", \.noiseReduction, 0...1)
@@ -49,6 +47,8 @@ struct AdjustPanel: View {
                         slider("Intensity", \.filterIntensity, 0...1, format: { "\(Int($0 * 100))%" }, resetValue: 1)
                     }
                 }
+
+                copiesSection
 
                 HStack {
                     Button("Reset Adjustments") { model.resetAdjustments() }
@@ -143,48 +143,27 @@ struct AdjustPanel: View {
         }
     }
 
-    private func blackAndWhiteSection(_ e: EditState) -> some View {
-        PanelSection(title: "Black & White", systemImage: "circle.lefthalf.filled") {
-            Toggle("Black & White", isOn: Binding(
-                get: { e.blackAndWhite != nil },
-                set: { on in model.updateEdits(on ? "Black & White" : "Color") { $0.blackAndWhite = on ? BlackAndWhite() : nil } }
-            ))
-            if let bw = e.blackAndWhite {
-                Picker("Filter", selection: Binding(
-                    get: { bw.filter },
-                    set: { f in model.updateEdits("Black & White Filter") { $0.blackAndWhite?.filter = f } }
-                )) {
-                    ForEach(BlackAndWhite.Filter.allCases) { Text($0.title).tag($0) }
+    /// Copies saved next to the original (and stacked on it), rather than edits to it.
+    private var copiesSection: some View {
+        PanelSection(title: "Copies", systemImage: "square.stack") {
+            Text("Saved next to the original and stacked on top of it.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Button("Black & White…") { model.showBlackAndWhite = true }
+                if Colorizer.isInstalled {
+                    Button("Colorize") { model.colorizeCurrent() }
                 }
-                .help(bw.filter.help)
-                Text(bw.filter.help).font(.caption).foregroundStyle(.secondary)
-                Picker("Toning", selection: Binding(
-                    get: { bw.toning },
-                    set: { t in model.updateEdits("Toning") { $0.blackAndWhite?.toning = t } }
-                )) {
-                    ForEach(BlackAndWhite.Toning.allCases) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented)
-                if bw.toning != .none {
-                    AdjustmentSlider(
-                        title: "Toning Amount",
-                        value: Binding(get: { model.currentEdits.blackAndWhite?.toningAmount ?? 0.6 },
-                                       set: { v in model.previewEdits { $0.blackAndWhite?.toningAmount = v } }),
-                        range: 0...1,
-                        format: { "\(Int($0 * 100))%" },
-                        isDefault: abs(bw.toningAmount - 0.6) < 0.0001,
-                        onEditingChanged: { editing in
-                            if editing {
-                                dragStart = model.currentEdits
-                            } else if let start = dragStart {
-                                model.commitEdits(from: start, actionName: "Toning Amount")
-                                dragStart = nil
-                            }
-                        },
-                        reset: { model.updateEdits("Reset Toning Amount") { $0.blackAndWhite?.toningAmount = 0.6 } }
-                    )
+                if SuperResolution.isSupported {
+                    Menu("Upscale") {
+                        ForEach(SuperResolution.offeredScales, id: \.self) { scale in
+                            Button("\(scale)×") { model.upscaleCurrent(by: scale) }
+                        }
+                    }
+                    .fixedSize()
                 }
             }
+            .controlSize(.small)
         }
     }
 

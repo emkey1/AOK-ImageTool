@@ -25,6 +25,8 @@ nonisolated struct ImageItem: Identifiable, Hashable, Sendable {
     let modificationDate: Date?
     var flag: Flag
     var dateTaken: Date?
+    /// The file this one was made from (an upscaled, colorized… copy), by name, in the same folder.
+    var source: String?
 
     var id: URL { url }
 

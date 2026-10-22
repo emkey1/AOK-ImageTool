@@ -25,7 +25,7 @@ enum SelfTest {
         // The test drives real models, which save preferences shared with the user's copy of the app;
         // put them back afterwards.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
-                           PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip]
+                           PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("ImageViewerSelfTest-\(UUID().uuidString.prefix(6))")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -114,6 +114,58 @@ enum SelfTest {
             } catch {
                 check(false, "save: \(error.localizedDescription)")
             }
+        }
+
+        // 4b. Stacks: copies stack on their original, newest on top, by attribute or by the names copies get.
+        print("\n[Stacks]")
+        if let src = items.first(where: { $0.name == "sale-sign.jpg" })?.url {
+            check(ImageStacks.sourceStem(fromName: "Beach (Colorized)") == "Beach"
+                  && ImageStacks.sourceStem(fromName: "Beach (2×) 3") == "Beach"
+                  && ImageStacks.sourceStem(fromName: "Beach (Black & White)") == "Beach"
+                  && ImageStacks.sourceStem(fromName: "Unknown (1)") == nil, "copy names are recognized, and only those")
+            let fm = FileManager.default
+            let folder = out.appendingPathComponent("stacks")
+            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            let beach = folder.appendingPathComponent("Beach.jpg")
+            let colorized = folder.appendingPathComponent("Beach (Colorized).jpg")
+            let upscaled = folder.appendingPathComponent("Beach (Colorized) (2×).jpg")
+            let holiday = folder.appendingPathComponent("Holiday.jpg")
+            let other = folder.appendingPathComponent("Other.jpg")
+            for (i, url) in [beach, colorized, upscaled, holiday, other].enumerated() {
+                try? fm.copyItem(at: src, to: url)
+                try? fm.setAttributes([.creationDate: Date(timeIntervalSinceNow: Double(i * 60 - 3600))], ofItemAtPath: url.path)
+            }
+            ImageStacks.markDerived(colorized, from: beach)
+            ImageStacks.markDerived(holiday, from: beach)    // e.g. exported beside it under another name
+            check(ImageStacks.source(of: holiday) == "Beach.jpg", "a copy records what it was made from")
+            let scanned = (try? FolderScanner.scan(folder: folder, recursive: false, showHidden: false)) ?? []
+            let stacks = ImageStacks.stacks(scanned)
+            let order = stacks.values.first?.map(\.name) ?? []
+            check(stacks.count == 1 && order == ["Holiday.jpg", "Beach (Colorized) (2×).jpg", "Beach (Colorized).jpg", "Beach.jpg"],
+                  "one stack, newest copy on top, original at the bottom (\(order.joined(separator: ", ")))")
+
+            let model = ViewerModel()
+            model.stacksEnabled = true
+            model.openFolder(folder, selecting: other)
+            for _ in 0..<100 where model.items.count != 2 || model.currentURL != other.standardizedFileURL {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            check(model.items.map(\.name).sorted() == ["Holiday.jpg", "Other.jpg"], "the list shows the stack once, by its newest copy")
+            model.select(holiday.standardizedFileURL)
+            model.stepInStack(1)
+            model.stepInStack(1)
+            check(model.currentItem?.name == "Beach (Colorized).jpg" && model.items.count == 2, "⌥→ steps down the stack in place")
+            model.toggleStack(model.currentURL!)
+            check(model.items.count == 5 && model.currentItem?.name == "Beach (Colorized).jpg", "a stack spreads out, staying on the same copy")
+            model.toggleStack(model.currentURL!)
+            check(model.items.count == 2 && model.currentItem?.name == "Beach (Colorized).jpg", "and closes again, showing that copy")
+            if let original = model.allItems.first(where: { $0.name == "Beach.jpg" }) {
+                model.rename(original, to: "Shore")
+                check(ImageStacks.source(of: holiday) == "Shore.jpg" && ImageStacks.source(of: colorized) == "Shore.jpg"
+                      && model.stacks.count == 1 && model.stacks.values.first?.count == 4, "renaming an original keeps its copies stacked on it")
+            }
+            model.stacksEnabled = false
+            check(model.items.count == 5, "stacking can be turned off")
         }
 
         // 5. Pending edits survive a relaunch, but not a change to the file.
@@ -349,8 +401,9 @@ enum SelfTest {
 
         // 6a2. Black and white: gray, filters that change which colors are light, and toning.
         if let parrot = decodedByName["Parrot.heic"] {
-            func mean(_ e: EditState) -> (r: Double, g: Double, b: Double)? {
-                guard let image = EditRenderer.shared.renderSync(parrot, edits: e, maxDimension: 256)?.image else { return nil }
+            let color = EditRenderer.shared.renderSync(parrot, edits: .identity, maxDimension: 256)?.image
+            func mean(_ bw: BlackAndWhite) -> (r: Double, g: Double, b: Double)? {
+                guard let color, let image = EditRenderer.shared.blackAndWhite(color, bw) else { return nil }
                 let px = rgbaPixels(image)
                 var sum = (r: 0.0, g: 0.0, b: 0.0)
                 // The red feathers (left middle of the picture).
@@ -363,15 +416,10 @@ enum SelfTest {
                 let n = Double((image.height / 3) * (image.width / 3))
                 return (sum.r / n, sum.g / n, sum.b / n)
             }
-            var e = EditState()
-            e.blackAndWhite = BlackAndWhite()
-            let neutral = mean(e)
-            e.blackAndWhite?.filter = .red
-            let red = mean(e)
-            e.blackAndWhite?.filter = .green
-            let green = mean(e)
-            e.blackAndWhite = BlackAndWhite(filter: .neutral, toning: .sepia, toningAmount: 1)
-            let sepia = mean(e)
+            let neutral = mean(BlackAndWhite())
+            let red = mean(BlackAndWhite(filter: .red))
+            let green = mean(BlackAndWhite(filter: .green))
+            let sepia = mean(BlackAndWhite(filter: .neutral, toning: .sepia, toningAmount: 1))
             if let neutral, let red, let green, let sepia {
                 check(abs(neutral.r - neutral.b) < 1.5 && abs(neutral.g - neutral.b) < 1.5, "black & white is gray")
                 check(red.r > green.r + 20, String(format: "a red filter lightens the red feathers (%.0f vs %.0f with green)", red.r, green.r))
@@ -383,9 +431,8 @@ enum SelfTest {
 
         // 6a3. Colorize (when its model is installed): color from the model, light and detail kept.
         if Colorizer.isInstalled, let parrot = decodedByName["Parrot.heic"] {
-            var e = EditState()
-            e.blackAndWhite = BlackAndWhite()
-            if let bw = EditRenderer.shared.renderSync(parrot, edits: e, maxDimension: 512)?.image {
+            if let color = EditRenderer.shared.renderSync(parrot, edits: .identity, maxDimension: 512)?.image,
+               let bw = EditRenderer.shared.blackAndWhite(color, BlackAndWhite()) {
                 do {
                     let t0 = Date()
                     let colored = try await Colorizer.colorize(bw)
@@ -619,6 +666,7 @@ enum SelfTest {
         // 8. Folder index → content search, best-shot ranking, duplicates (through the real model).
         print("\n[Search & ranking]")
         let model = ViewerModel()
+        model.stacksEnabled = false    // every match by itself, copies too
         model.openFolder(folder, selecting: nil)
         for _ in 0..<100 where model.isScanning || model.allItems.count < items.count {
             try? await Task.sleep(for: .milliseconds(100))
@@ -634,7 +682,7 @@ enum SelfTest {
             return Set(model.items.map(\.name))
         }
         let owl = search("owl")
-        check(owl == ["Owl.heic"], "“owl” → \(owl.sorted())")
+        check(owl.contains("Owl.heic") && owl.allSatisfy { $0.hasPrefix("Owl") }, "“owl” → \(owl.sorted())")
         let raptor = search("raptor")
         check(raptor.isSuperset(of: ["Owl.heic", "Eagle.heic"]), "“raptor” → \(raptor.sorted())")
         let sign = search("grand opening")

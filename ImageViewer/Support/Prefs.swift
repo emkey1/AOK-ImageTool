@@ -31,6 +31,8 @@ nonisolated enum PrefKey {
     static let lastViewedFiles = "lastViewedFiles"
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
+    static let stackCopies = "stackCopies"
+    static let blackAndWhite = "blackAndWhite"
 }
 
 nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {
@@ -84,6 +86,7 @@ nonisolated enum Prefs {
     static var confirmOverwrite: Bool { bool(PrefKey.confirmOverwrite, true) }
     static var showFilmstrip: Bool { bool(PrefKey.showFilmstrip, true) }
     static var autoDescribe: Bool { bool(PrefKey.autoDescribe, false) }
+    static var stackCopies: Bool { bool(PrefKey.stackCopies, true) }
 
     static var canvasBackground: CanvasBackground {
         CanvasBackground(rawValue: d.string(forKey: PrefKey.canvasBackground) ?? "") ?? .dark
@@ -172,6 +175,13 @@ nonisolated enum AppStorageLocation {
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(Bundle.main.bundleIdentifier ?? "ImageViewer")
     }()
+
+    /// Installed models: the real Application Support folder, even for isolated test runs and test copies
+    /// with another bundle ID, since they're large, only read, and shared by every build.
+    static var models: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(LegacyMigration.newID).appendingPathComponent("Models")
+    }
 
     /// Deletes isolated (test run) storage whose process has quit.
     static func removeStaleIsolatedFolders() {
