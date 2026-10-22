@@ -12,10 +12,6 @@ extension ViewerModel {
         let folder = url.deletingLastPathComponent()
         let name = url.deletingPathExtension().lastPathComponent + " (\(label))"
         showToast(working, systemImage: systemImage)
-        let show: (URL) -> Void = { [weak self] copy in
-            self?.activeTool = nil
-            self?.select(copy)
-        }
         Task {
             do {
                 let dest = try await Task.detached(priority: .userInitiated) { () async throws -> URL in
@@ -30,19 +26,26 @@ extension ViewerModel {
                     ImageStacks.markDerived(dest, from: url)
                     return dest
                 }.value
-                // Shown straight away if you're still on the original with no tool open; otherwise offered.
-                let stillHere = currentURL == url && activeTool == nil
-                if let item = FolderScanner.item(for: dest) { insertItem(item, select: stillHere) }
-                if stillHere || !items.contains(where: { $0.url == dest.standardizedFileURL }) {
-                    showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle")
-                } else {
-                    showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle", actionTitle: "Show") {
-                        show(dest.standardizedFileURL)
-                    }
-                }
+                copySaved(dest, from: url)
             } catch {
                 dismissToast()
                 showError(failure, error)
+            }
+        }
+    }
+
+    /// A copy of `original` is saved at `dest`: it's shown straight away if you're still on the original with
+    /// no tool open; otherwise the toast offers to show it.
+    func copySaved(_ dest: URL, from original: URL) {
+        let stillHere = currentURL == original && activeTool == nil
+        if let item = FolderScanner.item(for: dest) { insertItem(item, select: stillHere) }
+        let copy = dest.standardizedFileURL
+        if stillHere || !items.contains(where: { $0.url == copy }) {
+            showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle")
+        } else {
+            showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle", actionTitle: "Show") { [weak self] in
+                self?.activeTool = nil
+                self?.select(copy)
             }
         }
     }

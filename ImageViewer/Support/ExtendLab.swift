@@ -72,6 +72,29 @@ enum ExtendLab {
                   ?? String(format: "installed: %@ in %.1f s", model.isInstalled() ? "yes" : "NO", Date().timeIntervalSince(t0)))
             exit(model.isInstalled() ? 0 : 1)
         }
+        // `-extendTest -upscaleAnimation <in> <out> <scale> [gif|png]`: an animation upscaled, every frame.
+        if let i = args.firstIndex(of: "-upscaleAnimation"), i + 3 < args.count, let scale = Double(args[i + 3]),
+           let animation = Animation(url: URL(fileURLWithPath: args[i + 1])) {
+            let container = i + 4 < args.count ? Animation.Container(rawValue: args[i + 4]) ?? .gif : .gif
+            let out = URL(fileURLWithPath: args[i + 2])
+            print("\(animation.count) frames \(animation.width)×\(animation.height), loop \(animation.loopCount), delays \(Set(animation.delays).sorted())")
+            let t0 = Date()
+            do {
+                let writer = try Animation.Writer(url: out, container: container, delays: animation.delays, loopCount: animation.loopCount)
+                try await SuperResolution.upscaleFrames(count: animation.count, width: animation.width, height: animation.height, scale: scale,
+                                                        frame: { animation.frame($0)! }, emit: { writer.add($0) }, progress: { _ in false })
+                try writer.finish()
+                if let made = Animation(url: out) {
+                    let a = made.frame(0)!, b = made.frame(made.count / 2)!
+                    print(String(format: "made %d frames %d×%d, loop %d, delays %@ in %.1f s; frames differ: %@", made.count, made.width, made.height,
+                                 made.loopCount, "\(Set(made.delays).sorted())", Date().timeIntervalSince(t0),
+                                 a.dataProvider?.data as Data? != b.dataProvider?.data as Data? ? "yes" : "NO"))
+                }
+            } catch {
+                print("failed:", error.localizedDescription)
+            }
+            exit(0)
+        }
         // `-extendTest -borders <folder>`: which images have a print border, and the picture inside it.
         if let i = args.firstIndex(of: "-borders"), i + 1 < args.count {
             let folder = URL(fileURLWithPath: args[i + 1])

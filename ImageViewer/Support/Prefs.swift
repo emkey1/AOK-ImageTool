@@ -36,6 +36,7 @@ nonisolated enum PrefKey {
     static let checkForUpdates = "CheckForUpdates"
     static let lastUpdateCheck = "LastUpdateCheck"
     static let skippedVersion = "SkippedVersion"
+    static let upscaledAnimationFormat = "upscaledAnimationFormat"
 }
 
 nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {
@@ -90,6 +91,10 @@ nonisolated enum Prefs {
     static var showFilmstrip: Bool { bool(PrefKey.showFilmstrip, true) }
     static var autoDescribe: Bool { bool(PrefKey.autoDescribe, false) }
     static var stackCopies: Bool { bool(PrefKey.stackCopies, true) }
+    /// What an upscaled animation is saved as.
+    static var upscaledAnimationFormat: Animation.Container {
+        Animation.Container(rawValue: d.string(forKey: PrefKey.upscaledAnimationFormat) ?? "") ?? .gif
+    }
 
     static var canvasBackground: CanvasBackground {
         CanvasBackground(rawValue: d.string(forKey: PrefKey.canvasBackground) ?? "") ?? .dark

@@ -155,7 +155,14 @@ nonisolated enum SuperResolution {
             output = CIImage(cgImage: whole)
         }
 
-        output = output.settingAlphaOne(in: output.extent)
+        return try finish(output, input: input, alpha: alpha, scale: scale, space: space, deep: deep)
+    }
+
+    /// The model's 4× colors, with the input's transparency (upscaled conventionally) put back, resampled to
+    /// `scale`× the input.
+    private static func finish(_ modelOutput: CIImage, input: CIImage, alpha: Bool, scale: CGFloat, space: CGColorSpace,
+                               deep: Bool) throws -> CGImage {
+        var output = modelOutput.settingAlphaOne(in: modelOutput.extent)
         if alpha {
             let mask = input.clampedToExtent()
                 .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: factor, kCIInputAspectRatioKey: 1])
@@ -166,11 +173,29 @@ nonisolated enum SuperResolution {
             output = output.clampedToExtent()
                 .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: resample, kCIInputAspectRatioKey: 1])
         }
-        let rect = CGRect(x: 0, y: 0, width: (CGFloat(width) * CGFloat(factor) * resample).rounded(),
-                          height: (CGFloat(height) * CGFloat(factor) * resample).rounded())
+        let rect = CGRect(x: 0, y: 0, width: (input.extent.width * CGFloat(factor) * resample).rounded(),
+                          height: (input.extent.height * CGFloat(factor) * resample).rounded())
         guard let result = context.createCGImage(output.cropped(to: rect), from: rect, format: deep ? .RGBAh : .RGBA8,
                                                  colorSpace: space, deferred: false) else { throw Failure.failed }
         return result
+    }
+
+    // MARK: - Animations
+
+    /// Upscales an animation's `count` frames (all `width` × `height`) to `scale`×, in order, handing each to
+    /// `emit` as it's made. Each frame goes through on its own: the model is deterministic, so whatever
+    /// doesn't move stays exactly the same from frame to frame (no shimmer). (VideoToolbox's video mode, which
+    /// looks at the frame before, returned only NaN pixels on macOS 27 in October 2026.)
+    /// `progress` gets 0...1 and returns true to stop.
+    static func upscaleFrames(count: Int, width: Int, height: Int, scale: CGFloat,
+                              frame: (Int) throws -> CGImage, emit: (CGImage) throws -> Void,
+                              progress: (Double) -> Bool) async throws {
+        guard #available(macOS 26, *) else { throw Failure.unsupported }
+        guard canUpscale(width: width, height: height, scale: scale) else { throw Failure.tooLarge }
+        for i in 0..<count {
+            if progress(Double(i) / Double(count)) { throw CancellationError() }
+            try emit(try await upscaleWithModel(try frame(i), scale: scale))
+        }
     }
 
     /// Where tiles start along a side, overlapping by `tileOverlap`, the last one flush with the end.

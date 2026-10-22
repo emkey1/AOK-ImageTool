@@ -4,6 +4,7 @@ struct AdjustPanel: View {
     @Environment(ViewerModel.self) private var model
     @State private var dragStart: EditState?
     @State private var presetPreviews: [FilterPreset: CGImage] = [:]
+    @AppStorage(PrefKey.upscaledAnimationFormat) private var animationFormat = Animation.Container.gif.rawValue
 
     var body: some View {
         let e = model.currentEdits
@@ -159,6 +160,12 @@ struct AdjustPanel: View {
                     Menu("Upscale") {
                         ForEach(SuperResolution.offeredScales, id: \.self) { scale in
                             Button("\(scale)×") { model.upscaleCurrent(by: scale) }
+                        }
+                        if model.decoded?.isAnimated == true {
+                            Divider()
+                            Picker("Save Animation As", selection: $animationFormat) {
+                                ForEach(Animation.Container.allCases) { Text($0.title).tag($0.rawValue) }
+                            }
                         }
                     }
                     .fixedSize()

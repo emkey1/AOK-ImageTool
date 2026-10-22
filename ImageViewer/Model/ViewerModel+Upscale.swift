@@ -20,7 +20,14 @@ extension ViewerModel {
     func upscaleCurrent(by scale: Int) {
         guard let url = currentURL, let d = decoded, d.url == url else { return }
         let e = currentEdits
-        withUpscalingModel { [weak self] in self?.saveUpscaled(url: url, decoded: d, edits: e, scale: scale) }
+        withUpscalingModel { [weak self] in
+            guard let self else { return }
+            if d.isAnimated, let animation = Animation(url: url) {
+                saveUpscaledAnimation(url: url, decoded: d, animation: animation, edits: e, scale: scale)
+            } else {
+                saveUpscaled(url: url, decoded: d, edits: e, scale: scale)
+            }
+        }
     }
 
     private func saveUpscaled(url: URL, decoded d: DecodedImage, edits e: EditState, scale: Int) {
@@ -29,6 +36,66 @@ extension ViewerModel {
                  failure: "Couldn't upscale “\(url.lastPathComponent)”") {
             try await SuperResolution.upscale($0, scale: CGFloat(scale))
         }
+    }
+
+    /// Saves an upscaled copy of an animation, every frame, as an animated GIF or PNG with the original's
+    /// timing and looping. Edits that hold for every frame (turns, crop, light and color) are applied; a cutout
+    /// or Extend, made for the first frame, isn't.
+    private func saveUpscaledAnimation(url: URL, decoded d: DecodedImage, animation: Animation, edits: EditState, scale: Int) {
+        var e = edits
+        e.removeCutout()
+        if e.cropExtendsBeyondImage, let crop = e.crop {
+            let inside = crop.intersection(CGRect(x: 0, y: 0, width: 1, height: 1))
+            e.crop = inside.isEmpty ? nil : inside
+            e.extendFill = nil
+        }
+        let container = Prefs.upscaledAnimationFormat
+        let dest = ImageWriter.uniqueURL(in: url.deletingLastPathComponent(), baseName: url.deletingPathExtension().lastPathComponent + " (\(scale)×)",
+                                         ext: container.fileExtension)
+        let first = animation.frame(0)
+        let size = first.map { image -> CGSize in
+            guard !e.isIdentity, let out = EditRenderer.shared.renderSync(Self.frameImage(image, of: d), edits: e, maxDimension: nil)?.image else {
+                return CGSize(width: image.width, height: image.height)
+            }
+            return CGSize(width: out.width, height: out.height)
+        } ?? .zero
+        let count = animation.count
+        showToast("Upscaling frame 1 of \(count)…", systemImage: "arrow.up.left.and.arrow.down.right")
+        let report: @Sendable (Int) -> Void = { [weak self] n in
+            let model = self
+            Task { @MainActor in model?.showToast("Upscaling frame \(n) of \(count)…", systemImage: "arrow.up.left.and.arrow.down.right") }
+        }
+        Task {
+            do {
+                try await Task.detached(priority: .userInitiated) {
+                    let writer = try Animation.Writer(url: dest, container: container, delays: animation.delays, loopCount: animation.loopCount)
+                    try await SuperResolution.upscaleFrames(count: count, width: Int(size.width), height: Int(size.height), scale: CGFloat(scale),
+                                                            frame: { i in
+                        guard let image = animation.frame(i) else { throw ImageWriteError.finalizeFailed }
+                        guard !e.isIdentity else { return image }
+                        guard let out = EditRenderer.shared.renderSync(Self.frameImage(image, of: d), edits: e, maxDimension: nil)?.image
+                        else { throw ImageWriteError.finalizeFailed }
+                        return out
+                    }, emit: { writer.add($0) }, progress: { fraction in
+                        report(min(count, Int(fraction * Double(count)) + 1))
+                        return false
+                    })
+                    try writer.finish()
+                    ImageStacks.markDerived(dest, from: url)
+                }.value
+                copySaved(dest, from: url)
+            } catch {
+                try? FileManager.default.removeItem(at: dest)
+                dismissToast()
+                showError("Couldn't upscale “\(url.lastPathComponent)”", error)
+            }
+        }
+    }
+
+    /// One frame of an animation, to render with edits.
+    nonisolated private static func frameImage(_ image: CGImage, of d: DecodedImage) -> DecodedImage {
+        DecodedImage(url: d.url, cgImage: image, isHDR: false, isAnimated: false, pageCount: 1, pageIndex: 0,
+                     typeIdentifier: d.typeIdentifier, properties: d.properties, sourceOrientation: .up, isVector: false)
     }
 
     /// Runs `then` once Apple's upscaling model is on this Mac, asking before its one-time download.

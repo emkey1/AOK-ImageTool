@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Upscale with AI works on animations** (GIF, animated PNG, WebP, HEIC): every frame, with its timing and looping, saved as a GIF or, in full color, an animated PNG (Upscale ▸ Save Animation As). Turns, crops and color adjustments apply to every frame.
+
 ## 1.0.0
 
 The first release.

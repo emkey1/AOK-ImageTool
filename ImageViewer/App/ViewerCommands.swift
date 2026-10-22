@@ -10,6 +10,7 @@ struct ViewerCommands: Commands {
     @AppStorage(PrefKey.upscaleSmallImages) private var enlargeSmall = false
     @AppStorage(PrefKey.aiEnhanceEnlarged) private var aiEnhance = false
     @AppStorage(PrefKey.canvasBackground) private var background = CanvasBackground.dark.rawValue
+    @AppStorage(PrefKey.upscaledAnimationFormat) private var animationFormat = Animation.Container.gif.rawValue
 
     private var hasImage: Bool { viewer?.currentItem != nil }
     private var hasEdits: Bool { !(viewer?.currentEdits.isIdentity ?? true) }
@@ -194,6 +195,12 @@ struct ViewerCommands: Commands {
                 Menu("Upscale with AI") {
                     ForEach(SuperResolution.offeredScales, id: \.self) { scale in
                         Button("\(scale)×") { viewer?.upscaleCurrent(by: scale) }
+                    }
+                    if viewer?.decoded?.isAnimated == true {
+                        Divider()
+                        Picker("Save Animation As", selection: $animationFormat) {
+                            ForEach(Animation.Container.allCases) { Text($0.title).tag($0.rawValue) }
+                        }
                     }
                 }
                 .disabled(!hasImage)

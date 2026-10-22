@@ -844,6 +844,47 @@ enum SelfTest {
                 }
                 let clear = try await SuperResolution.upscale(VisionServices.downscaledSync(png.cgImage, maxDimension: 200))
                 check(!(clear.alphaInfo == .none || clear.alphaInfo == .noneSkipLast || clear.alphaInfo == .noneSkipFirst), "transparent image keeps its alpha when upscaled")
+                // An animation, every frame, keeping its timing and looping (GIF and animated PNG).
+                if let spinner = items.first(where: { $0.name == "spinner.gif" }), let animation = Animation(url: spinner.url) {
+                    for container in Animation.Container.allCases {
+                        let url = out.appendingPathComponent("spinner-2x.\(container.fileExtension)")
+                        let t2 = Date()
+                        let writer = try Animation.Writer(url: url, container: container, delays: animation.delays, loopCount: animation.loopCount)
+                        try await SuperResolution.upscaleFrames(count: animation.count, width: animation.width, height: animation.height, scale: 2,
+                                                                frame: { i in
+                            guard let frame = animation.frame(i) else { throw SuperResolution.Failure.failed }
+                            return frame
+                        }, emit: { writer.add($0) }, progress: { _ in false })
+                        try writer.finish()
+                        let made = Animation(url: url)
+                        let firstFrames = made.flatMap { m in m.frame(0).flatMap { a in m.frame(6).map { (a, $0) } } }
+                        let moved = firstFrames.map { rgbaPixels($0.0) != rgbaPixels($0.1) } ?? false
+                        check(made?.count == animation.count && made?.width == animation.width * 2 && made?.height == animation.height * 2
+                              && made?.loopCount == animation.loopCount
+                              && zip(made?.delays ?? [], animation.delays).allSatisfy { abs($0 - $1) < 0.005 } && moved,
+                              String(format: "%@: %d frames upscaled to %d×%d in %.1f s, timing and looping kept", container.title,
+                                     made?.count ?? 0, made?.width ?? 0, made?.height ?? 0, Date().timeIntervalSince(t2)))
+                    }
+                    // Through the app: a cropped animation, upscaled, saved beside it and stacked on it.
+                    let folder = out.appendingPathComponent("animation")
+                    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    let copy = folder.appendingPathComponent("spinner.gif")
+                    try? FileManager.default.copyItem(at: spinner.url, to: copy)
+                    let model = ViewerModel()
+                    model.stacksEnabled = true
+                    model.openFolder(folder, selecting: copy)
+                    for _ in 0..<100 where model.decoded?.url != copy.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+                    model.updateEdits("Crop") { $0.crop = CGRect(x: 0, y: 0, width: 0.5, height: 1) }
+                    model.upscaleCurrent(by: 2)
+                    let made = folder.appendingPathComponent("spinner (2×).gif")
+                    for _ in 0..<600 where !FileManager.default.fileExists(atPath: made.path) || model.items.count < 2 {
+                        try? await Task.sleep(for: .milliseconds(100))
+                    }
+                    let result = Animation(url: made)
+                    check(result?.count == animation.count && result?.width == animation.width && result?.height == animation.height * 2
+                          && ImageStacks.source(of: made) == "spinner.gif" && model.stacks.count == 1,
+                          "Upscale with AI on a cropped animation: \(result?.count ?? 0) frames, \(result?.width ?? 0)×\(result?.height ?? 0), stacked on the original")
+                }
                 // Bigger than one pass: tiles, joined where both had context.
                 if let large = decodedByName.values.first(where: { $0.cgImage.width > SuperResolution.maxSide })?.cgImage {
                     let t1 = Date()
