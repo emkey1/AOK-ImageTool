@@ -55,20 +55,43 @@ nonisolated struct Animation {
         var id: String { rawValue }
         var fileExtension: String { rawValue }
         var title: String { self == .gif ? "GIF" : "Animated PNG (Full Color)" }
+        var shortName: String { self == .gif ? "GIF" : "animated PNG" }
         fileprivate var type: UTType { self == .gif ? .gif : .png }
+
+        /// The most pixels, over all frames, an upscaled animation may have: each one is in memory while it's
+        /// being written, and the file grows with them (about 35 MB as GIF, 45 MB as animated PNG).
+        var maxOutputPixels: Double { self == .gif ? 80_000_000 : 25_000_000 }
+        /// Measured on photographic animations; flat cartoons come out smaller.
+        var bytesPerPixel: Double { self == .gif ? 0.45 : 1.8 }
     }
 
-    /// Writes frames as they come, with these timings and looping, as `container`.
+    /// What upscaling an animation would make, and whether that's within the limit for `container`.
+    struct UpscaleEstimate: Equatable, Sendable {
+        let bytes: Int64
+        let allowed: Bool
+    }
+
+    static func upscaleEstimate(frames: Int, width: CGFloat, height: CGFloat, scale: Int, as container: Container) -> UpscaleEstimate {
+        let pixels = Double(frames) * Double(width * height) * Double(scale * scale)
+        return UpscaleEstimate(bytes: Int64(pixels * container.bytesPerPixel), allowed: pixels <= container.maxOutputPixels)
+    }
+
+    /// Writes frames as they come, with these timings and looping, as `container`. The file is made under a
+    /// hidden name and only appears at `url` once it's whole.
     final class Writer {
         private let destination: CGImageDestination
         private let container: Container
         private let delays: [Double]
+        private let url: URL
+        private let temporary: URL
         private var index = 0
 
         init(url: URL, container: Container, delays: [Double], loopCount: Int) throws {
-            guard let destination = CGImageDestinationCreateWithURL(url as CFURL, container.type.identifier as CFString, delays.count, nil) else {
+            temporary = url.deletingLastPathComponent().appendingPathComponent(".\(UUID().uuidString).\(container.fileExtension)")
+            guard let destination = CGImageDestinationCreateWithURL(temporary as CFURL, container.type.identifier as CFString, delays.count, nil) else {
                 throw ImageWriteError.cannotCreateDestination(container.title)
             }
+            self.url = url
             self.destination = destination
             self.container = container
             self.delays = delays
@@ -88,7 +111,26 @@ nonisolated struct Animation {
         }
 
         func finish() throws {
-            guard CGImageDestinationFinalize(destination) else { throw ImageWriteError.finalizeFailed }
+            do {
+                guard CGImageDestinationFinalize(destination) else { throw ImageWriteError.finalizeFailed }
+                try FileManager.default.moveItem(at: temporary, to: url)
+            } catch {
+                try? FileManager.default.removeItem(at: temporary)
+                throw error
+            }
         }
+
+        deinit {
+            try? FileManager.default.removeItem(at: temporary)   // (nothing there once finished)
+        }
+    }
+}
+
+/// The Upscale menus' item titles: for an animation, how big the result would be, or that it's too large.
+enum UpscaleMenu {
+    static func title(_ scale: Int, _ estimate: Animation.UpscaleEstimate?) -> String {
+        guard let estimate else { return "\(scale)×" }
+        guard estimate.allowed else { return "\(scale)× (too large as \(Prefs.upscaledAnimationFormat.shortName))" }
+        return "\(scale)× (about \(ByteCountFormatter.string(fromByteCount: estimate.bytes, countStyle: .file)))"
     }
 }

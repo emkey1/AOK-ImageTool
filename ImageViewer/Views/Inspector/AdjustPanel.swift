@@ -159,7 +159,9 @@ struct AdjustPanel: View {
                 if SuperResolution.isSupported {
                     Menu("Upscale") {
                         ForEach(SuperResolution.offeredScales, id: \.self) { scale in
-                            Button("\(scale)×") { model.upscaleCurrent(by: scale) }
+                            let estimate = model.animationUpscale(by: scale)
+                            Button(UpscaleMenu.title(scale, estimate)) { model.upscaleCurrent(by: scale) }
+                                .disabled(estimate?.allowed == false)
                         }
                         if model.decoded?.isAnimated == true {
                             Divider()

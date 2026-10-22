@@ -194,7 +194,9 @@ struct ViewerCommands: Commands {
             if SuperResolution.isSupported {
                 Menu("Upscale with AI") {
                     ForEach(SuperResolution.offeredScales, id: \.self) { scale in
-                        Button("\(scale)×") { viewer?.upscaleCurrent(by: scale) }
+                        let estimate = viewer?.animationUpscale(by: scale)
+                        Button(UpscaleMenu.title(scale, estimate)) { viewer?.upscaleCurrent(by: scale) }
+                            .disabled(estimate?.allowed == false)
                     }
                     if viewer?.decoded?.isAnimated == true {
                         Divider()

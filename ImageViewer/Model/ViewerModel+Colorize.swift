@@ -24,6 +24,7 @@ extension ViewerModel {
                     try ImageWriter.write(made, to: dest, format: format, quality: 0.92, sourceProperties: d.properties, metadata: .keepAll,
                                           source: url)
                     ImageStacks.markDerived(dest, from: url)
+                    ThumbnailCache.shared.seed(made, for: dest)
                     return dest
                 }.value
                 copySaved(dest, from: url)

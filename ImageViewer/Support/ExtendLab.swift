@@ -83,7 +83,15 @@ enum ExtendLab {
                 let writer = try Animation.Writer(url: out, container: container, delays: animation.delays, loopCount: animation.loopCount)
                 try await SuperResolution.upscaleFrames(count: animation.count, width: animation.width, height: animation.height, scale: scale,
                                                         frame: { animation.frame($0)! }, emit: { writer.add($0) }, progress: { _ in false })
+                let t1 = Date()
                 try writer.finish()
+                let t2 = Date()
+                let item = FolderScanner.item(for: out)
+                let decoded = try? ImageDecoder.decode(url: out, page: 0, allowHDR: false)
+                let thumb = ImageDecoder.thumbnail(url: out, maxPixelSize: 160)
+                print(String(format: "timing: frames %.1f s, writing the file %.1f s, then scan + decode + thumbnail %.2f s (%@)",
+                             t1.timeIntervalSince(t0), t2.timeIntervalSince(t1), Date().timeIntervalSince(t2),
+                             item != nil && decoded != nil && thumb != nil ? "ok" : "failed"))
                 if let made = Animation(url: out) {
                     let a = made.frame(0)!, b = made.frame(made.count / 2)!
                     print(String(format: "made %d frames %d×%d, loop %d, delays %@ in %.1f s; frames differ: %@", made.count, made.width, made.height,

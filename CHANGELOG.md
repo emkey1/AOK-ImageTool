@@ -2,7 +2,8 @@
 
 ## Unreleased
 
-- **Upscale with AI works on animations** (GIF, animated PNG, WebP, HEIC): every frame, with its timing and looping, saved as a GIF or, in full color, an animated PNG (Upscale ▸ Save Animation As). Turns, crops and color adjustments apply to every frame.
+- **Upscale with AI works on animations** (GIF, animated PNG, WebP, HEIC): every frame, with its timing and looping, saved as a GIF or, in full color, an animated PNG (Upscale ▸ Save Animation As). Turns, crops and color adjustments apply to every frame. The menu shows each scale's size, and leaves out any that would be too large.
+- Copies made by Upscale, Colorize and Black & White show in the filmstrip as soon as they're saved, instead of after the new file is read back.
 
 ## 1.0.0
 

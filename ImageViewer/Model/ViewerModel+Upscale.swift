@@ -23,6 +23,14 @@ extension ViewerModel {
         withUpscalingModel { [weak self] in
             guard let self else { return }
             if d.isAnimated, let animation = Animation(url: url) {
+                if let estimate = animationUpscale(by: scale), !estimate.allowed {
+                    let container = Prefs.upscaledAnimationFormat
+                    alert = AlertInfo(title: "This animation is too large to upscale \(scale)× as \(container.shortName)",
+                                      message: "It would be about \(ByteCountFormatter.string(fromByteCount: estimate.bytes, countStyle: .file)) "
+                                        + "(\(animation.count) frames). Try a smaller scale"
+                                        + (container == .png ? ", or GIF, which is smaller (Upscale ▸ Save Animation As)." : "."))
+                    return
+                }
                 saveUpscaledAnimation(url: url, decoded: d, animation: animation, edits: e, scale: scale)
             } else {
                 saveUpscaled(url: url, decoded: d, edits: e, scale: scale)
@@ -41,7 +49,19 @@ extension ViewerModel {
     /// Saves an upscaled copy of an animation, every frame, as an animated GIF or PNG with the original's
     /// timing and looping. Edits that hold for every frame (turns, crop, light and color) are applied; a cutout
     /// or Extend, made for the first frame, isn't.
-    private func saveUpscaledAnimation(url: URL, decoded d: DecodedImage, animation: Animation, edits: EditState, scale: Int) {
+    /// For an animation: the size `scale`× would make in the chosen format, and whether that's allowed
+    /// (see `Animation.Container.maxOutputPixels`). Nil for a still image.
+    func animationUpscale(by scale: Int) -> Animation.UpscaleEstimate? {
+        guard let d = decoded, d.url == currentURL, d.isAnimated, d.frameCount > 1 else { return nil }
+        let e = Self.frameEdits(currentEdits)
+        let size = e.isIdentity ? d.pixelSize : EditRenderer.shared.outputSize(d, edits: e)
+        return Animation.upscaleEstimate(frames: d.frameCount, width: size.width, height: size.height, scale: scale,
+                                         as: Prefs.upscaledAnimationFormat)
+    }
+
+    /// The edits that hold for every frame of an animation: turns, crop, light and color, but not a cutout or
+    /// Extend, which were made for the first frame.
+    nonisolated private static func frameEdits(_ edits: EditState) -> EditState {
         var e = edits
         e.removeCutout()
         if e.cropExtendsBeyondImage, let crop = e.crop {
@@ -49,6 +69,11 @@ extension ViewerModel {
             e.crop = inside.isEmpty ? nil : inside
             e.extendFill = nil
         }
+        return e
+    }
+
+    private func saveUpscaledAnimation(url: URL, decoded d: DecodedImage, animation: Animation, edits: EditState, scale: Int) {
+        let e = Self.frameEdits(edits)
         let container = Prefs.upscaledAnimationFormat
         let dest = ImageWriter.uniqueURL(in: url.deletingLastPathComponent(), baseName: url.deletingPathExtension().lastPathComponent + " (\(scale)×)",
                                          ext: container.fileExtension)
@@ -63,12 +88,17 @@ extension ViewerModel {
         showToast("Upscaling frame 1 of \(count)…", systemImage: "arrow.up.left.and.arrow.down.right")
         let report: @Sendable (Int) -> Void = { [weak self] n in
             let model = self
-            Task { @MainActor in model?.showToast("Upscaling frame \(n) of \(count)…", systemImage: "arrow.up.left.and.arrow.down.right") }
+            Task { @MainActor in
+                // (After the last frame, every frame still has to be encoded into the file.)
+                let text = n > count ? "Saving “\(dest.lastPathComponent)”…" : "Upscaling frame \(n) of \(count)…"
+                model?.showToast(text, systemImage: "arrow.up.left.and.arrow.down.right")
+            }
         }
         Task {
             do {
-                try await Task.detached(priority: .userInitiated) {
+                let first = try await Task.detached(priority: .userInitiated) { () async throws -> CGImage? in
                     let writer = try Animation.Writer(url: dest, container: container, delays: animation.delays, loopCount: animation.loopCount)
+                    var first: CGImage?
                     try await SuperResolution.upscaleFrames(count: count, width: Int(size.width), height: Int(size.height), scale: CGFloat(scale),
                                                             frame: { i in
                         guard let image = animation.frame(i) else { throw ImageWriteError.finalizeFailed }
@@ -76,13 +106,19 @@ extension ViewerModel {
                         guard let out = EditRenderer.shared.renderSync(Self.frameImage(image, of: d), edits: e, maxDimension: nil)?.image
                         else { throw ImageWriteError.finalizeFailed }
                         return out
-                    }, emit: { writer.add($0) }, progress: { fraction in
+                    }, emit: { frame in
+                        if first == nil { first = frame }
+                        writer.add(frame)
+                    }, progress: { fraction in
                         report(min(count, Int(fraction * Double(count)) + 1))
                         return false
                     })
+                    report(count + 1)
                     try writer.finish()
                     ImageStacks.markDerived(dest, from: url)
+                    return first
                 }.value
+                if let first { ThumbnailCache.shared.seed(first, for: dest) }
                 copySaved(dest, from: url)
             } catch {
                 try? FileManager.default.removeItem(at: dest)

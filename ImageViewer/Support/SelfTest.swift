@@ -884,6 +884,17 @@ enum SelfTest {
                     check(result?.count == animation.count && result?.width == animation.width && result?.height == animation.height * 2
                           && ImageStacks.source(of: made) == "spinner.gif" && model.stacks.count == 1,
                           "Upscale with AI on a cropped animation: \(result?.count ?? 0) frames, \(result?.width ?? 0)×\(result?.height ?? 0), stacked on the original")
+                    let leftovers = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasPrefix(".") }
+                    check(leftovers.isEmpty && ThumbnailCache.shared.cached(made.standardizedFileURL, tier: .small) != nil,
+                          "the file appears whole (no temporary left) with its thumbnail ready")
+                    // Limits: a 57-frame 480 × 480 animation, like a typical GIF from the web.
+                    let gif2 = Animation.upscaleEstimate(frames: 57, width: 480, height: 480, scale: 2, as: .gif)
+                    let gif3 = Animation.upscaleEstimate(frames: 57, width: 480, height: 480, scale: 3, as: .gif)
+                    let png2 = Animation.upscaleEstimate(frames: 57, width: 480, height: 480, scale: 2, as: .png)
+                    let small = Animation.upscaleEstimate(frames: animation.count, width: CGFloat(animation.width), height: CGFloat(animation.height),
+                                                          scale: 4, as: .png)
+                    check(gif2.allowed && !gif3.allowed && !png2.allowed && small.allowed,
+                          "animated upscales are limited: 57 frames of 480 × 480 can go 2× as GIF (about \(gif2.bytes / 1_000_000) MB), not 3×, nor as animated PNG")
                 }
                 // Bigger than one pass: tiles, joined where both had context.
                 if let large = decodedByName.values.first(where: { $0.cgImage.width > SuperResolution.maxSide })?.cgImage {

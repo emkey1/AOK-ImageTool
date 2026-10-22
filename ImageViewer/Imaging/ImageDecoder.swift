@@ -21,13 +21,15 @@ nonisolated final class DecodedImage: @unchecked Sendable {
     let isVector: Bool
     /// Smaller than the file (past what the display can show), so it mustn't be saved over it.
     let isReduced: Bool
+    /// Frames, for an animation (1 otherwise).
+    let frameCount: Int
 
     var cost: Int { cgImage.bytesPerRow * cgImage.height }
     var contentType: UTType? { typeIdentifier.flatMap(UTType.init) }
 
     init(url: URL, cgImage: CGImage, isHDR: Bool, isAnimated: Bool, pageCount: Int, pageIndex: Int,
          typeIdentifier: String?, properties: [String: Any], sourceOrientation: CGImagePropertyOrientation, isVector: Bool,
-         isReduced: Bool = false) {
+         isReduced: Bool = false, frameCount: Int = 1) {
         self.url = url
         self.cgImage = cgImage
         self.pixelSize = CGSize(width: cgImage.width, height: cgImage.height)
@@ -44,6 +46,7 @@ nonisolated final class DecodedImage: @unchecked Sendable {
         self.sourceOrientation = sourceOrientation
         self.isVector = isVector
         self.isReduced = isReduced
+        self.frameCount = frameCount
     }
 }
 
@@ -153,7 +156,7 @@ nonisolated enum ImageDecoder {
             url: url, cgImage: image, isHDR: isHDR, isAnimated: isAnimated,
             pageCount: pageCount, pageIndex: pageCount > 1 ? index : 0,
             typeIdentifier: typeID, properties: props, sourceOrientation: orientation, isVector: false,
-            isReduced: image.width != fullWidth
+            isReduced: image.width != fullWidth, frameCount: isAnimated ? count : 1
         )
     }
 

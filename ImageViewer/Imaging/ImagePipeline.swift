@@ -195,4 +195,14 @@ nonisolated final class ThumbnailCache: @unchecked Sendable {
         cache.removeObject(forKey: key(url, .small))
         cache.removeObject(forKey: key(url, .large))
     }
+
+    /// Thumbnails for a file this app just made, from the picture it made (reading a big file back, an
+    /// upscaled animation or photo, takes a while and queues behind the folder's other thumbnails).
+    func seed(_ image: CGImage, for url: URL) {
+        let url = url.standardizedFileURL
+        for tier in [Tier.small, .large] {
+            let thumb = VisionServices.downscaledSync(image, maxDimension: tier.rawValue)
+            cache.setObject(Box(thumb), forKey: key(url, tier), cost: thumb.bytesPerRow * thumb.height)
+        }
+    }
 }
