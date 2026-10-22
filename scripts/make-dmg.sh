@@ -4,7 +4,7 @@
 # (Adapted from AOK-Foray's.)
 #
 # Releases (Developer ID signing and notarization happen in Xcode, with your Xcode account):
-#   1. open ImageViewer.xcodeproj, "ImageViewer" scheme, Product › Archive
+#   1. open ImageViewer.xcodeproj, "AOK-ImageTool" scheme, Product › Archive
 #   2. Organizer › Distribute App › Direct Distribution, and wait for "Ready to distribute"
 #   3. scripts/make-dmg.sh
 #      With no argument it exports the notarized app from Xcode's newest AOK-ImageTool archive. You
@@ -28,7 +28,7 @@ if [[ ${1:-} == --build ]]; then
   identity=-
   security find-identity -v -p codesigning | grep -q "Apple Development" && identity="Apple Development"
   security find-identity -v -p codesigning | grep -q "Developer ID Application" && identity="Developer ID Application"
-  xcodebuild -project ImageViewer.xcodeproj -scheme ImageViewer -configuration Release -derivedDataPath "$scratch/build" \
+  xcodebuild -project ImageViewer.xcodeproj -scheme AOK-ImageTool -configuration Release -derivedDataPath "$scratch/build" \
     CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM= build >/dev/null
   app="$scratch/build/Build/Products/Release/AOK-ImageTool.app"
   timestamp=--timestamp=none

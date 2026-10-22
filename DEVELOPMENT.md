@@ -8,7 +8,7 @@ The [README](README.md) is for people using the app, and the built-in Guide (Hel
 Requires Xcode 27. Open `ImageViewer.xcodeproj` and press ⌘R, or:
 
 ```sh
-xcodebuild -project ImageViewer.xcodeproj -scheme ImageViewer -configuration Release -derivedDataPath build build
+xcodebuild -project ImageViewer.xcodeproj -scheme AOK-ImageTool -configuration Release -derivedDataPath build build
 open build/Build/Products/Release/AOK-ImageTool.app
 ```
 
@@ -95,7 +95,7 @@ It runs on the GPU. On an M5 Mac, the preview of a 16:9 extension takes about 15
 Releases follow AOK-Foray's pipeline:
 
 1. Bump `MARKETING_VERSION` (and `CURRENT_PROJECT_VERSION`) in the project, and add the version to `CHANGELOG.md`.
-2. In Xcode: the "ImageViewer" scheme, **Product ▸ Archive**, then **Distribute App ▸ Direct Distribution**, which
+2. In Xcode: the "AOK-ImageTool" scheme, **Product ▸ Archive**, then **Distribute App ▸ Direct Distribution**, which
    signs with Developer ID and notarizes. Wait for "Ready to distribute". (`scripts/archive.sh` does the same from
    the command line, with the account signed in to Xcode.)
 3. `scripts/make-dmg.sh` exports the notarized app from the newest archive and makes `dist/AOK-ImageTool-x.y.z.dmg`
@@ -111,7 +111,7 @@ and notarized. `scripts/make-dmg.sh --build` makes a locally signed installer fo
 Runs every non-UI pipeline headlessly against a folder of images and prints a pass/fail report:
 
 ```
-xcodebuild -project ImageViewer.xcodeproj -scheme ImageViewer -configuration Debug -derivedDataPath build build
+xcodebuild -project ImageViewer.xcodeproj -scheme AOK-ImageTool -configuration Debug -derivedDataPath build build
 build/Build/Products/Debug/AOK-ImageTool.app/Contents/MacOS/AOK-ImageTool -selfTest TestImages
 ```
 

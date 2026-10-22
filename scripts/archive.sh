@@ -11,7 +11,7 @@ archive=~/Library/Developer/Xcode/Archives/$(date +%Y-%m-%d)/"AOK-ImageTool $ver
 scratch=$(mktemp -d)
 trap 'rm -rf "$scratch"' EXIT
 print "Archiving AOK-ImageTool $version…"
-xcodebuild -project ImageViewer.xcodeproj -scheme ImageViewer -configuration Release -destination "generic/platform=macOS" \
+xcodebuild -project ImageViewer.xcodeproj -scheme AOK-ImageTool -configuration Release -destination "generic/platform=macOS" \
   -archivePath "$archive" -allowProvisioningUpdates archive >"$scratch/archive.log" 2>&1 || { tail -30 "$scratch/archive.log" >&2; exit 1; }
 cat > "$scratch/ExportOptions.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
