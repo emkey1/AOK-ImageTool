@@ -116,25 +116,19 @@ nonisolated enum GenerativeExtend {
     static let overlap = 160
     static let steps = 20
     /// How much the model redraws the rough start (1 = everything, from pure noise).
-    nonisolated(unsafe) static var strength: Float = 0.9
-    nonisolated(unsafe) static var guidance: Float = 7.5
-    /// Blur applied to the rough start, so only its layout and colors carry over.
-    nonisolated(unsafe) static var roughBlur = 12
-    enum RoughStart: String { case content, smooth, mix }
-    /// What the first pass starts from: a content-aware fill (copied texture), the photo's edge colors
-    /// carried smoothly outward, or half of each.
-    nonisolated(unsafe) static var roughStart = RoughStart.content
-    /// Skips the second pass (for comparing).
-    nonisolated(unsafe) static var refines = true
+    static let strength: Float = 0.9
+    static let guidance: Float = 7.5
+    /// Blur applied to the rough start (a content-aware fill), so only its layout and colors carry over.
+    static let roughBlur = 12
     /// The second pass redraws texture at a finer scale but keeps the first pass's layout.
-    nonisolated(unsafe) static var refineStrength: Float = 0.3
+    static let refineStrength: Float = 0.3
     /// Of which it runs `refineStrength` × this many (DPM-Solver++ needs few at low strength).
-    nonisolated(unsafe) static var refineSteps = 14
+    static let refineSteps = 14
     static let refineOverlap = 128
     /// The band just inside the photo's extended edges that the second pass redraws and the photo then
     /// cross-fades into, as a fraction of the photo's shorter side.
-    nonisolated(unsafe) static var bandFraction: CGFloat = 0.04
-    nonisolated(unsafe) static var negativePrompt = "frame, border, edge, margin, vignette, text, letters, caption, watermark, signature, logo, "
+    static let bandFraction: CGFloat = 0.04
+    static let negativePrompt = "frame, border, edge, margin, vignette, text, letters, caption, watermark, signature, logo, "
         + "blurry, low quality, jpeg artifacts, distorted, deformed, collage, split image, panel, grid, duplicate"
 
     /// What to ask for: the user's words, else the photo's setting as Apple Intelligence described it.
@@ -166,29 +160,13 @@ nonisolated enum GenerativeExtend {
         let ky0 = max(0, Int(rect.minY.rounded(.up)) + 1), ky1 = min(wh, Int(rect.maxY.rounded(.down)) - 1)
         if kx0 < kx1, ky0 < ky1 { for y in ky0..<ky1 { for x in kx0..<kx1 { known[y * ww + x] = 1 } } }
 
-        // The rough start: a content-aware fill (copied from the picture itself), and/or the edge colors
-        // carried outward (a membrane solve from black), blurred.
+        // The rough start: a content-aware fill (copied from the picture itself), blurred.
         var start = canvas
-        if roughStart != .smooth {
-            if let rough {
-                start.draw(rough, topLeftRect: CGRect(x: 0, y: 0, width: ww, height: wh), space: sRGB, quality: .high)
-            } else {
-                _ = start.pixels.withUnsafeMutableBufferPointer { px in
-                    known.withUnsafeBufferPointer { k in iv_content_aware_fill(px.baseAddress, k.baseAddress, nil, Int32(ww), Int32(wh), seed, nil, nil) }
-                }
-            }
-        }
-        if roughStart != .content {
-            var smooth = RGBABitmap(width: ww, height: wh)
-            _ = smooth.pixels.withUnsafeMutableBufferPointer { out in
-                canvas.pixels.withUnsafeBufferPointer { ref in
-                    known.withUnsafeBufferPointer { k in iv_seam_blend(out.baseAddress, ref.baseAddress, k.baseAddress, Int32(ww), Int32(wh)) }
-                }
-            }
-            if roughStart == .smooth {
-                start = smooth
-            } else {
-                for i in 0..<start.pixels.count { start.pixels[i] = UInt8((Int(start.pixels[i]) + Int(smooth.pixels[i])) / 2) }
+        if let rough {
+            start.draw(rough, topLeftRect: CGRect(x: 0, y: 0, width: ww, height: wh), space: sRGB, quality: .high)
+        } else {
+            _ = start.pixels.withUnsafeMutableBufferPointer { px in
+                known.withUnsafeBufferPointer { k in iv_content_aware_fill(px.baseAddress, k.baseAddress, nil, Int32(ww), Int32(wh), seed, nil, nil) }
             }
         }
         start.blur(radius: roughBlur)

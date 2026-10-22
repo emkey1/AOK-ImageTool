@@ -98,18 +98,7 @@ enum ExtendLab {
         let which = i + 7 < args.count ? args[i + 7] : "both"
         let seed = i + 8 < args.count ? UInt64(args[i + 8]) ?? 1 : 1
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
-        // Settings to compare, from the environment.
-        let env = ProcessInfo.processInfo.environment
-        if let v = env["GUIDANCE"].flatMap(Float.init) { GenerativeExtend.guidance = v }
-        if let v = env["STRENGTH"].flatMap(Float.init) { GenerativeExtend.strength = v }
-        if let v = env["REFINE_STRENGTH"].flatMap(Float.init) { GenerativeExtend.refineStrength = v }
-        if let v = env["REFINE_STEPS"].flatMap(Int.init) { GenerativeExtend.refineSteps = v }
-        if let v = env["BAND"].flatMap(Double.init) { GenerativeExtend.bandFraction = CGFloat(v) }
-        if let v = env["NEGATIVE_EXTRA"] { GenerativeExtend.negativePrompt += ", " + v }
-        if let v = env["ROUGH"].flatMap(GenerativeExtend.RoughStart.init(rawValue:)) { GenerativeExtend.roughStart = v }
-        if let v = env["ROUGH_BLUR"].flatMap(Int.init) { GenerativeExtend.roughBlur = v }
-        if env["NO_REFINE"] != nil { GenerativeExtend.refines = false }
-        let tag = env["TAG"].map { "-" + $0 } ?? ""
+        let tag = ProcessInfo.processInfo.environment["TAG"].map { "-" + $0 } ?? ""
         guard let decoded = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false) else {
             print("can't decode \(url.path)")
             exit(1)

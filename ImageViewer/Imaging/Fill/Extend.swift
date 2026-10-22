@@ -250,25 +250,21 @@ nonisolated enum ExtendRenderer {
 
         // Second pass at up to twice the working size: detail at the photo's own scale, and a band just inside
         // its extended edges for the photo to cross-fade into.
-        var generated = entry.image
-        var band = 0
+        let coarse = entry.image
         // (At least the working size, for the band, even when the photo is no bigger than that.)
-        let refineScale = max(1, min(2, CGFloat(min(width, height)) / CGFloat(max(min(generated.width, generated.height), 1))))
-        if GenerativeExtend.refines {
-            // Cached like the first pass, so undo, redo and relaunching don't redo it.
-            let coarse = generated
-            let setting = await settingFor(decoded, edits: edits)
-            let key = decoded.url.path + "|" + edits.extendSourceKey + "|refined"
-            let refined = try await GenerativeFillCache.shared.entry(key: key, crop: entry.canvas, progress: { _ = progress?($0) }) { report in
-                try await GenerativeExtend.refine(coarse, original: original, width: width, height: height, origin: origin,
-                                                  prompt: GenerativeExtend.prompt(edits.extendPrompt, setting: setting), seed: edits.extendSeed ?? 1,
-                                                  scale: refineScale) { report(0.4 + 0.55 * $0) }.image
-            }
-            generated = refined.image
-            let s = CGFloat(refined.image.width) / CGFloat(width)
-            let refinedBand = GenerativeExtend.bandWidth(photo: CGSize(width: CGFloat(original.width) * s, height: CGFloat(original.height) * s))
-            band = Int((CGFloat(refinedBand) / s).rounded())
+        let refineScale = max(1, min(2, CGFloat(min(width, height)) / CGFloat(max(min(coarse.width, coarse.height), 1))))
+        // Cached like the first pass, so undo, redo and relaunching don't redo it.
+        let setting = await settingFor(decoded, edits: edits)
+        let key = decoded.url.path + "|" + edits.extendSourceKey + "|refined"
+        let refined = try await GenerativeFillCache.shared.entry(key: key, crop: entry.canvas, progress: { _ = progress?($0) }) { report in
+            try await GenerativeExtend.refine(coarse, original: original, width: width, height: height, origin: origin,
+                                              prompt: GenerativeExtend.prompt(edits.extendPrompt, setting: setting), seed: edits.extendSeed ?? 1,
+                                              scale: refineScale) { report(0.4 + 0.55 * $0) }.image
         }
+        var generated = refined.image
+        let s = CGFloat(refined.image.width) / CGFloat(width)
+        let refinedBand = GenerativeExtend.bandWidth(photo: CGSize(width: CGFloat(original.width) * s, height: CGFloat(original.height) * s))
+        let band = Int((CGFloat(refinedBand) / s).rounded())
         // Apple's super resolution, where it's on this Mac, enlarges the generated detail better than resampling.
         let enlargement = CGFloat(width) / CGFloat(max(generated.width, 1))
         if enlargement > 1.5, SuperResolution.modelState == .ready, SuperResolution.fits(width: generated.width, height: generated.height),
