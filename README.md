@@ -1,160 +1,113 @@
+<p align="center"><img src="Screenshots/icon.png" width="160" alt="AOK-ImageTool icon"></p>
+
 # AOK-ImageTool
 
-A fast, keyboard-first image viewer and editor for macOS 15 and later: browse, cull, edit, extend photos past their edges, cut out subjects, and use Apple's on-device intelligence where the system has it.
+A fast, keyboard-first photo viewer and editor for the Mac: browse a folder with the arrow keys, pick the keepers,
+edit without touching the original, extend a photo past its edges, cut out subjects, and use Apple's on-device
+intelligence. Your pictures never leave your Mac.
 
-**Help ▸ AOK-ImageTool Guide** (⌘?) is the user manual, with screenshots; its source is [ImageViewer/Help/guide.html](ImageViewer/Help/guide.html). This README is the developer's view.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Screenshots/viewer-dark.jpg">
+    <img src="Screenshots/viewer-light.jpg" width="860" alt="AOK-ImageTool showing a photo of a mountain lake, with the folder sidebar on the left and a filmstrip of the folder below.">
+  </picture>
+</p>
 
-Open `ImageViewer.xcodeproj` in Xcode 27 and press ⌘R. From the command line:
+- **Fast browsing.** Arrow keys step through a folder, with the next images decoded ahead of time. Every format macOS
+  reads, including HEIC, AVIF, JPEG XL, WebP, 30+ camera RAW formats, PDF and SVG, with HDR shown in HDR.
+- **Pick the keepers.** P, X and U pick, reject and unflag (as Finder color labels); filter, sort by Apple's
+  judgment of the best shots, find duplicates and similar photos.
+- **Edit without fear.** Light, color, detail and filters, crop and straighten (Auto levels the horizon). Nothing
+  touches the file until you Save, every change can be undone, and unsaved edits survive quitting.
+- **Extend a photo** past its edges, to 16:9 or any frame: continue its own texture, or **Generate** new content with
+  an image model that runs on your Mac.
+- **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Upscale with AI and Reimagine
+  save new copies, stacked with the original in the filmstrip so a folder stays tidy.
+- **Apple Intelligence** where your Mac has it: describe a photo (alt text, keywords, a file name), ask about it, search
+  a folder by what's in the pictures or the text in them, remove backgrounds and generate new ones.
+- **A full guide** inside the app (Help ▸ AOK-ImageTool Guide, ⌘?).
 
-```
-xcodebuild -project ImageViewer.xcodeproj -scheme ImageViewer -configuration Release -derivedDataPath build build
-open build/Build/Products/Release/AOK-ImageTool.app
-```
+## Screenshots
 
-## Viewing
+Extend a square photo to 16:9, with new content generated on this Mac:
 
-- **Formats:** everything ImageIO reads (JPEG, PNG, HEIC/HEIF, AVIF, JPEG XL, WebP, TIFF, GIF, BMP, PSD, OpenEXR, DDS, KTX, TGA, ICO/ICNS, DICOM, and 30+ camera RAW formats), plus PDF and SVG.
-- **Arrow keys browse the folder** (← → and ↑ ↓; Space / ⇧Space; Home / End). Trackpad swipes and the mouse wheel also step through images when the whole image is visible.
-- **Instant navigation.** Decoded neighbors are prefetched in the direction you're moving. During key-repeat, thumbnails appear immediately and full decoding waits until you pause. RAW files show their embedded preview first.
-- **Rendering:** EXIF orientation, HDR photos in HDR on EDR displays, animated GIF/APNG/WebP/HEICS playback, multi-page TIFF and PDF (Page Up/Down).
-- **Zoom & pan:** GPU zoom (pinch, ⌘/⌥+scroll at the pointer, double-click to toggle fit/100%), drag to pan. **Lock Zoom (L)** keeps the same zoom and position across images, which is useful for comparing burst shots.
-- **Small images:** View ▸ **Enlarge Small Images to Fit Window** (⌥⌘9) scales them up to fill the window, and **Sharpen Enlarged Images with AI** shows them through Apple's on-device upscaler instead of plain smoothing.
-- **Views:** grid view (G), filmstrip (T), folder sidebar, full screen (F), slideshow (S), and an Info inspector with histogram, camera data and a map for GPS-tagged photos.
-- **Live Text & Visual Look Up** directly on the image.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Screenshots/extend-dark.jpg">
+    <img src="Screenshots/extend-light.jpg" width="760" alt="The Crop tool extending a square photo of a red fox to 16:9, with Fill set to Generate and the new area generated on both sides.">
+  </picture>
+</p>
 
-## Culling
+Describe a photo, ask about it, and fix it in one click:
 
-- **P / X / U** — Pick / Reject / Unflag. Flags are stored as Finder color labels (green / red), so they show up in Finder too.
-- Filter to Picks / Rejects / Unflagged; **Move Rejects to Trash** in one step. Trash is undoable (⌘Z).
-- Sort by name, dates (including EXIF date taken), size, kind, shuffle, or **Best Shots (AI)**.
-- Go ▸ Next / Previous Folder (⌥⌘→ / ⌥⌘←) walks sibling folders, such as date-named photo folders.
-- Each folder remembers the last image you viewed.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Screenshots/intelligence-dark.jpg">
+    <img src="Screenshots/intelligence-light.jpg" width="760" alt="The Intelligence panel with a title, caption and keywords describing a photo of a red fox.">
+  </picture>
+</p>
 
-## Editing (non-destructive, undoable)
+Copies stack with their original; spread a stack out to see them all:
 
-- Rotate / flip, **Crop & Straighten** (C) with aspect presets and rule-of-thirds guides.
-- **Extend** (in the Crop tool): drag the frame up to 35% past the photo's edges, or pick an aspect such as 16:9 to widen a photo to that shape. Fill the new area one of two ways, with a live preview and **Try Again** for a different result:
-  - **Match Photo** continues the photo's own texture (content-aware fill). It's fast and always available.
-  - **Generate** draws new content with Stable Diffusion 1.5 Inpainting, running on this Mac (Apple silicon). Optionally describe what to add, such as “sandy beach and blue sky”; leave it empty to continue the scene. Needs the model; see [Generative fill model](#generative-fill-model).
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Screenshots/stacks-dark.jpg">
+    <img src="Screenshots/stacks-light.jpg" width="760" alt="A black and white copy of a photo of sunflowers, with its stack spread out in the filmstrip: the black and white copy, an upscaled copy and the original.">
+  </picture>
+</p>
 
-  Your original pixels stay untouched, and later adjustments apply to the extended area too.
-- Light (exposure, brightness, contrast, highlights, shadows), color (saturation, vibrance, warmth, tint), detail (sharpness, noise reduction, vignette), Auto Enhance, and 13 filter looks with live previews.
-- **Black & White** with darkroom filters (red, orange, yellow, green, blue: a channel mix in linear light) and sepia, warm or cool toning.
-- Show Original (\\) for before/after comparison.
-- **Save (⌘S)** writes back in the same format and keeps metadata. By default the original goes to the Trash so it's always recoverable.
-- **Export (⇧⌘E)** to JPEG/HEIC/AVIF/PNG/TIFF/GIF/BMP/JPEG 2000 with quality, max size and **metadata control (strip location for sharing)**. Exporting from the grid selection batch-exports many images at once.
+The grid, for culling a whole folder:
 
-## Apple Intelligence & Vision (all on-device)
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Screenshots/grid-dark.jpg">
+    <img src="Screenshots/grid-light.jpg" width="760" alt="Grid view of a folder of photos, with green pick and red reject flags on some of them.">
+  </picture>
+</p>
 
-| Feature | Powered by |
-| --- | --- |
-| Describe image (title, alt-text caption, keywords, suggested file name) | Foundation Models (macOS 26+; it looks at the pixels on macOS 27, and works from Vision's labels and text on macOS 26) |
-| Ask questions about the image (chat) | Foundation Models |
-| Rename with an AI-suggested name; add keywords as Finder tags (Spotlight-searchable) | Foundation Models |
-| **Content search** in the toolbar: “owl”, “beach”, or text inside images; related words when there's no exact match | Vision classification + OCR, NaturalLanguage embeddings |
-| Best-shot ranking, screenshot/document detection | Vision aesthetics |
-| Find Similar / Find Duplicates (with “keep best of each group”) | Vision feature prints |
-| Remove Background, Copy Subject | Vision foreground instance masks |
-| **Select Object…**: click any object to select it, ⌥-click to exclude, then cut out, copy or save as PNG | Vision interactive segmentation (macOS 27; on 15 and 26, click picks the foreground object under the pointer) |
-| **New background** behind a cutout: a color, the original blurred, a picture, or one made in Image Playground (Intelligence ▸ Background). **Match Lighting** blends the subject's brightness, light color and edges with a picture background | Core Image, ImagePlayground |
-| **Upscale with AI** (Image menu, 2×, 3× or 4×): saves a sharper, larger copy; images over 1920 × 1920 (the model's limit per pass) go through in overlapping tiles | VideoToolbox super resolution (macOS 26+; Apple's model, one-time download) |
-| **Extend ▸ Generate**: new content past the photo's edges | Core ML: Stable Diffusion 1.5 Inpainting (user-installed model, Apple silicon) |
-| **Colorize**: black and white photos to color, saved as a copy; only the color is the model's (its a*b* on the photo's own L*) | Core ML: DDColor large (user-installed, `scripts/convert-colorize-model.sh`, Apache 2.0) |
-| **Background ▸ Generate on This Mac**: a scene painted around a cutout, from the scene you describe and the subject Apple Intelligence describes | The same model, inpainting everything but the subject; Foundation Models for the subject's description |
-| Auto Straighten, Smart Crop, Straighten Document | Vision horizon, saliency, document detection |
-| Reimagine in Image Playground | ImagePlayground (macOS 15.1+) |
-| Read & translate text in images | Vision OCR + Translation |
+The photos in these pictures were generated for this project; none of them shows a real person or place.
 
-Folder analysis is cached in `~/Library/Caches/com.oneopa.AOK-ImageTool/Index`, so each folder is only analyzed once.
+## Install
 
-### What works on which macOS
+1. [Download AOK-ImageTool](https://github.com/emkey1/AOK-ImageTool/releases/latest/download/AOK-ImageTool.dmg)
+   (always the latest version; the [releases page](https://github.com/emkey1/AOK-ImageTool/releases/latest) has the notes).
+2. Open it and drag **AOK-ImageTool** to **Applications**.
+3. Open AOK-ImageTool and open a folder of pictures (⌘O), or drop pictures on its icon.
 
-Everything not listed here works on macOS 15 and later. That includes viewing, culling, editing, Extend (both fills), Live Text, translation, and all the Vision features: search, best shots, duplicates, background removal, horizon, Smart Crop and documents. Features a system can't run are hidden or explained rather than failing.
+Requires macOS 15 (Sequoia) or later on Apple silicon. AOK-ImageTool offers new versions itself
+(AOK-ImageTool ▸ Check for Updates…).
 
-| Feature | macOS 15 | 15.1+ | 26 | 27 |
-| --- | --- | --- | --- | --- |
-| Image Playground (Reimagine, generated backgrounds) | — | ✓¹ | ✓¹ | ✓¹ |
-| Describe / Ask / AI rename & keywords | — | — | ✓¹ (from Vision's labels) | ✓¹ (looks at the image) |
-| Upscale with AI, Sharpen Enlarged Images with AI | — | — | ✓ | ✓ |
-| Select Object refinement (click and ⌥-click to refine) | foreground object under the click | same | same | ✓ |
-| HDR display | ✓ (extended range) | ✓ | ✓ | ✓ |
+**What each macOS can do.** Everything except the following works on macOS 15: Image Playground needs 15.1 and Apple
+Intelligence; describing and asking about photos need macOS 26 and Apple Intelligence; Upscale with AI needs macOS 26.
+The Guide has the details.
 
-¹ Needs a Mac with Apple Intelligence turned on.
+## The optional image models
 
-### Generative fill model
+Two features use image models that run on your Mac but aren't built into the app, because they're large. The app
+offers to download each one the first time you use the feature, or you can get them in **Settings ▸ Editing**:
 
-Extend ▸ Generate uses [Stable Diffusion 1.5 Inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting) (CreativeML Open RAIL-M license), converted to Core ML. The app doesn't ship the model (about 2 GB). Build it once from the official weights:
+- **Generate** (Extend, and Generate a Background) uses [Stable Diffusion 1.5 Inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting),
+  about 2 GB. Its license, [CreativeML Open RAIL-M](https://huggingface.co/spaces/CompVis/stable-diffusion-license),
+  limits how the model may be used, so the app asks you to accept it first.
+- **Colorize** uses [DDColor](https://github.com/piddnad/DDColor), about 425 MB, under the Apache 2.0 license.
 
-```
-scripts/convert-inpainting-model.sh ~/Downloads/sd-inpainting --install
-```
+Both are converted to Core ML and hosted on this repository's releases; the app checks each download against a
+fingerprint before installing it. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-The script uses a throwaway Python environment inside that folder, Apple's [ml-stable-diffusion](https://github.com/apple/ml-stable-diffusion) converter at a pinned commit, and the fp16 weights (no safety checker). It takes a few minutes. `--install` copies the result to `~/Library/Application Support/com.oneopa.AOK-ImageTool/Models/StableDiffusionInpainting`. Without `--install`, choose the `Resources` folder it made in **Settings ▸ Editing ▸ Install from Folder…**, which also shows the model's status and can remove it. Delete the work folder afterwards.
+## Privacy
 
-How a generated fill is made (`Imaging/Fill/`):
+Descriptions, questions, search, background removal, upscaling, colorizing and generated fills all run on your Mac.
+The app goes online only to download the models when you ask for them and to check for updates (once a day, or
+never if you turn it off in Settings).
 
-1. **Working size.** The canvas is worked on at the model's size (short side 512 px), in overlapping 512 × 512 windows along the long side. The window with the most of the photo in it goes first, and each later window builds on what's already there.
-2. **Rough start and prompt.** Each window starts from a blurred content-aware fill instead of pure noise. This keeps the model continuing the photo instead of starting a new picture beside it. Unless the user types something, the prompt is Apple Intelligence's description of the photo's setting (`ImageDescriber.describeSetting`, cached per photo), which leaves out the people and the subject, so the model continues the place without painting a second subject.
-3. **Our own inference loop** (`StableDiffusion.swift`). It covers the CLIP tokenizer, the 9-channel inpainting UNet with classifier-free guidance, and a DPM-Solver++ scheduler (20 steps). Apple's Swift package doesn't do inpainting.
-4. **Second pass** (the final fill, after Done). The new area, plus a band just inside the photo's extended edges, is redrawn at up to twice the working size in overlapping 512 × 512 windows, image-to-image from the first pass (strength ~0.35). Each window sees the original at that scale, so the new area gets texture at the photo's own scale instead of being an enlargement. Meanwhile the first pass shows as a draft.
-5. **Seamless edges.** Each window, and then the final fill, gets a membrane (Laplace) seam blend in C (`iv_seam_blend`), so the new content meets the original without a color cast. The photo then cross-fades into the fill across the band (`ExtendFill.feather`) instead of sitting on it with a hard edge.
-6. **Scanned prints.** A white or black margin on at least three sides, with the picture's straight edge inside it (`PhotoBorder`), means a print. Extend works from the picture inside, and the photo is drawn over the fill only there (`ExtendFill.content`), so the border is replaced too. Otherwise the model treats the print as an object and paints a scene around it.
-7. **Final size.** The result is enlarged to the final canvas, with Apple's super resolution where it's available.
+## Build from source
 
-It runs on the GPU. On an M5 Mac, the preview of a 16:9 extension takes about 15–25 s and the second pass about as long again, and the first use after installing compiles the model for a few seconds more. The crop tool's preview and the final fill share one generation, so Done doesn't make it again. The loaded model (about 2.5 GB of memory) is released after a few idle minutes.
+Requires Xcode 27. Open `ImageViewer.xcodeproj` and press ⌘R. [DEVELOPMENT.md](DEVELOPMENT.md) covers the project
+layout, the self-test, how generated fills are made, the models and the release process.
 
-## Keyboard
+## License
 
-Press **?** in the app for the full list. The essentials:
+MIT. See [LICENSE](LICENSE). The optional models have their own licenses; see
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
-| Key | Action |
-| --- | --- |
-| ← → ↑ ↓, Space | Previous / next image |
-| Z, 0, 1, + − | Fit/100% toggle, fit, 100%, zoom |
-| G / T / F / S | Grid / filmstrip / full screen / slideshow |
-| I / E / A | Info / Adjust / Intelligence panel |
-| P / X / U | Pick / Reject / Unflag |
-| R, ⇧R, C, \\ | Rotate, crop, before/after |
-| ⌘S, ⇧⌘E, ⌘⌫ | Save, Export, Move to Trash |
-| ⇧⌘D, ⌥⌘B | Describe image, Remove background |
-
-Single-key shortcuts go through a window-scoped key monitor rather than menu key equivalents, so they never steal typing from the search or chat fields. Press Esc in an empty field to return focus to the image.
-
-## Project layout
-
-```
-ImageViewer/
-  App/           App entry, menus & commands
-  Model/         ViewerModel (folder, navigation, display), edits, file ops, keyboard
-  Imaging/       Decoding, prefetch cache, thumbnails, Core Image edit renderer, writer, metadata
-    Fill/        Extend: content-aware fill (C engine, ContentAwareFill.c), generative fill
-                 (StableDiffusion.swift: Core ML inpainting; GenerativeExtend.swift: windows, cache, model install)
-  Canvas/        AppKit zoom/pan canvas (CALayer-backed, HDR), Live Text overlay
-  Intelligence/  Vision services, Foundation Models describer/chat, folder index & search
-  Views/         SwiftUI: window, toolbar, browser (grid/filmstrip/sidebar), inspector, tools, sheets
-  Support/       Preferences, supported formats, debug self-test and screenshot scenes
-  Help/          The Guide (guide.html + light/dark screenshots), shown by GuideWindowController
-  AppIcon.icon   App icon (Icon Composer layers, in Foray's style)
-scripts/
-  make-icon.swift                Redraws AppIcon.icon: swift scripts/make-icon.swift [preview.png]
-  convert-inpainting-model.sh    Builds the generative fill model from the official weights
-  convert-colorize-model.sh      Builds the colorizing model (DDColor) from its official weights
-```
-
-The project uses Xcode's synchronized folder, so new files under `ImageViewer/` are picked up automatically.
-
-**Why the fill engine is in C:** Swift's unoptimized Debug code runs tight pixel loops roughly 1,000× slower than Release, which would make Extend unusable when running from Xcode. C files are compiled with `-O3` in every configuration (`GCC_OPTIMIZATION_LEVEL = 3`; Swift stays debuggable). The engine is coarse-to-fine patch synthesis that copies real pixels, so fills stay sharp. It's followed by a gradient-domain (Poisson) blend, so skies and other smooth gradients join without seams. It avoids copying the main subject (found by Vision), except near the edges being extended.
-
-## Self-test (Debug builds)
-
-Runs every non-UI pipeline headlessly against a folder of images and prints a pass/fail report:
-
-```
-build/Build/Products/Debug/AOK-ImageTool.app/Contents/MacOS/AOK-ImageTool -selfTest /path/to/images
-```
-
-The self-test uses its own temporary storage and restores any preferences it changes, so it's safe to run while you're using the app. It checks the generative fill's scheduler and noise every time, and runs a real generation when the model is installed. `-debugExtend` (Debug builds) opens the first image straight into the Crop tool extending to 16:9 (add `-debugGenerate` for Generate), for checking that UI.
-
-The Guide's screenshots come from `-debugScene viewer|grid|adjust|intelligence|info`, with `-debugAppearance light|dark` and `-debugWindowSize 1280x800`. Runs with any of these switches use temporary storage and never save preferences. The screenshots were taken with a copy of the app under its own bundle ID, so its recents and window positions stay apart from yours. The demo photos in them were generated by the app's own model.
-
-Requirements: macOS 15 or later (built with Xcode 27; newer APIs are availability-gated and their frameworks weak-linked). Image Playground and the Foundation Models features need an Apple Intelligence–capable Mac with Apple Intelligence turned on. Generate needs Apple silicon and the model above.
+AOK-ImageTool is an independent project and is not affiliated with or endorsed by Apple.

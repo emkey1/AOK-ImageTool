@@ -50,6 +50,7 @@
   <a href="#start">Getting around</a>
   <a href="#viewing">Viewing</a>
   <a href="#culling">Picking the keepers</a>
+  <a href="#stacks">Copies and stacks</a>
   <a href="#search">Searching</a>
   <a href="#editing">Editing</a>
   <a href="#extend">Extend and Generate</a>
@@ -59,7 +60,8 @@
   <a href="#settings">Settings</a>
   <a href="#keys">Keyboard shortcuts</a>
   <a href="#macos">Which macOS has what</a>
-  <a href="#model">The generative fill model</a>
+  <a href="#model">The image models</a>
+  <a href="#updates">Updates</a>
   <a href="#privacy">Privacy</a>
 </nav>
 <main>
@@ -112,6 +114,21 @@
   <li><b>Find Similar Images</b> (Intelligence menu) shows the images that look like the one you're on; <b>Show All</b> goes back.</li>
 </ul>
 
+<h2 id="stacks">Copies and stacks</h2>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="guide-stacks-dark.heic">
+  <img class="shot" src="guide-stacks-light.heic" alt="The filmstrip with a stack spread out: a black and white copy, an upscaled copy and the original photo side by side on a shared background.">
+</picture>
+<p>Black &amp; White, Colorize, Upscale with AI, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
+<ul>
+  <li><b>A stack takes one place</b> in the filmstrip and the grid, showing its newest copy on top. Lines above the thumbnail and a count in its corner mark it.</li>
+  <li><b>Step through a stack</b> with <kbd>⌥←</kbd> and <kbd>⌥→</kbd> (or <b>Go › Newer Copy in Stack</b> and <b>Older Copy in Stack</b>): newest first, the original last. The window's title says where you are, such as “Stack 2/3”.</li>
+  <li><b>Spread it out.</b> Click the count, or choose <b>Show All Copies in Stack</b> (Go menu, or right-click), to see every copy side by side; click the count again to stack them up. The stack then shows the copy you were on.</li>
+  <li><b>Copies of copies</b> (a colorized photo, then upscaled) stay in the original's stack. Renaming the original keeps its copies with it.</li>
+  <li><b>View › Stack Copies with Originals</b> turns stacking off, showing every file on its own.</li>
+</ul>
+<p class="note">A copy remembers what it was made from in the file's extended attributes; copies with names like “Beach (Colorized)” or “Beach (2×)” stack even without that.</p>
+
 <h2 id="search">Searching</h2>
 <p>Type in the search field in the toolbar. It matches file names, and, once the folder has been analyzed, <b>what's in the pictures</b> (“owl”, “beach”, “receipt”) and <b>text inside them</b>.</p>
 <ul>
@@ -129,8 +146,8 @@
 <p>Edits never touch the file until you <a href="#files">Save</a>. Every change can be undone (<kbd>⌘Z</kbd>), and unsaved edits are still there after you quit and reopen the app.</p>
 <ul>
   <li><b>Adjust</b> (<kbd>E</kbd>, or the toolbar button) has <b>Light</b> (exposure, brightness, contrast, highlights, shadows), <b>Color</b> (saturation, vibrance, warmth, tint), <b>Detail</b> (sharpness, noise reduction, vignette) and 13 <b>filters</b>, each previewed on your photo. Double-click a slider's name to reset it.</li>
-  <li><b>Black &amp; White</b> (in Adjust, or <b>Image › Black &amp; White</b>) converts the darkroom way. A <b>filter</b> decides which colors turn light or dark: <b>Red</b> makes blue skies dark and dramatic and smooths skin, <b>Yellow</b> is milder, <b>Green</b> separates foliage, <b>Blue</b> brightens skies and darkens skin. <b>Toning</b> (sepia, warm or cool) tints the grays, as much as you like. The other adjustments still work on it, and switching it off brings the color back.</li>
-  <li><b>Colorize</b> (<b>Image › Colorize</b>, or in the Intelligence panel) turns a black and white photo to color and saves the result next to it, as “… (Colorized)”. The colors come from DDColor, a model made for colorizing that runs on this Mac (once its <a href="#model">model</a> is installed); all the light and detail are the original's, so faces and textures stay exactly as they were. The colors are a well-informed guess: a sweater may come out a different color than it was.</li>
+  <li><b>Black &amp; White…</b> (<b>Image › Black &amp; White…</b>, or <b>Copies</b> at the bottom of Adjust) makes a black and white copy, the darkroom way, and saves it next to the original as “… (Black &amp; White)”. A <b>filter</b> decides which colors turn light or dark: <b>Red</b> makes blue skies dark and dramatic and smooths skin, <b>Yellow</b> is milder, <b>Green</b> separates foliage, <b>Blue</b> brightens skies and darkens skin. <b>Toning</b> (sepia, warm or cool) tints the grays, as much as you like. The preview shows the result before you save; the copy includes your other edits, and remembers the filter you chose for next time.</li>
+  <li><b>Colorize</b> (<b>Image › Colorize</b>, <b>Copies</b> in Adjust, or the Intelligence panel) turns a black and white photo to color and saves the result next to it, as “… (Colorized)”. The colors come from DDColor, a model made for colorizing that runs on this Mac; the first time, the app offers to download it (about 425 MB, see <a href="#model">the models</a>). All the light and detail are the original's, so faces and textures stay exactly as they were. The colors are a well-informed guess: a sweater may come out a different color than it was.</li>
   <li><b>Auto</b> enhances the photo in one click (<kbd>⌥⌘E</kbd>). Click it again to take it off.</li>
   <li><b>Before and after.</b> Click the eye button, or press <kbd>\</kbd>, to see the original; again to go back.</li>
   <li><b>Rotate and flip.</b> <kbd>R</kbd> and <kbd>⇧R</kbd> rotate (also <kbd>]</kbd> <kbd>[</kbd>, <kbd>⌘R</kbd> <kbd>⌘L</kbd>); flips are in the Image menu.</li>
@@ -151,7 +168,7 @@
   <li><b>Choose a Fill</b> (Extend starts with the one you used last; Generate, once its model is installed):
     <ul>
       <li><b>Match Photo</b> continues the photo's own texture by copying it: skies, grass, sand, water, plain walls. It takes a moment and works on any Mac, but it can't invent objects or structure, so tiles, furniture and people beside the edge come out scrambled; use Generate for those.</li>
-      <li><b>Generate</b> draws new content that continues the scene, with an image model that runs on this Mac. Apple Intelligence describes the photo's setting (“a restaurant with wooden floors, tables and chairs”, never the people in it), and Generate continues that; the description field shows what it's using. To ask for something else, type it (“sandy beach and blue sky”) and press <kbd>Return</kbd>. It needs Apple silicon and the <a href="#model">generative fill model</a>; without Apple Intelligence it continues the scene from the picture alone.</li>
+      <li><b>Generate</b> draws new content that continues the scene, with an image model that runs on this Mac. Apple Intelligence describes the photo's setting (“a restaurant with wooden floors, tables and chairs”, never the people in it), and Generate continues that; the description field shows what it's using. To ask for something else, type it (“sandy beach and blue sky”) and press <kbd>Return</kbd>. It needs Apple silicon and the <a href="#model">generative fill model</a>, a one-time download: click <b>Get the Model for Generate…</b> in the bar. Without Apple Intelligence it continues the scene from the picture alone.</li>
     </ul>
   </li>
   <li><b>Look at the preview.</b> Match Photo previews right away. Generate takes about 15–25 seconds, with its progress at the top. Not quite right? <b>Try Again</b> (at the top, or in the bar at the bottom) makes a different one.</li>
@@ -191,8 +208,8 @@
   <li><b>Ask About This Image.</b> Type a question (“What breed is this?”, “Where could this be?”) or click a suggestion. Follow-up questions remember the conversation.</li>
   <li><b>Text in Image.</b> <b>Read Text</b> finds all the text in a photo (signs, receipts, slides) to copy or <b>Translate…</b>.</li>
   <li><b>Smart Fixes:</b> Auto Enhance, Straighten (levels the horizon or upright lines), Smart Crop, Fix Document, and, with their models installed, Generative Extend and Colorize.</li>
-  <li><b>Reimagine in Image Playground…</b> turns the photo into an animation, illustration or sketch, saved next to the original.</li>
-  <li><b>Upscale with AI</b> (Image menu: 2×, 3× or 4×) saves a sharper, larger copy, such as “Fox (4×).heic”, next to the original. Images larger than 1920 × 1920 are upscaled in overlapping tiles; the result can be up to 16,384 pixels on a side. macOS downloads Apple's upscaling model the first time.</li>
+  <li><b>Reimagine in Image Playground…</b> turns the photo into an animation, illustration or sketch, saved next to the original and <a href="#stacks">stacked</a> with it.</li>
+  <li><b>Upscale with AI</b> (Image menu, or <b>Copies</b> in Adjust: 2×, 3× or 4×) saves a sharper, larger copy, such as “Fox (4×).heic”, next to the original and stacked with it. Images larger than 1920 × 1920 are upscaled in overlapping tiles; the result can be up to 16,384 pixels on a side. macOS downloads Apple's upscaling model the first time.</li>
   <li><b>Shot Quality</b> scores the photo; <b>Best Shots</b> sorts the folder by that score.</li>
   <li><b>This Folder:</b> Analyze Folder (for search), Best Shots, Find Similar and Duplicates.</li>
   <li><b>Rename…</b> <kbd>⌥⌘R</kbd> (File menu) has <b>Suggest a Name</b>, from what's in the picture.</li>
@@ -211,9 +228,9 @@
 <h2 id="settings">Settings</h2>
 <p><b>AOK-ImageTool › Settings…</b> (<kbd>⌘,</kbd>):</p>
 <ul>
-  <li><b>General:</b> what <kbd>↑</kbd> <kbd>↓</kbd> do (browse or zoom); whether <kbd>Space</kbd> shows the next image; wrapping around at the end of a folder; moving on after a pick or reject; including subfolders and hidden files; slideshow timing; and the list of supported formats.</li>
+  <li><b>General:</b> what <kbd>↑</kbd> <kbd>↓</kbd> do (browse or zoom); whether <kbd>Space</kbd> shows the next image; wrapping around at the end of a folder; moving on after a pick or reject; including subfolders and hidden files; slideshow timing; <a href="#updates">checking for updates</a>; and the list of supported formats.</li>
   <li><b>Viewing:</b> the canvas background, the checkerboard behind transparency, enlarging small images, crisp pixels when zoomed in, HDR, and file names under thumbnails.</li>
-  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, and the <a href="#model">generative fill and colorizing models</a>: their status, <b>Install from Folder…</b> and <b>Remove…</b>.</li>
+  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, and the <a href="#model">generative fill and colorizing models</a>: their status, <b>Download</b>, <b>Remove…</b>, and under <b>More</b>, installing one you converted yourself and the model's license.</li>
   <li><b>Intelligence:</b> whether Apple Intelligence is available, describing images automatically, Live Text, and <b>Clear Cached Analysis</b> (search analysis is made again when needed).</li>
 </ul>
 
@@ -222,6 +239,7 @@
 <table>
   <tr><th>Shortcut</th><th>Action</th></tr>
   <tr><td><kbd>←</kbd> <kbd>→</kbd> <kbd>↑</kbd> <kbd>↓</kbd> <kbd>Space</kbd></td><td>Previous / next image (<kbd>⇧Space</kbd> goes back)</td></tr>
+  <tr><td><kbd>⌥←</kbd> <kbd>⌥→</kbd></td><td>Newer / older copy in a <a href="#stacks">stack</a></td></tr>
   <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First / last image</td></tr>
   <tr><td><kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Previous / next page (PDF, multi-page TIFF)</td></tr>
   <tr><td><kbd>G</kbd> <kbd>⌘1</kbd> <kbd>⌘2</kbd></td><td>Toggle grid / viewer / grid</td></tr>
@@ -258,17 +276,24 @@
 <p>¹ On a Mac with Apple Intelligence, turned on in System Settings.</p>
 
 <h2 id="model">The generative fill and colorizing models</h2>
-<p>Generate uses <b>Stable Diffusion 1.5 Inpainting</b>, converted to run with Core ML on Apple silicon. It isn't built into the app because it's large (about 2 GB). <b>Settings › Editing</b> shows whether it's installed.</p>
+<p>Two features use image models that run on this Mac but aren't built into the app, because they're large: <b>Generate</b> (in Extend and Generate a Background) uses <b>Stable Diffusion 1.5 Inpainting</b>, about 2 GB, and <b>Colorize</b> uses <b>DDColor</b>, about 425 MB. Both need Apple silicon.</p>
 <ul>
-  <li><b>Installing.</b> The model is made from the official weights by a script in the app's project, <code>scripts/convert-inpainting-model.sh</code>. It downloads what it needs into a folder you name, converts the model in a few minutes, and with <code>--install</code> puts it in place. Without <code>--install</code>, choose the folder it made in <b>Settings › Editing › Install from Folder…</b>.</li>
-  <li><b>Where it lives:</b> <code>~/Library/Application Support/com.oneopa.AOK-ImageTool/Models</code>. <b>Remove…</b> in Settings deletes it.</li>
-  <li><b>Memory.</b> While you use Generate the model takes about 2.5 GB of memory; it's let go after a few idle minutes. The first generation after installing takes a few seconds longer while macOS prepares the model for this Mac.</li>
-  <li><b>License.</b> The model's license is CreativeML Open RAIL-M, which asks that it not be used for harmful content.</li>
-  <li><b>Colorize</b> uses a second model, DDColor (Apache 2.0, about 460 MB), built the same way with <code>scripts/convert-colorize-model.sh</code> and shown in <b>Settings › Editing › Colorize</b>.</li>
+  <li><b>Getting them.</b> The first time you use the feature, the app offers to download its model; or click <b>Download</b> in <b>Settings › Editing</b>. Progress shows there and at the top of the window, and you can keep working meanwhile. Each download is checked against a fingerprint built into the app before it's installed.</li>
+  <li><b>Licenses.</b> Stable Diffusion's license, <b>CreativeML Open RAIL-M</b>, limits how the model may be used (no illegal or harmful content, no deceiving or harassing people, among others), so the app asks you to accept it before downloading; <b>View License</b> shows it. DDColor's is <b>Apache 2.0</b>.</li>
+  <li><b>Where they live:</b> <code>~/Library/Application Support/com.oneopa.AOK-ImageTool/Models</code>. <b>Remove…</b> in Settings deletes one; you can download it again any time.</li>
+  <li><b>Memory.</b> While you use Generate its model takes about 2.5 GB of memory; it's let go after a few idle minutes. The first use after installing takes a few seconds longer while macOS prepares the model for this Mac.</li>
+  <li><b>Making them yourself.</b> The project's <code>scripts/convert-inpainting-model.sh</code> and <code>scripts/convert-colorize-model.sh</code> convert the official weights; <b>More › Install from Folder…</b> in Settings installs the result.</li>
+</ul>
+
+<h2 id="updates">Updates</h2>
+<ul>
+  <li><b>AOK-ImageTool › Check for Updates…</b> looks for a newer version. The app also checks once a day by itself (turn that off in <b>Settings › General</b>).</li>
+  <li><b>Installing</b> an update downloads it, checks that it's AOK-ImageTool, signed by its developer and notarized by Apple, replaces the app and relaunches it. Unsaved edits are kept.</li>
+  <li><b>Help › Release Notes</b> lists what changed in each version.</li>
 </ul>
 
 <h2 id="privacy">Privacy</h2>
-<p>Your pictures never leave your Mac. Descriptions, questions, search analysis, background removal, upscaling, colorizing, generated fills and backgrounds all run on this Mac. The only downloads are the ones macOS makes itself (Apple's upscaling model, the first time you use it) and the generative fill and colorizing models, if you install them. Search analysis is kept in <code>~/Library/Caches/com.oneopa.AOK-ImageTool</code>; unsaved edits, backgrounds you choose and Extend fills in <code>~/Library/Application Support/com.oneopa.AOK-ImageTool</code>.</p>
+<p>Your pictures never leave your Mac. Descriptions, questions, search analysis, background removal, upscaling, colorizing, generated fills and backgrounds all run on this Mac. The app goes online only to download the generative fill and colorizing models when you ask for them, and to check GitHub for updates (once a day, unless you turn it off); macOS downloads Apple's upscaling model itself, the first time you use it. Search analysis is kept in <code>~/Library/Caches/com.oneopa.AOK-ImageTool</code>; unsaved edits, backgrounds you choose and Extend fills in <code>~/Library/Application Support/com.oneopa.AOK-ImageTool</code>.</p>
 
 </main>
 </body>

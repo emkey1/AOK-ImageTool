@@ -7,7 +7,7 @@
 # Needs Xcode (for coremlcompiler), about 10 GB free in the work folder, and a network connection: it
 # downloads Python packages (into a virtual environment inside the work folder), Apple's converter, and
 # the fp16 weights (about 2 GB; no safety checker). The result is <work folder>/Resources, which you choose
-# in AOK-ImageTool ▸ Settings ▸ Editing ▸ Install from Folder… (or pass --install to copy it into place).
+# in AOK-ImageTool ▸ Settings ▸ Editing ▸ Generative Fill ▸ More ▸ Install from Folder… (or pass --install to copy it into place).
 # The work folder can be deleted afterwards.
 #
 # The weights are licensed under CreativeML Open RAIL-M:
@@ -100,5 +100,5 @@ if [[ "$INSTALL" == "--install" ]]; then
     cp -cR "$R/" "$DEST/"
     log "Installed in $DEST"
 else
-    log "Done: choose $R in Settings ▸ Editing ▸ Install from Folder…"
+    log "Done: choose $R in Settings ▸ Editing ▸ Generative Fill ▸ More ▸ Install from Folder…"
 fi

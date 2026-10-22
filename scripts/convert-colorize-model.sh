@@ -6,7 +6,7 @@
 # Needs Xcode (for coremlcompiler), about 4 GB free in the work folder, and a network connection: it
 # downloads Python packages (into a virtual environment inside the work folder), DDColor's code, and its
 # weights (about 900 MB). The result is <work folder>/out/DDColor.mlmodelc, which you choose in
-# AOK-ImageTool ▸ Settings ▸ Editing ▸ Colorize ▸ Install from Folder… (or pass --install). The work
+# AOK-ImageTool ▸ Settings ▸ Editing ▸ Colorize ▸ More ▸ Install from Folder… (or pass --install). The work
 # folder can be deleted afterwards. DDColor's code and weights are licensed under Apache 2.0.
 set -euo pipefail
 
@@ -71,5 +71,5 @@ if [[ "$INSTALL" == "--install" ]]; then
     cp -cR "$D/out/DDColor.mlmodelc" "$DEST/"
     log "Installed in $DEST"
 else
-    log "Done: choose $D/out/DDColor.mlmodelc in Settings ▸ Editing ▸ Colorize ▸ Install from Folder…"
+    log "Done: choose $D/out/DDColor.mlmodelc in Settings ▸ Editing ▸ Colorize ▸ More ▸ Install from Folder…"
 fi
