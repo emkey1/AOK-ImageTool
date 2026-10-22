@@ -16,6 +16,10 @@ struct ViewerCommands: Commands {
     private var canEdit: Bool { viewer?.canEdit ?? false }
 
     var body: some Commands {
+        CommandGroup(after: .appInfo) {
+            Button("Check for Updates…") { Updater.shared.checkNow() }
+        }
+
         CommandGroup(replacing: .newItem) {
             Button("New Window") { openWindow(id: "viewer") }
                 .keyboardShortcut("n")
@@ -280,6 +284,7 @@ struct ViewerCommands: Commands {
             Divider()
             Button("Keyboard Shortcuts") { viewer?.showShortcuts = true }
                 .keyboardShortcut("/", modifiers: .command)
+            Button("Release Notes") { Updater.showReleaseNotes() }
         }
     }
 

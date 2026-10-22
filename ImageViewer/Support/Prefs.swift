@@ -33,6 +33,9 @@ nonisolated enum PrefKey {
     static let sortAscending = "sortAscending"
     static let stackCopies = "stackCopies"
     static let blackAndWhite = "blackAndWhite"
+    static let checkForUpdates = "CheckForUpdates"
+    static let lastUpdateCheck = "LastUpdateCheck"
+    static let skippedVersion = "SkippedVersion"
 }
 
 nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {

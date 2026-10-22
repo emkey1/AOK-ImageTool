@@ -21,6 +21,7 @@ private struct GeneralSettings: View {
     @AppStorage(PrefKey.showHiddenFiles) private var showHidden = false
     @AppStorage(PrefKey.advanceAfterFlag) private var advanceAfterFlag = true
     @AppStorage(PrefKey.slideshowInterval) private var slideshowInterval = 4.0
+    @AppStorage(PrefKey.checkForUpdates) private var checkForUpdates = true
 
     var body: some View {
         Form {
@@ -43,6 +44,13 @@ private struct GeneralSettings: View {
                         Slider(value: $slideshowInterval, in: 1...15, step: 0.5)
                         Text(String(format: "%.1f s", slideshowInterval)).monospacedDigit().frame(width: 44)
                     }
+                }
+            }
+            Section("Updates") {
+                Toggle("Check for updates automatically", isOn: $checkForUpdates)
+                HStack {
+                    Button("Check Now") { Updater.shared.checkNow() }
+                    Button("Release Notes") { Updater.showReleaseNotes() }
                 }
             }
             Section("Supported Formats") {

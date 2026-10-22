@@ -43,14 +43,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Another running copy may still need files its pending edits haven't recorded yet (or its undo
         // history uses), so only prune when this is the only one.
         let copies = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
-        guard copies.count <= 1, !AppStorageLocation.isIsolated else { return }
+        guard !AppStorageLocation.isIsolated else { return }
+        Updater.shared.checkInBackgroundIfDue()
+        guard copies.count <= 1 else { return }
         BackdropStore.prune(keeping: PendingEdits.shared.backdropPaths)
         ExtendFillStore.prune(keeping: PendingEdits.shared.extendFillPaths)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let count = ViewerRegistry.shared.all.reduce(0) { $0 + $1.edits.count }
-        guard count > 0 else { return .terminateNow }
+        guard count > 0, !Updater.isRelaunchingForUpdate else { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "You have unsaved edits to \(count) image\(count == 1 ? "" : "s")."
         alert.informativeText = "They're kept, and come back the next time you open their folder."

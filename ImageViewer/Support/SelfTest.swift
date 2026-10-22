@@ -2,6 +2,7 @@
 import AppKit
 import CoreImage
 import ImageIO
+import Security
 import UniformTypeIdentifiers
 
 /// Headless pipeline checks: `AOK-ImageTool -selfTest <folder>`. Debug builds only.
@@ -166,6 +167,25 @@ enum SelfTest {
             }
             model.stacksEnabled = false
             check(model.items.count == 5, "stacking can be turned off")
+        }
+
+        // 4c. Updates: which GitHub release is an update, and who may replace the app.
+        print("\n[Updates]")
+        do {
+            func release(_ tag: String, prerelease: Bool = false, assets: [String]) -> Data {
+                let list = assets.map { #"{"name": "\#($0)", "browser_download_url": "https://example.com/\#($0)"}"# }.joined(separator: ",")
+                return Data(#"{"tag_name": "\#(tag)", "draft": false, "prerelease": \#(prerelease), "html_url": "https://example.com/r", "body": "Notes", "assets": [\#(list)]}"#.utf8)
+            }
+            let parsed = ReleaseInfo.parse(release("v1.2.0", assets: ["AOK-ImageTool.dmg", "AOK-ImageTool-1.2.0.dmg"]))
+            check(parsed?.version == "1.2.0" && parsed?.dmg.lastPathComponent == "AOK-ImageTool-1.2.0.dmg", "a release's version and numbered DMG are read")
+            check(ReleaseInfo.parse(release("models-1", prerelease: true, assets: ["AOK-DDColor.zip"])) == nil
+                  && ReleaseInfo.parse(release("v1.3.0", assets: ["notes.txt"])) == nil, "the models release, and a release without a DMG, aren't updates")
+            check(Versions.isNewer("1.10.0", than: "1.9.2") && !Versions.isNewer("1.0", than: "1.0.0") && Versions.isNewer("1.0.1", than: "1.0"),
+                  "versions compare by number")
+            var requirement: SecRequirement?
+            check(SecRequirementCreateWithString(Updater.requirement as CFString, [], &requirement) == errSecSuccess,
+                  "the update signature requirement is valid")
+            check(!Updater.shared.isUpdatable, "test runs never update themselves")
         }
 
         // 5. Pending edits survive a relaunch, but not a change to the file.
