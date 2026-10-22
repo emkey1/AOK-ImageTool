@@ -17,8 +17,17 @@ extension ViewerModel {
         moveToTrash(actionTargets)
     }
 
+    /// A photo from Photos (Edit With) belongs to Photos: renaming, moving or trashing its file there would
+    /// break the edit. Says so, and returns true, if any of `urls` is one.
+    func refuseForPhotos(_ urls: [URL]) -> Bool {
+        guard urls.contains(where: PhotosRoundTrip.isFromPhotos) else { return false }
+        alert = AlertInfo(title: "This photo belongs to Photos",
+                          message: "Rename, move or delete it in Photos. Here you can edit it and Save, which sends the edit back to Photos.")
+        return true
+    }
+
     func moveToTrash(_ urls: [URL]) {
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty, !refuseForPhotos(urls) else { return }
         var moved: [(original: URL, trashed: URL)] = []
         for url in urls {
             var result: NSURL?
@@ -176,12 +185,13 @@ extension ViewerModel {
     // MARK: - Rename / move / copy
 
     func beginRename() {
-        guard let item = currentItem else { return }
+        guard let item = currentItem, !refuseForPhotos([item.url]) else { return }
         renameTarget = item
     }
 
     @discardableResult
     func rename(_ item: ImageItem, to newStem: String) -> Bool {
+        guard !refuseForPhotos([item.url]) else { return false }
         let stem = newStem.trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "/", with: "-")
             .replacingOccurrences(of: ":", with: "-")
@@ -224,7 +234,7 @@ extension ViewerModel {
 
     func moveOrCopySelection(copy: Bool) {
         let urls = actionTargets
-        guard !urls.isEmpty else { return }
+        guard !urls.isEmpty, copy || !refuseForPhotos(urls) else { return }
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

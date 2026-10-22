@@ -256,6 +256,7 @@ final class ViewerModel {
         }
         var parts = ["\(i + 1) of \(items.count)"]
         if let p = currentStackPosition { parts.append("Stack \(p.index + 1)/\(p.count)") }
+        if let url = currentURL, PhotosRoundTrip.isFromPhotos(url) { parts.append("From Photos") }
         if let shown = display, shown.url == currentURL, !shown.isPlaceholder {
             parts.append(MetadataFormatting.dimensions(shown.logicalSize))
         } else if let d = decoded, d.url == currentURL {
@@ -334,6 +335,12 @@ final class ViewerModel {
         let urls = urls.map(\.standardizedFileURL)
         guard let first = urls.first else { return }
         if urls.count == 1 {
+            if PhotosRoundTrip.isFromPhotos(first) {
+                // Photos' Edit With: just this photo (Photos' library folder isn't for browsing).
+                openFolder(first.deletingLastPathComponent(), selecting: first, restrictedTo: [first])
+                showToast("Editing a photo from Photos: Save sends your changes back to it", systemImage: "photo.on.rectangle")
+                return
+            }
             if FolderScanner.isDirectory(first) {
                 openFolder(first, selecting: LastViewed.file(in: first))
             } else {
@@ -356,7 +363,7 @@ final class ViewerModel {
         self.restrictedTo = restrictedTo
         expandedStacks = []
         stackFront = [:]
-        RecentFolders.add(folder)
+        if !PhotosRoundTrip.isFromPhotos(folder) { RecentFolders.add(folder) }
         watcher.watch(folder)
         if !searchText.isEmpty { searchText = "" }
         flagFilter = .all
@@ -405,11 +412,9 @@ final class ViewerModel {
         let restricted = restrictedTo
         scanTask = Task {
             let scanned = await Task.detached(priority: .userInitiated) { () -> [ImageItem] in
-                var result = (try? FolderScanner.scan(folder: folder, recursive: recursive, showHidden: hidden)) ?? []
-                if let restricted {
-                    result = result.filter { restricted.contains($0.url.standardizedFileURL) }
-                }
-                return result
+                // Chosen files: just those (no need to read the folder, which may not even be allowed).
+                if let restricted { return restricted.compactMap(FolderScanner.item(for:)) }
+                return (try? FolderScanner.scan(folder: folder, recursive: recursive, showHidden: hidden)) ?? []
             }.value
             guard !Task.isCancelled, folder == folderURL else { return }
             isScanning = false
@@ -554,7 +559,7 @@ final class ViewerModel {
         pageIndex = 0
         if showOriginal { showOriginal = false }
         loadCurrent()
-        if let folderURL { LastViewed.remember(items[index].url, in: folderURL) }
+        if let folderURL, !PhotosRoundTrip.isFromPhotos(folderURL) { LastViewed.remember(items[index].url, in: folderURL) }
     }
 
     /// When re-sorting, filtering or a rescan puts another image on screen, what `show(index:)` resets for a

@@ -75,7 +75,7 @@ extension ViewerModel {
     private func saveUpscaledAnimation(url: URL, decoded d: DecodedImage, animation: Animation, edits: EditState, scale: Int) {
         let e = Self.frameEdits(edits)
         let container = Prefs.upscaledAnimationFormat
-        let dest = ImageWriter.uniqueURL(in: url.deletingLastPathComponent(), baseName: url.deletingPathExtension().lastPathComponent + " (\(scale)×)",
+        let dest = ImageWriter.uniqueURL(in: copyFolder(for: url), baseName: url.deletingPathExtension().lastPathComponent + " (\(scale)×)",
                                          ext: container.fileExtension)
         let first = animation.frame(0)
         let size = first.map { image -> CGSize in
@@ -96,7 +96,7 @@ extension ViewerModel {
         }
         Task {
             do {
-                let first = try await Task.detached(priority: .userInitiated) { () async throws -> CGImage? in
+                try await Task.detached(priority: .userInitiated) {
                     let writer = try Animation.Writer(url: dest, container: container, delays: animation.delays, loopCount: animation.loopCount)
                     var first: CGImage?
                     try await SuperResolution.upscaleFrames(count: count, width: Int(size.width), height: Int(size.height), scale: CGFloat(scale),
@@ -115,11 +115,9 @@ extension ViewerModel {
                     })
                     report(count + 1)
                     try writer.finish()
-                    ImageStacks.markDerived(dest, from: url)
-                    return first
+                    Self.copyWritten(dest, picture: first, from: url)
                 }.value
-                if let first { ThumbnailCache.shared.seed(first, for: dest) }
-                copySaved(dest, from: url)
+                try await finishCopy(dest, from: url)
             } catch {
                 try? FileManager.default.removeItem(at: dest)
                 dismissToast()

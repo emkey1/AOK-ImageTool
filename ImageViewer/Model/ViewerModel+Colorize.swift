@@ -9,7 +9,7 @@ extension ViewerModel {
         var format = SupportedFormats.writableFormat(for: d.contentType).flatMap { [.jpeg, .heic, .avif, .png, .tiff].contains($0) ? $0 : nil }
             ?? defaultFormat
         if e.hasTransparency && !format.supportsAlpha { format = .png }   // a cutout keeps its transparency
-        let folder = url.deletingLastPathComponent()
+        let folder = copyFolder(for: url)
         let name = url.deletingPathExtension().lastPathComponent + " (\(label))"
         showToast(working, systemImage: systemImage)
         Task {
@@ -23,16 +23,45 @@ extension ViewerModel {
                     let dest = ImageWriter.uniqueURL(in: folder, baseName: name, ext: format.fileExtension)
                     try ImageWriter.write(made, to: dest, format: format, quality: 0.92, sourceProperties: d.properties, metadata: .keepAll,
                                           source: url)
-                    ImageStacks.markDerived(dest, from: url)
-                    ThumbnailCache.shared.seed(made, for: dest)
+                    Self.copyWritten(dest, picture: made, from: url)
                     return dest
                 }.value
-                copySaved(dest, from: url)
+                try await finishCopy(dest, from: url)
             } catch {
                 dismissToast()
                 showError(failure, error)
             }
         }
+    }
+
+    /// Where a copy of `original` is written: next to it, or, for a photo from Photos, somewhere to wait until
+    /// it's added to the library (see `finishCopy`).
+    func copyFolder(for original: URL) -> URL {
+        PhotosRoundTrip.isFromPhotos(original) ? PhotosRoundTrip.copiesFolder : original.deletingLastPathComponent()
+    }
+
+    /// Right after a copy is written (before the folder's watcher can list it): it records what it was made
+    /// from, so it stacks, and its thumbnail is made from `picture`, so the filmstrip doesn't read it back.
+    nonisolated static func copyWritten(_ dest: URL, picture: CGImage?, from original: URL) {
+        guard !PhotosRoundTrip.isFromPhotos(original) else { return }
+        ImageStacks.markDerived(dest, from: original)
+        if let picture { ThumbnailCache.shared.seed(picture, for: dest) }
+    }
+
+    /// A copy of `original` has been written at `dest`: it's shown (stacked on the original), or, for a photo
+    /// from Photos, added to the Photos library as a new photo.
+    func finishCopy(_ dest: URL, from original: URL) async throws {
+        if PhotosRoundTrip.isFromPhotos(original) {
+            do {
+                try await PhotosRoundTrip.add(dest)
+            } catch {
+                try? FileManager.default.removeItem(at: dest)
+                throw error
+            }
+            showToast("Added “\(dest.lastPathComponent)” to Photos", systemImage: "photo.on.rectangle")
+            return
+        }
+        copySaved(dest, from: original)
     }
 
     /// A copy of `original` is saved at `dest`: it's shown straight away if you're still on the original with

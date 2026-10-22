@@ -274,6 +274,41 @@ enum SelfTest {
             check(!Updater.shared.isUpdatable, "test runs never update themselves")
         }
 
+        // 4d. Photos' Edit With, simulated with a file inside a ".photoslibrary" folder (never the user's library).
+        print("\n[Photos round trip]")
+        if let src = items.first(where: { $0.name == "sale-sign.jpg" })?.url {
+            final class Added { var names: [String] = [] }
+            let added = Added()
+            let fm = FileManager.default
+            let session = out.appendingPathComponent("Test.photoslibrary/private/com.apple.Photos/ExternalEditSessions/A1B2")
+            try? fm.createDirectory(at: session, withIntermediateDirectories: true)
+            let photo = session.appendingPathComponent("IMG_0001.jpg")
+            try? fm.copyItem(at: src, to: photo)
+            PhotosRoundTrip.addForTesting = { file in
+                added.names.append(file.lastPathComponent)
+                try? FileManager.default.removeItem(at: file)
+            }
+            defer { PhotosRoundTrip.addForTesting = nil }
+            func sessionFiles() -> [String] { ((try? fm.contentsOfDirectory(atPath: session.path)) ?? []).sorted() }
+            let model = ViewerModel()
+            model.open([photo])
+            for _ in 0..<100 where model.decoded?.url != photo.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            check(model.items.count == 1 && model.windowSubtitle.contains("From Photos") && !RecentFolders.all.contains(where: { $0.path.contains(".photoslibrary") }),
+                  "a photo from Photos opens by itself, marked From Photos, and stays out of Recent Folders")
+            model.updateEdits("Crop") { $0.crop = CGRect(x: 0, y: 0, width: 0.5, height: 1) }
+            model.save()   // (no question: Photos keeps the original)
+            for _ in 0..<100 where model.edits[photo.standardizedFileURL] != nil { try? await Task.sleep(for: .milliseconds(50)) }
+            check(ImageDecoder.header(url: photo)?.pixelSize.width == 800 && sessionFiles() == ["IMG_0001.jpg"],
+                  "Save writes the edit into Photos' file where it is, and leaves nothing else there")
+            for _ in 0..<40 where model.decoded?.pixelSize.width != 800 { try? await Task.sleep(for: .milliseconds(50)) }
+            model.saveBlackAndWhite(BlackAndWhite())
+            for _ in 0..<100 where added.names.isEmpty { try? await Task.sleep(for: .milliseconds(50)) }
+            check(added.names == ["IMG_0001 (Black & White).jpg"] && sessionFiles() == ["IMG_0001.jpg"],
+                  "a copy is added to Photos, not written into its library (\(added.names))")
+            model.moveToTrash([photo.standardizedFileURL])
+            check(fm.fileExists(atPath: photo.path) && model.alert != nil, "Photos' file can't be moved to the Trash from here")
+        }
+
         // 5. Pending edits survive a relaunch, but not a change to the file.
         print("\n[Pending edits]")
         if let src = items.first(where: { $0.name == "sale-sign.jpg" })?.url {

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Edit photos from your Photos library:** in Photos, Image ▸ Edit With ▸ AOK-ImageTool. Save sends the edit back to Photos (Revert to Original there undoes it; iCloud Photos syncs it), and copies you make of it are added to Photos as new photos.
 - **Upscale with AI works on animations** (GIF, animated PNG, WebP, HEIC): every frame, with its timing and looping, saved as a GIF or, in full color, an animated PNG (Upscale ▸ Save Animation As). Turns, crops and color adjustments apply to every frame. The menu shows each scale's size, and leaves out any that would be too large.
 - Copies made by Upscale, Colorize and Black & White show in the filmstrip as soon as they're saved, instead of after the new file is read back.
 

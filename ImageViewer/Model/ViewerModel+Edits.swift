@@ -112,13 +112,20 @@ extension ViewerModel {
             showToast("No changes to save", systemImage: "checkmark.circle")
             return
         }
+        let fromPhotos = PhotosRoundTrip.isFromPhotos(url)
         guard let format = inPlaceFormat(for: d, edits: e) else {
+            if fromPhotos {
+                alert = AlertInfo(title: "This photo can't be saved back to Photos",
+                                  message: "Photos handed over a file in a format AOK-ImageTool can't write (such as RAW). Export a copy instead, and add it to Photos.")
+                return
+            }
             showToast("This file can't be saved in place — choose an export format", systemImage: "square.and.arrow.up")
             exportRequest = ExportRequest(urls: [url])
             return
         }
 
-        if Prefs.confirmOverwrite {
+        // (Photos keeps the original: Revert to Original there undoes the edit, so there's nothing to confirm.)
+        if Prefs.confirmOverwrite && !fromPhotos {
             let alert = NSAlert()
             alert.messageText = "Save changes to “\(url.lastPathComponent)”?"
             alert.informativeText = Prefs.trashOriginalOnSave
@@ -159,7 +166,11 @@ extension ViewerModel {
         Task {
             do {
                 try await writeEdits(url: url, decoded: d, edits: e, format: format)
-                showToast("Saved \(url.lastPathComponent)", systemImage: "checkmark.circle")
+                if PhotosRoundTrip.isFromPhotos(url) {
+                    showToast("Saved to Photos (Revert to Original there undoes it)", systemImage: "photo.on.rectangle")
+                } else {
+                    showToast("Saved \(url.lastPathComponent)", systemImage: "checkmark.circle")
+                }
             } catch {
                 showError("Couldn't save “\(url.lastPathComponent)”", error)
             }
@@ -175,6 +186,11 @@ extension ViewerModel {
             try await MaskStore.shared.prepare(e, for: d)
             guard let output = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil) else {
                 throw ImageWriteError.finalizeFailed
+            }
+            if PhotosRoundTrip.isFromPhotos(url) {
+                // Photos watches this file: write over it where it is (Photos keeps the original).
+                try ImageWriter.overwrite(original: url, with: output.image, format: format, quality: 0.93, sourceProperties: d.properties)
+                return
             }
             // The new file is a new file: keep its record of what it was made from (it may be a stacked copy).
             let source = ImageStacks.source(of: url)

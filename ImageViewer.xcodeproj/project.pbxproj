@@ -201,6 +201,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = UYU5FM4LQ4;
+				CODE_SIGN_ENTITLEMENTS = "Config/AOK-ImageTool.entitlements";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GCC_OPTIMIZATION_LEVEL = 3;
@@ -209,6 +210,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "AOK-ImageTool";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Copies you make of a photo you're editing from Photos (upscaled, colorized, black and white) are added to your Photos library.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -235,6 +237,7 @@
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = UYU5FM4LQ4;
+				CODE_SIGN_ENTITLEMENTS = "Config/AOK-ImageTool.entitlements";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GCC_OPTIMIZATION_LEVEL = 3;
@@ -243,6 +246,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "AOK-ImageTool";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.photography";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Copies you make of a photo you're editing from Photos (upscaled, colorized, black and white) are added to your Photos library.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
