@@ -17,8 +17,9 @@ nonisolated final class ModelRelay: @unchecked Sendable {
 
 extension ViewerModel {
     /// Extend needs an opaque image: see-through areas would be "continued" as black.
+    /// (Not `canEdit`: that's false while the Crop tool, where Extend is turned on, is open.)
     var canExtend: Bool {
-        guard canEdit, let d = decoded else { return false }
+        guard let url = currentURL, let d = decoded, d.url == url, !savingURLs.contains(url) else { return false }
         let e = currentEdits
         if e.hasTransparency { return false }
         return !d.hasTransparentPixels || e.background?.isOpaque == true
