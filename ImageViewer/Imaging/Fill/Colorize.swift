@@ -30,16 +30,27 @@ nonisolated enum Colorizer {
         GenerativeModel.isSupported && FileManager.default.fileExists(atPath: directory.appendingPathComponent(modelName).path)
     }
 
-    /// Installs a converted model: the .mlmodelc itself or a folder holding it.
+    /// Installs a converted model: the .mlmodelc itself or a folder holding it. It's copied next to the
+    /// installed one first and swapped in, so a failed copy leaves the old one (and choosing the installed
+    /// one itself changes nothing).
     static func install(from source: URL) throws {
-        let model = source.lastPathComponent == modelName ? source : source.appendingPathComponent(modelName)
+        let model = (source.lastPathComponent == modelName ? source : source.appendingPathComponent(modelName)).standardizedFileURL
         guard FileManager.default.fileExists(atPath: model.path) else { throw GenerativeModel.InstallError.notAModel }
-        unload()
         let fm = FileManager.default
-        try fm.createDirectory(at: directory, withIntermediateDirectories: true)
-        let dest = directory.appendingPathComponent(modelName)
-        if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
-        try fm.copyItem(at: model, to: dest)
+        let dest = directory.appendingPathComponent(modelName).standardizedFileURL
+        guard model != dest else { return }
+        try fm.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let staging = directory.deletingLastPathComponent().appendingPathComponent(".installing-\(UUID().uuidString)")
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        do {
+            try fm.copyItem(at: model, to: staging.appendingPathComponent(modelName))
+            unload()
+            if fm.fileExists(atPath: directory.path) { try fm.removeItem(at: directory) }
+            try fm.moveItem(at: staging, to: directory)
+        } catch {
+            try? fm.removeItem(at: staging)
+            throw error
+        }
     }
 
     static func remove() throws {
@@ -175,7 +186,7 @@ nonisolated private enum Lab {
 
     /// Linear → sRGB-encoded, 0...1.
     @inline(__always) static func encode(_ linear: Float) -> Float {
-        Float(encodeTable[Int(min(max(linear, 0), 1) * 4095)]) / 255
+        Float(encodeTable[Int(Float.minimum(Float.maximum(linear, 0), 1) * 4095)]) / 255
     }
 
     @inline(__always) static func lightness(_ y: Float) -> Float {
@@ -196,7 +207,8 @@ nonisolated private enum Lab {
         let r = 3.2404542 * x - 1.5371385 * y - 0.4985314 * z
         let g = -0.9692660 * x + 1.8760108 * y + 0.0415560 * z
         let bl = 0.0556434 * x - 0.2040259 * y + 1.0572252 * z
-        func out(_ v: Float) -> UInt8 { encodeTable[Int(min(max(v, 0), 1) * 4095)] }
+        // (Float.maximum and .minimum turn a NaN from the model into 0 instead of trapping.)
+        func out(_ v: Float) -> UInt8 { encodeTable[Int(Float.minimum(Float.maximum(v, 0), 1) * 4095)] }
         return (out(r), out(g), out(bl))
     }
 }

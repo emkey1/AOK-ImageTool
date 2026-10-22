@@ -19,12 +19,15 @@ nonisolated final class DecodedImage: @unchecked Sendable {
     let properties: [String: Any]
     let sourceOrientation: CGImagePropertyOrientation
     let isVector: Bool
+    /// Smaller than the file (past what the display can show), so it mustn't be saved over it.
+    let isReduced: Bool
 
     var cost: Int { cgImage.bytesPerRow * cgImage.height }
     var contentType: UTType? { typeIdentifier.flatMap(UTType.init) }
 
     init(url: URL, cgImage: CGImage, isHDR: Bool, isAnimated: Bool, pageCount: Int, pageIndex: Int,
-         typeIdentifier: String?, properties: [String: Any], sourceOrientation: CGImagePropertyOrientation, isVector: Bool) {
+         typeIdentifier: String?, properties: [String: Any], sourceOrientation: CGImagePropertyOrientation, isVector: Bool,
+         isReduced: Bool = false) {
         self.url = url
         self.cgImage = cgImage
         self.pixelSize = CGSize(width: cgImage.width, height: cgImage.height)
@@ -40,6 +43,7 @@ nonisolated final class DecodedImage: @unchecked Sendable {
         self.properties = properties
         self.sourceOrientation = sourceOrientation
         self.isVector = isVector
+        self.isReduced = isReduced
     }
 }
 
@@ -142,12 +146,14 @@ nonisolated enum ImageDecoder {
 
         let isHDR = allowHDR && Self.isHDR(image)
         image = oriented(image, orientation, deep: isHDR || image.bitsPerComponent > 8)
+        let fullWidth = image.width
         image = clampedForDisplay(image)
 
         return DecodedImage(
             url: url, cgImage: image, isHDR: isHDR, isAnimated: isAnimated,
             pageCount: pageCount, pageIndex: pageCount > 1 ? index : 0,
-            typeIdentifier: typeID, properties: props, sourceOrientation: orientation, isVector: false
+            typeIdentifier: typeID, properties: props, sourceOrientation: orientation, isVector: false,
+            isReduced: image.width != fullWidth
         )
     }
 
@@ -181,8 +187,11 @@ nonisolated enum ImageDecoder {
         let limit = 16_384
         guard max(image.width, image.height) > limit else { return image }
         let scale = Double(limit) / Double(max(image.width, image.height))
-        let ci = CIImage(cgImage: image).applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1])
-        return ciContext.createCGImage(ci, from: ci.extent.integral) ?? image
+        let ci = CIImage(cgImage: image).clampedToExtent()
+            .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1])
+        let rect = CGRect(x: 0, y: 0, width: (Double(image.width) * scale).rounded(), height: (Double(image.height) * scale).rounded())
+        let colorSpace = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        return ciContext.createCGImage(ci, from: rect, format: image.bitsPerComponent > 8 ? .RGBAh : .RGBA8, colorSpace: colorSpace) ?? image
     }
 
     // MARK: - Vector (PDF / SVG)

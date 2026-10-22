@@ -20,7 +20,7 @@ nonisolated enum GenerativeImage {
     /// subject: everything outside `subject` (a mask over `photo`, white = the subject) is made from the
     /// scene and the subject's description. Returns the whole picture at `photo`'s proportions; the subject
     /// is in it too, but the cutout stays in front.
-    static func background(_ photo: CGImage, subject: CIImage, scene: String, subjectDescription: String?, seed: UInt64,
+    @concurrent static func background(_ photo: CGImage, subject: CIImage, scene: String, subjectDescription: String?, seed: UInt64,
                            progress: (@Sendable (Double) -> Bool)? = nil) async throws -> CGImage {
         let prompt = backgroundPrompt(scene: scene, subject: subjectDescription)
         // Naming the subject would fight "no people"; instead, no second one of it.

@@ -25,7 +25,8 @@ extension ViewerModel {
                     }
                     let made = try await transform(rendered.image)
                     let dest = ImageWriter.uniqueURL(in: folder, baseName: name, ext: format.fileExtension)
-                    try ImageWriter.write(made, to: dest, format: format, quality: 0.92, sourceProperties: d.properties, metadata: .keepAll)
+                    try ImageWriter.write(made, to: dest, format: format, quality: 0.92, sourceProperties: d.properties, metadata: .keepAll,
+                                          source: url)
                     ImageStacks.markDerived(dest, from: url)
                     return dest
                 }.value

@@ -99,6 +99,76 @@ enum SelfTest {
             check(MetadataFormatting.gpsCoordinate(kp) != nil && MetadataFormatting.cameraName(kp) == "Apple iPhone 17 Pro", "keep-all preserves GPS and camera")
         }
 
+        // 3b. What a written file keeps: XMP and places (or not), HDR as a gain map, whole-number 16-bit TIFFs.
+        print("\n[Writing]")
+        do {
+            let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+            let plain = CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 0, space: srgb,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            plain.setFillColor(CGColor(red: 0.3, green: 0.5, blue: 0.7, alpha: 1))
+            plain.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+            let image = plain.makeImage()!
+            // A source with XMP (a label, a panorama tag, a city), IPTC places and GPS.
+            let source = out.appendingPathComponent("xmp-source.jpg")
+            let xmp = CGImageMetadataCreateMutable()
+            _ = CGImageMetadataRegisterNamespaceForPrefix(xmp, "http://ns.google.com/photos/1.0/panorama/" as CFString, "GPano" as CFString, nil)
+            CGImageMetadataSetValueWithPath(xmp, nil, "GPano:ProjectionType" as CFString, "equirectangular" as CFString)
+            CGImageMetadataSetValueWithPath(xmp, nil, "xmp:Label" as CFString, "Red" as CFString)
+            CGImageMetadataSetValueWithPath(xmp, nil, "photoshop:City" as CFString, "Springfield" as CFString)
+            if let d = CGImageDestinationCreateWithURL(source as CFURL, UTType.jpeg.identifier as CFString, 1, nil) {
+                CGImageDestinationAddImageAndMetadata(d, image, xmp, [
+                    kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 37.0, kCGImagePropertyGPSLatitudeRef: "N"],
+                    kCGImagePropertyIPTCDictionary: [kCGImagePropertyIPTCCity: "Springfield", kCGImagePropertyIPTCCountryPrimaryLocationName: "Freedonia"],
+                ] as CFDictionary)
+                _ = CGImageDestinationFinalize(d)
+            }
+            let props = (CGImageSourceCreateWithURL(source as CFURL, nil).flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [String: Any] }) ?? [:]
+            func read(_ url: URL) -> (props: [String: Any], xmp: (String) -> String?) {
+                let src = CGImageSourceCreateWithURL(url as CFURL, nil)
+                let p = src.flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [String: Any] } ?? [:]
+                let m = src.flatMap { CGImageSourceCopyMetadataAtIndex($0, 0, nil) }
+                return (p, { path in m.flatMap { CGImageMetadataCopyStringValueWithPath($0, nil, path as CFString) as String? } })
+            }
+            for policy in [MetadataPolicy.keepAll, .removeLocation] {
+                let url = out.appendingPathComponent("xmp-\(policy.rawValue).jpg")
+                try? ImageWriter.write(image, to: url, format: .jpeg, quality: 0.9, sourceProperties: props, metadata: policy, source: source)
+                let r = read(url)
+                let city = (r.props[kCGImagePropertyIPTCDictionary as String] as? [String: Any])?[kCGImagePropertyIPTCCity as String] as? String
+                let gps = r.props[kCGImagePropertyGPSDictionary as String] != nil
+                let kept = r.xmp("xmp:Label") == "Red" && r.xmp("GPano:ProjectionType") == "equirectangular"
+                if policy == .keepAll {
+                    check(kept && gps && city == "Springfield" && r.xmp("photoshop:City") == "Springfield", "Keep All carries XMP (label, panorama), places and GPS")
+                } else {
+                    check(kept && !gps && city == nil && r.xmp("photoshop:City") == nil, "Remove Location also removes IPTC and XMP places, keeping the rest")
+                }
+            }
+            // HDR (PQ) → a gain map in HEIC, SDR in PNG.
+            let bright = CIImage(color: CIColor(red: 3, green: 3, blue: 3, alpha: 1, colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!)!)
+                .cropped(to: CGRect(x: 0, y: 0, width: 64, height: 48))
+            if let hdr = ImageDecoder.ciContext.createCGImage(bright, from: bright.extent, format: .RGBAh,
+                                                             colorSpace: CGColorSpace(name: CGColorSpace.itur_2100_PQ)!) {
+                let heic = out.appendingPathComponent("hdr.heic"), png = out.appendingPathComponent("hdr.png")
+                try? ImageWriter.write(hdr, to: heic, format: .heic, quality: 0.9, sourceProperties: [:], metadata: .removeAll)
+                try? ImageWriter.write(hdr, to: png, format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                let gainMap = CGImageSourceCreateWithURL(heic as CFURL, nil).flatMap { CGImageSourceCopyAuxiliaryDataInfoAtIndex($0, 0, kCGImageAuxiliaryDataTypeISOGainMap) } != nil
+                let pngImage = CGImageSourceCreateWithURL(png as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+                check(gainMap && pngImage.map { !ImageDecoder.isHDR($0) } == true, "HDR is written as a gain map (HEIC), tone mapped to SDR (PNG)")
+            }
+            // A deep image → a 16-bit whole-number TIFF without an alpha channel.
+            let deep = ImageDecoder.ciContext.createCGImage(CIImage(cgImage: image), from: CGRect(x: 0, y: 0, width: 64, height: 48),
+                                                            format: .RGBAh, colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
+            if let deep {
+                let tiff = out.appendingPathComponent("deep.tiff")
+                try? ImageWriter.write(deep, to: tiff, format: .tiff, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                let r = read(tiff).props
+                check(r[kCGImagePropertyDepth as String] as? Int == 16 && r[kCGImagePropertyIsFloat as String] as? Bool != true
+                      && r[kCGImagePropertyHasAlpha as String] as? Bool != true, "a 16-bit TIFF stays whole-number 16-bit, without an alpha channel")
+            }
+            let scaled = VisionServices.downscaledSync(CGContext(data: nil, width: 1001, height: 667, bitsPerComponent: 8, bytesPerRow: 0, space: srgb,
+                                                                 bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!.makeImage()!, maxDimension: 300)
+            check(!ImageDecoder.containsTransparency(scaled), "a reduced copy has no see-through edges (\(scaled.width)×\(scaled.height))")
+        }
+
         // 4. Safe in-place save.
         print("\n[Save in place]")
         if let src = items.first(where: { $0.name == "sale-sign.jpg" })?.url {
@@ -179,9 +249,10 @@ enum SelfTest {
             try? ImageWriter.replace(original: holiday, with: EditRenderer.shared.renderSync(try! ImageDecoder.decode(url: holiday, page: 0, allowHDR: false),
                                                                                           edits: .identity, maxDimension: 200)!.image,
                                      format: .jpeg, quality: 0.9, sourceProperties: [:], trashOriginal: false)
-            check(ImageStacks.source(of: holiday) == nil, "(replacing a file drops its extended attributes…)")
+            // (Saving moves the original to the Trash and the new file into its place, without the attribute;
+            // Save records it again. Here the original is replaced in place, not trashed.)
             if let copyName { ImageStacks.setSource(copyName, of: holiday) }
-            check(ImageStacks.source(of: holiday) == copyName, "…so Save records the source again")
+            check(copyName == "Shore.jpg" && ImageStacks.source(of: holiday) == copyName, "a saved copy still records its source")
         }
 
         // 4c. Updates: which GitHub release is an update, and who may replace the app.

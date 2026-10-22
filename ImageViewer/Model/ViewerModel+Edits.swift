@@ -146,8 +146,9 @@ extension ViewerModel {
 
     /// The format to write `d` back in, or nil when it can't be saved in place.
     private func inPlaceFormat(for d: DecodedImage, edits e: EditState) -> ExportFormat? {
+        // Not animations (one frame would replace them all) or images reduced to fit the display.
         guard let format = SupportedFormats.writableFormat(for: d.contentType),
-              !d.isVector, d.pageCount == 1,
+              !d.isVector, d.pageCount == 1, !d.isAnimated, !d.isReduced,
               !(e.hasTransparency && !format.supportsAlpha)
         else { return nil }
         return format
@@ -261,7 +262,7 @@ extension ViewerModel {
                     }
                     let dest = ImageWriter.uniqueURL(in: folder, baseName: name, ext: options.format.fileExtension)
                     try ImageWriter.write(rendered.image, to: dest, format: options.format, quality: options.quality,
-                                          sourceProperties: d.properties, metadata: options.metadata)
+                                          sourceProperties: d.properties, metadata: options.metadata, source: url)
                     ImageStacks.markDerived(dest, from: url)    // (when it's beside the original)
                     return dest
                 }.value

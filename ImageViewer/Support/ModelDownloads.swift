@@ -114,7 +114,8 @@ final class ModelDownloads {
                         if case .downloading = ModelDownloads.shared.status[id] { ModelDownloads.shared.status[id] = .downloading(fraction) }
                     }
                 }, installing: {
-                    Task { @MainActor in ModelDownloads.shared.status[id] = .installing }
+                    // (Queued: it may run after the job has finished, when there's nothing to show.)
+                    Task { @MainActor in if ModelDownloads.shared.status[id] != nil { ModelDownloads.shared.status[id] = .installing } }
                 })
                 status[id] = nil
                 installCount += 1
@@ -132,7 +133,17 @@ final class ModelDownloads {
         tasks[model.id]?.cancel()
     }
 
-    private nonisolated static func fetch(_ model: DownloadableModel, progress: @escaping @Sendable (Double) -> Void,
+    /// What an interrupted download or install leaves in the models folder (at launch, when none can be running).
+    static func removeLeftovers() {
+        let folder = AppStorageLocation.models
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in names where name.hasPrefix(".download-") || name.hasPrefix(".installing-") {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+        }
+    }
+
+    /// Off the main actor: it hashes and unpacks gigabytes.
+    @concurrent private nonisolated static func fetch(_ model: DownloadableModel, progress: @escaping @Sendable (Double) -> Void,
                                           installing: @escaping @Sendable () -> Void) async throws {
         let fm = FileManager.default
         let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]

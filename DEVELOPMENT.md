@@ -39,6 +39,7 @@ scripts/
   convert-inpainting-model.sh    Builds the generative fill model from the official weights
   convert-colorize-model.sh      Builds the colorizing model (DDColor) from its official weights
   make-test-images.swift         Makes the synthetic files in TestImages/
+  archive.sh                     Archives and sends the app to be notarized
   make-dmg.sh, dmg-layout.swift  The installer (after AOK-Foray's)
 TestImages/      Generated demo photos and format samples, for the self-test
 ```
@@ -95,7 +96,8 @@ Releases follow AOK-Foray's pipeline:
 
 1. Bump `MARKETING_VERSION` (and `CURRENT_PROJECT_VERSION`) in the project, and add the version to `CHANGELOG.md`.
 2. In Xcode: the "ImageViewer" scheme, **Product ▸ Archive**, then **Distribute App ▸ Direct Distribution**, which
-   signs with Developer ID and notarizes. Wait for "Ready to distribute".
+   signs with Developer ID and notarizes. Wait for "Ready to distribute". (`scripts/archive.sh` does the same from
+   the command line, with the account signed in to Xcode.)
 3. `scripts/make-dmg.sh` exports the notarized app from the newest archive and makes `dist/AOK-ImageTool-x.y.z.dmg`
    and `dist/AOK-ImageTool.dmg` (the same file, for the permanent latest-version link).
 4. `gh release create vx.y.z dist/AOK-ImageTool-x.y.z.dmg dist/AOK-ImageTool.dmg --notes-file <the changelog entry>`.

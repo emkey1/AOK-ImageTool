@@ -482,11 +482,13 @@ nonisolated final class EditRenderer: @unchecked Sendable {
             return CIImage(cgImage: hit)
         }
         let s = maxDimension / longest
-        let scaled = CIImage(cgImage: decoded.cgImage).applyingFilter("CILanczosScaleTransform", parameters: [
+        // Clamped first, so the edges don't fade to transparent (Extend would continue a darkened edge).
+        let scaled = CIImage(cgImage: decoded.cgImage).clampedToExtent().applyingFilter("CILanczosScaleTransform", parameters: [
             kCIInputScaleKey: s, kCIInputAspectRatioKey: 1,
         ])
-        guard let cg = createCGImage(normalized(scaled).cropped(to: CGRect(origin: .zero, size: scaled.extent.size).integral), like: decoded) else {
-            return scaled
+        let size = CGRect(x: 0, y: 0, width: (decoded.pixelSize.width * s).rounded(), height: (decoded.pixelSize.height * s).rounded())
+        guard let cg = createCGImage(normalized(scaled.cropped(to: size)), like: decoded) else {
+            return scaled.cropped(to: size)
         }
         lock.withLock {
             proxies.insert((key, cg), at: 0)

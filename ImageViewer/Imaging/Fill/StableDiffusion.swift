@@ -147,7 +147,8 @@ nonisolated final class StableDiffusionInpainter: @unchecked Sendable {
         for i in 0..<(n * n) {
             for c in 0..<3 {
                 let v = (decoded[c * n * n + i] + 1) * 127.5
-                rgba[i * 4 + c] = UInt8(min(max(v, 0), 255).rounded())
+                // (Float.maximum and .minimum turn a NaN, from a float16 overflow, into 0 instead of trapping.)
+                rgba[i * 4 + c] = UInt8(Float.minimum(Float.maximum(v, 0), 255).rounded())
             }
         }
         _ = progress(1)

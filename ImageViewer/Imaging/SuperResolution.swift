@@ -94,7 +94,9 @@ nonisolated enum SuperResolution {
         let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
         let input = CIImage(cgImage: image)
         let extent = CGRect(x: 0, y: 0, width: width, height: height)
+        // (Rendered images always have an alpha channel; only real transparency needs carrying over.)
         let alpha = !(image.alphaInfo == .none || image.alphaInfo == .noneSkipFirst || image.alphaInfo == .noneSkipLast)
+            && ImageDecoder.containsTransparency(image)
         let deep = image.bitsPerComponent > 8
         let colors = (alpha ? input.unpremultiplyingAlpha().settingAlphaOne(in: extent) : input).clampedToExtent()
 
@@ -155,12 +157,14 @@ nonisolated enum SuperResolution {
 
         output = output.settingAlphaOne(in: output.extent)
         if alpha {
-            let mask = input.applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: factor, kCIInputAspectRatioKey: 1])
+            let mask = input.clampedToExtent()
+                .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: factor, kCIInputAspectRatioKey: 1])
             output = output.applyingFilter("CISourceInCompositing", parameters: [kCIInputBackgroundImageKey: mask])
         }
         let resample = min(scale, CGFloat(factor)) / CGFloat(factor)
         if resample < 0.999 {
-            output = output.applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: resample, kCIInputAspectRatioKey: 1])
+            output = output.clampedToExtent()
+                .applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: resample, kCIInputAspectRatioKey: 1])
         }
         let rect = CGRect(x: 0, y: 0, width: (CGFloat(width) * CGFloat(factor) * resample).rounded(),
                           height: (CGFloat(height) * CGFloat(factor) * resample).rounded())

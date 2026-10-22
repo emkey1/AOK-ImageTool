@@ -46,6 +46,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard !AppStorageLocation.isIsolated else { return }
         Updater.shared.checkInBackgroundIfDue()
         guard copies.count <= 1 else { return }
+        ModelDownloads.removeLeftovers()
+        Updater.removeLeftovers()
         BackdropStore.prune(keeping: PendingEdits.shared.backdropPaths)
         ExtendFillStore.prune(keeping: PendingEdits.shared.extendFillPaths)
     }

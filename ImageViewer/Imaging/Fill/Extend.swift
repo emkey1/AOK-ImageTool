@@ -33,7 +33,9 @@ nonisolated enum ContentAwareFill {
         guard width > 0, height > 0 else { throw ExtendError.failed }
         // Whole pixels, so the original's edge isn't a half-covered (darkened) column.
         let origin = CGPoint(x: origin.x.rounded(), y: origin.y.rounded())
-        let colorSpace = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        // (8-bit buffers can't use an extended-range space, such as an OpenEXR's.)
+        let space = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        let colorSpace = CGColorSpaceCreateCopyWithStandardRange(space)
         let imageRect = CGRect(x: origin.x, y: CGFloat(height) - origin.y - CGFloat(image.height),
                                width: CGFloat(image.width), height: CGFloat(image.height))
         var rgba = [UInt8](repeating: 0, count: width * height * 4)
@@ -147,7 +149,8 @@ nonisolated enum ExtendRenderer {
     }
 
     /// `draft` gets a generated fill's quick first version (the preview's quality) as soon as there is one.
-    static func makeFill(_ decoded: DecodedImage, edits: EditState, maxCanvas: CGFloat = finalCanvas,
+    /// (`@concurrent`, like the other entry points here: the pixel work runs off the caller's actor.)
+    @concurrent static func makeFill(_ decoded: DecodedImage, edits: EditState, maxCanvas: CGFloat = finalCanvas,
                          progress: (@Sendable (Double) -> Bool)? = nil, draft: (@Sendable (Fill) -> Void)? = nil) async throws -> Fill {
         guard let crop = edits.crop, edits.cropExtendsBeyondImage else { throw ExtendError.failed }
         if edits.effectiveExtendMethod == .generate, GenerativeModel.isInstalled {
@@ -282,7 +285,7 @@ nonisolated enum ExtendRenderer {
 
     /// The crop tool's preview of a generated fill: the generated canvas with the edits' adjustments, like
     /// the rest of what the tool shows.
-    static func previewGenerativeFill(_ decoded: DecodedImage, edits: EditState, crop: CGRect,
+    @concurrent static func previewGenerativeFill(_ decoded: DecodedImage, edits: EditState, crop: CGRect,
                                       progress: (@Sendable (Double) -> Void)? = nil) async throws -> (image: CGImage, canvas: CGRect, content: CGRect?) {
         let entry = try await generatedCanvas(decoded, edits: edits, crop: crop, progress: progress)
         let content = await pictureContent(decoded, edits: edits)
@@ -296,7 +299,7 @@ nonisolated enum ExtendRenderer {
 
     /// A quick fill for the crop tool's live preview, made from what the tool shows (`base`, adjustments
     /// included) at low resolution. Returns the whole canvas (`crop`), original area included.
-    static func previewFill(base: CGImage, crop: CGRect, seed: UInt64) async throws -> (image: CGImage, content: CGRect?) {
+    @concurrent static func previewFill(base: CGImage, crop: CGRect, seed: UInt64) async throws -> (image: CGImage, content: CGRect?) {
         let bw = CGFloat(base.width), bh = CGFloat(base.height)
         let scale = min(1, previewCanvas / max(crop.width * bw, crop.height * bh, 1))
         let small = scale < 1 ? await VisionServices.downscaled(base, maxDimension: Int(max(bw, bh) * scale)) : base

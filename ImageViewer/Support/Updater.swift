@@ -58,6 +58,7 @@ final class Updater {
     var currentVersion: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0" }
     var isUpdatable: Bool { Bundle.main.bundleIdentifier == Self.releasedID && !AppStorageLocation.isIsolated }
     private var checking = false
+    private var installing = false
 
     // MARK: Settings
 
@@ -85,12 +86,17 @@ final class Updater {
     /// AOK-ImageTool ▸ Check for Updates…
     func checkNow() { Task { await check(userInitiated: true) } }
 
+    /// The newest release, or nil when there's none with an installer. Throws when GitHub doesn't answer
+    /// properly (offline, or its limit on anonymous requests), so that isn't taken for "up to date".
     func fetchLatest() async throws -> ReleaseInfo? {
         var request = URLRequest(url: Self.latestURL, timeoutInterval: 20)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard (response as? HTTPURLResponse)?.statusCode == 200 else { return nil }
-        return ReleaseInfo.parse(data)
+        switch (response as? HTTPURLResponse)?.statusCode {
+        case 200: return ReleaseInfo.parse(data)
+        case 404: return nil   // no release yet
+        case let status: throw InstallError(message: "GitHub answered \(status.map(String.init) ?? "nothing"). Try again later.")
+        }
     }
 
     private func check(userInitiated: Bool) async {
@@ -158,6 +164,8 @@ final class Updater {
     }
 
     private func install(_ release: ReleaseInfo) {
+        guard !installing else { return }
+        installing = true
         let target = Bundle.main.bundleURL
         let panel = ProgressPanel(title: "Updating AOK-ImageTool to \(release.version)…")
         panel.show()
@@ -165,11 +173,13 @@ final class Updater {
             do {
                 try Self.checkInstallable(target)
                 let (dmg, _) = try await URLSession.shared.download(from: release.dmg)
+                defer { try? FileManager.default.removeItem(at: dmg) }
                 panel.status("Checking the download…")
                 try await Task.detached { try Self.installFromDMG(dmg, replacing: target) }.value
                 panel.close()
                 Self.relaunch(target)
             } catch {
+                installing = false
                 panel.close()
                 inform("AOK-ImageTool couldn't update",
                        error.localizedDescription + "\n\nYou can download it yourself from \(release.page.absoluteString).")
@@ -206,7 +216,10 @@ final class Updater {
     nonisolated static func replace(_ target: URL, with new: URL, verify: (URL) throws -> Void) throws {
         try verify(new)
         let staged = target.deletingLastPathComponent().appendingPathComponent(".AOK-ImageTool-update-\(UUID().uuidString.prefix(8)).app")
-        guard run("/usr/bin/ditto", [new.path, staged.path]) == 0 else { throw InstallError(message: "Couldn't copy the new version.") }
+        guard run("/usr/bin/ditto", [new.path, staged.path]) == 0 else {
+            try? FileManager.default.removeItem(at: staged)
+            throw InstallError(message: "Couldn't copy the new version.")
+        }
         do {
             try verify(staged)   // what we install is exactly what we checked
             _ = try FileManager.default.replaceItemAt(target, withItemAt: staged)
@@ -241,6 +254,15 @@ final class Updater {
         guard (try? p.run()) != nil else { return -1 }
         p.waitUntilExit()
         return p.terminationStatus
+    }
+
+    /// What an interrupted update leaves next to the app (at launch).
+    static func removeLeftovers() {
+        let folder = Bundle.main.bundleURL.deletingLastPathComponent()
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []
+        for name in names where name.hasPrefix(".AOK-ImageTool-update-") && name.hasSuffix(".app") {
+            try? FileManager.default.removeItem(at: folder.appendingPathComponent(name))
+        }
     }
 
     /// Opens the new copy once this one has quit.

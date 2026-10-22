@@ -39,10 +39,11 @@ nonisolated enum VisionServices {
         let longest = max(image.width, image.height)
         guard longest > maxDimension else { return image }
         let scale = Double(maxDimension) / Double(longest)
-        let ci = CIImage(cgImage: image).applyingFilter("CILanczosScaleTransform", parameters: [
+        // (Clamped first, so the edges don't fade to transparent.)
+        let ci = CIImage(cgImage: image).clampedToExtent().applyingFilter("CILanczosScaleTransform", parameters: [
             kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1,
         ])
-        let rect = CGRect(origin: .zero, size: ci.extent.size).integral
+        let rect = CGRect(x: 0, y: 0, width: (Double(image.width) * scale).rounded(), height: (Double(image.height) * scale).rounded())
         return ImageDecoder.ciContext.createCGImage(ci, from: rect, format: .RGBA8,
                                                     colorSpace: CGColorSpace(name: CGColorSpace.sRGB)) ?? image
     }
