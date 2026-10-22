@@ -52,6 +52,26 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -download <generative-fill|colorize>`: downloads and installs a model (AOK_MODELS_URL and
+        // AOK_MODELS_DIR point it at another server and folder).
+        if let i = args.firstIndex(of: "-download"), i + 1 < args.count,
+           let model = [DownloadableModel.generativeFill, .colorize].first(where: { $0.id == args[i + 1] }) {
+            let downloads = ModelDownloads.shared
+            let t0 = Date()
+            downloads.start(model)
+            var last = ""
+            while let status = downloads.status[model.id] {
+                let line = switch status {
+                case .downloading(let f): "downloading \(Int(f * 10) * 10)%"
+                case .installing: "installing"
+                }
+                if line != last { print(line); last = line }
+                try? await Task.sleep(for: .milliseconds(200))
+            }
+            print(downloads.failure[model.id].map { "failed: \($0)" }
+                  ?? String(format: "installed: %@ in %.1f s", model.isInstalled() ? "yes" : "NO", Date().timeIntervalSince(t0)))
+            exit(model.isInstalled() ? 0 : 1)
+        }
         // `-extendTest -borders <folder>`: which images have a print border, and the picture inside it.
         if let i = args.firstIndex(of: "-borders"), i + 1 < args.count {
             let folder = URL(fileURLWithPath: args[i + 1])

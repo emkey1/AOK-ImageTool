@@ -35,7 +35,10 @@ extension ViewerModel {
 
     /// Saves a colorized copy of the current image, with its edits, next to the original (see `Colorizer`).
     func colorizeCurrent() {
-        guard Colorizer.isInstalled, let url = currentURL, let d = decoded, d.url == url else { return }
+        guard Colorizer.isInstalled else {
+            return offerDownload(.colorize) { [weak self] in self?.colorizeCurrent() }
+        }
+        guard let url = currentURL, let d = decoded, d.url == url else { return }
         saveCopy(of: url, decoded: d, edits: currentEdits, label: "Colorized", defaultFormat: .heic,
                  working: "Colorizing…", systemImage: "paintpalette", failure: "Couldn't colorize “\(url.lastPathComponent)”") {
             try await Colorizer.colorize($0)

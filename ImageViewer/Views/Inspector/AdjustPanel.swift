@@ -151,7 +151,7 @@ struct AdjustPanel: View {
                 .foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 Button("Black & White…") { model.showBlackAndWhite = true }
-                if Colorizer.isInstalled {
+                if GenerativeModel.isSupported {
                     Button("Colorize") { model.colorizeCurrent() }
                 }
                 if SuperResolution.isSupported {

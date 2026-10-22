@@ -104,84 +104,42 @@ private struct EditingSettings: View {
                 Text("Edits are non-destructive until you Save. With “Move the original to the Trash” on, you can always recover the unedited file.")
                     .font(.caption).foregroundStyle(.secondary)
             }
-            GenerativeFillSettings()
-            ColorizeSettings()
+            ModelSettings(model: .generativeFill, title: "Generative Fill",
+                          footer: "Extend's Generate and Generate a Background draw new content with \(GenerativeModel.displayName), entirely on this Mac.",
+                          folder: GenerativeModel.directory, sizeOnDisk: { GenerativeModel.sizeOnDisk },
+                          remove: { try GenerativeModel.remove() }, installFromFolder: { try GenerativeModel.install(from: $0) },
+                          folderPrompt: "Choose the folder scripts/convert-inpainting-model.sh made (it holds Unet.mlmodelc and the other model files).")
+            ModelSettings(model: .colorize, title: "Colorize",
+                          footer: "Image ▸ Colorize turns black and white photos to color with DDColor, on this Mac; only the color comes from the model, the photo's detail is kept.",
+                          folder: Colorizer.directory, sizeOnDisk: { Colorizer.sizeOnDisk },
+                          remove: { try Colorizer.remove() }, installFromFolder: { try Colorizer.install(from: $0) },
+                          folderPrompt: "Choose DDColor.mlmodelc, or the folder that holds it.")
         }
         .formStyle(.grouped)
     }
 }
 
 /// Status of the colorizing model (DDColor).
-private struct ColorizeSettings: View {
-    @State private var installed = Colorizer.isInstalled
-    @State private var size: Int64 = 0
-    @State private var confirmRemove = false
-    @State private var error: String?
+/// A downloadable model's status, download and removal (Settings ▸ Editing).
+private struct ModelSettings: View {
+    let model: DownloadableModel
+    let title: String
+    let footer: String
+    let folder: URL
+    let sizeOnDisk: () -> Int64
+    let remove: @Sendable () throws -> Void
+    let installFromFolder: @Sendable (URL) throws -> Void
+    let folderPrompt: String
 
-    var body: some View {
-        Section {
-            LabeledContent("Model") {
-                if !GenerativeModel.isSupported {
-                    Text("Needs a Mac with Apple silicon").foregroundStyle(.secondary)
-                } else if installed {
-                    Label("Installed (\(ByteCountFormatter.string(fromByteCount: size, countStyle: .file)))", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                } else {
-                    Text("Not installed").foregroundStyle(.secondary)
-                }
-            }
-            if GenerativeModel.isSupported {
-                HStack {
-                    Button(installed ? "Replace…" : "Install from Folder…") { choose() }
-                    if installed {
-                        Button("Remove…", role: .destructive) { confirmRemove = true }
-                    }
-                }
-            }
-            if let error {
-                Text(error).font(.caption).foregroundStyle(.red)
-            }
-        } header: {
-            Text("Colorize")
-        } footer: {
-            Text("Image ▸ Colorize turns black and white photos to color with DDColor, on this Mac; only the color comes from the model, the photo's detail is kept. The model (about 460 MB) is converted with scripts/convert-colorize-model.sh. Model license: Apache 2.0.")
-                .font(.caption).foregroundStyle(.secondary)
-        }
-        .task { refresh() }
-        .confirmationDialog("Remove the colorizing model?", isPresented: $confirmRemove) {
-            Button("Remove", role: .destructive) {
-                do { try Colorizer.remove() } catch { self.error = error.localizedDescription }
-                refresh()
-            }
-        }
-    }
-
-    private func refresh() {
-        installed = Colorizer.isInstalled
-        size = installed ? Colorizer.sizeOnDisk : 0
-    }
-
-    private func choose() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.prompt = "Install"
-        panel.message = "Choose DDColor.mlmodelc, or the folder that holds it."
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do { try Colorizer.install(from: url) } catch { self.error = error.localizedDescription }
-        refresh()
-    }
-}
-
-/// Status and installation of Extend's generative fill model.
-private struct GenerativeFillSettings: View {
-    @State private var installed = GenerativeModel.isInstalled
+    @State private var installed = false
     @State private var size: Int64 = 0
     @State private var busy = false
     @State private var error: String?
     @State private var confirmRemove = false
+    private var downloads: ModelDownloads { .shared }
 
     var body: some View {
+        let status = downloads.status[model.id]
         Section {
             LabeledContent("Model") {
                 if !GenerativeModel.isSupported {
@@ -194,40 +152,66 @@ private struct GenerativeFillSettings: View {
                 }
             }
             if GenerativeModel.isSupported {
-                HStack {
-                    Button(installed ? "Replace…" : "Install from Folder…") { choose() }
-                    if installed {
-                        Button("Show in Finder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([GenerativeModel.directory])
+                if let status {
+                    HStack {
+                        switch status {
+                        case .downloading(let fraction):
+                            ProgressView(value: fraction)
+                            Text("\(Int(fraction * 100))% of \(model.formattedSize)").monospacedDigit().foregroundStyle(.secondary)
+                        case .installing:
+                            ProgressView().controlSize(.small)
+                            Text("Installing…").foregroundStyle(.secondary)
                         }
-                        Button("Remove…", role: .destructive) { confirmRemove = true }
+                        Button("Cancel") { downloads.cancel(model) }
+                            .disabled(status == .installing)
                     }
-                    if busy { ProgressView().controlSize(.small) }
+                } else {
+                    HStack {
+                        if !installed {
+                            Button(model.licenseRestrictsUse ? "Accept License and Download (\(model.formattedSize))" : "Download (\(model.formattedSize))") {
+                                downloads.start(model)
+                            }
+                        }
+                        Menu("More") {
+                            Button(installed ? "Replace from Folder…" : "Install from Folder…") { choose() }
+                            if installed {
+                                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                            }
+                            Button("View License") { NSWorkspace.shared.open(model.licenseURL) }
+                        }
+                        .fixedSize()
+                        if installed {
+                            Button("Remove…", role: .destructive) { confirmRemove = true }
+                        }
+                        if busy { ProgressView().controlSize(.small) }
+                    }
+                    .disabled(busy)
                 }
-                .disabled(busy)
             }
-            if let error {
+            if let error = error ?? downloads.failure[model.id] {
                 Text(error).font(.caption).foregroundStyle(.red)
             }
         } header: {
-            Text("Generative Fill")
+            Text(title)
         } footer: {
-            Text("Crop ▸ Extend ▸ Generate draws new content past a photo's edges with \(GenerativeModel.displayName), entirely on this Mac. The model (about 2 GB) is converted from the official weights with scripts/convert-inpainting-model.sh; choose the folder it made. Model license: CreativeML Open RAIL-M.")
+            Text(footer + " Model license: \(model.licenseName)" + (model.licenseRestrictsUse ? ", which limits how it may be used." : "."))
                 .font(.caption).foregroundStyle(.secondary)
         }
         .task { refresh() }
-        .confirmationDialog("Remove the generative fill model?", isPresented: $confirmRemove) {
+        .onChange(of: downloads.installCount) { refresh() }
+        .confirmationDialog("Remove the \(model.purpose) model?", isPresented: $confirmRemove) {
             Button("Remove", role: .destructive) {
-                run { try GenerativeModel.remove() }
+                let remove = remove
+                run { try remove() }
             }
         } message: {
-            Text("Generate won't be available until the model is installed again, which needs the converted model folder.")
+            Text("You can download it again here.")
         }
     }
 
     private func refresh() {
-        installed = GenerativeModel.isInstalled
-        size = installed ? GenerativeModel.sizeOnDisk : 0
+        installed = model.isInstalled()
+        size = installed ? sizeOnDisk() : 0
     }
 
     private func choose() {
@@ -235,9 +219,10 @@ private struct GenerativeFillSettings: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.prompt = "Install"
-        panel.message = "Choose the folder the converter made (it holds Unet.mlmodelc and the other model files)."
+        panel.message = folderPrompt
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        run { try GenerativeModel.install(from: url) }
+        let install = installFromFolder
+        run { try install(url) }
     }
 
     private func run(_ work: @escaping @Sendable () throws -> Void) {

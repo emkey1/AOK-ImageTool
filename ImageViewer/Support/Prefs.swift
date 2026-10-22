@@ -179,7 +179,10 @@ nonisolated enum AppStorageLocation {
     /// Installed models: the real Application Support folder, even for isolated test runs and test copies
     /// with another bundle ID, since they're large, only read, and shared by every build.
     static var models: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        #if DEBUG
+        if let override = ProcessInfo.processInfo.environment["AOK_MODELS_DIR"] { return URL(fileURLWithPath: override) }
+        #endif
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(LegacyMigration.newID).appendingPathComponent("Models")
     }
 

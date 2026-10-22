@@ -73,6 +73,8 @@ struct CropEditor: View {
     @State private var settingText: String?
     @State private var applied = false
     @State private var modelInstalled = GenerativeModel.isInstalled
+    /// The model is downloading for Generate, which is chosen once it's installed.
+    @State private var generateWhenInstalled = false
 
     private static let fullRect = CGRect(x: 0, y: 0, width: 1, height: 1)
     /// How far Extend can reach past each edge, as a fraction of the image.
@@ -156,6 +158,13 @@ struct CropEditor: View {
             }
         }
         .onChange(of: working.crop) { schedulePreview() }
+        .onChange(of: ModelDownloads.shared.installCount) {
+            modelInstalled = GenerativeModel.isInstalled
+            if modelInstalled && generateWhenInstalled {
+                generateWhenInstalled = false
+                setMethod(.generate)
+            }
+        }
         .onDisappear {
             // A generation Done is waiting for keeps running (the final fill joins it).
             if !applied { previewTask?.cancel() }
@@ -323,7 +332,7 @@ struct CropEditor: View {
             .disabled(!modelInstalled && working.effectiveExtendMethod == .match)
             .help(modelInstalled
                   ? "Match Photo continues the photo's own texture; Generate draws new content with an on-device model"
-                  : "Generate needs the generative fill model: see Settings ▸ Editing")
+                  : "Generate needs the generative fill model, a one-time download")
             if working.effectiveExtendMethod == .generate {
                 TextField(settingText.map { "Continuing: \($0)" } ?? "Describe what to add (optional)", text: $promptText)
                     .textFieldStyle(.roundedBorder)
@@ -336,10 +345,13 @@ struct CropEditor: View {
             .disabled(!working.cropExtendsBeyondImage)
             .help("Fill the new area differently")
             Spacer()
-            if !modelInstalled {
-                Text("Generate: install the model in Settings ▸ Editing")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if !modelInstalled && GenerativeModel.isSupported {
+                Button("Get the Model for Generate…") {
+                    generateWhenInstalled = true
+                    model.offerDownload(.generativeFill) {}
+                }
+                .controlSize(.small)
+                .help("Generate draws new content with \(GenerativeModel.displayName), which runs on this Mac (a one-time download)")
             }
         }
     }

@@ -176,8 +176,8 @@ struct ViewerCommands: Commands {
             Button("Adjust Color…") { viewer?.inspectorTab = .adjust; viewer?.showInspector = true }
                 .keyboardShortcut("c", modifiers: [.command, .option])
                 .disabled(!hasImage)
-            if Colorizer.isInstalled {
-                Button("Colorize") { viewer?.colorizeCurrent() }
+            if GenerativeModel.isSupported {
+                Button(Colorizer.isInstalled ? "Colorize" : "Colorize…") { viewer?.colorizeCurrent() }
                     .disabled(!hasImage)
                     .help("Save a color version of a black and white photo next to it")
             }
