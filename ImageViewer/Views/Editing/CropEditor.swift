@@ -422,6 +422,13 @@ struct CropEditor: View {
         }
         if abs(result.straighten) < 0.05 { result.straighten = 0 }
         let previous = model.currentEdits
+        // Extend making a copy: the original stays as it was; the extended picture is saved beside it.
+        if result.cropExtendsBeyondImage, Prefs.makesCopy(.extend), let url = model.currentURL, let d = model.decoded, d.url == url {
+            applied = true   // (a generation the preview started keeps going: the copy's fill joins it)
+            model.saveExtendedCopy(url: url, decoded: d, edits: result)
+            model.activeTool = nil
+            return
+        }
         if let url = model.currentURL, result != previous {
             // The final fill is made in the background (see ViewerModel.refillExtensionIfNeeded).
             applied = true

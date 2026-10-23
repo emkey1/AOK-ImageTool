@@ -155,7 +155,7 @@ extension ViewerModel {
     }
 
     /// The format to write `d` back in, or nil when it can't be saved in place.
-    private func inPlaceFormat(for d: DecodedImage, edits e: EditState) -> ExportFormat? {
+    func inPlaceFormat(for d: DecodedImage, edits e: EditState) -> ExportFormat? {
         // Not animations (one frame would replace them all) or images reduced to fit the display.
         guard let format = SupportedFormats.writableFormat(for: d.contentType),
               !d.isVector, d.pageCount == 1, !d.isAnimated, !d.isReduced,
@@ -182,6 +182,13 @@ extension ViewerModel {
 
     /// Renders `e` at full resolution, replaces the file with it, then drops the saved edits.
     private func writeEdits(url: URL, decoded d: DecodedImage, edits e: EditState, format: ExportFormat) async throws {
+        try await writeOver(url: url, decoded: d, edits: e, format: format)
+    }
+
+    /// Renders `e` at full resolution, passes that through `transform` (Colorize, Upscale… when they don't make
+    /// copies), replaces the file with the result, then drops the edits that are now in it.
+    func writeOver(url: URL, decoded d: DecodedImage, edits e: EditState, format: ExportFormat,
+                   transform: (@Sendable (CGImage) async throws -> CGImage)? = nil) async throws {
         let trash = Prefs.trashOriginalOnSave
         savingURLs.insert(url)
         defer { savingURLs.remove(url) }
@@ -190,14 +197,15 @@ extension ViewerModel {
             guard let output = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil) else {
                 throw ImageWriteError.finalizeFailed
             }
+            let image = try await transform?(output.image) ?? output.image
             if PhotosRoundTrip.isEditWithFile(url) {
                 // Photos watches this file: write over it where it is (Photos keeps the original).
-                try ImageWriter.overwrite(original: url, with: output.image, format: format, quality: 0.93, sourceProperties: d.properties)
+                try ImageWriter.overwrite(original: url, with: image, format: format, quality: 0.93, sourceProperties: d.properties)
                 return
             }
             // The new file is a new file: keep its record of what it was made from (it may be a stacked copy).
             let source = ImageStacks.source(of: url)
-            try ImageWriter.replace(original: url, with: output.image, format: format, quality: 0.93,
+            try ImageWriter.replace(original: url, with: image, format: format, quality: 0.93,
                                     sourceProperties: d.properties, trashOriginal: trash)
             if let source { ImageStacks.setSource(source, of: url) }
         }.value

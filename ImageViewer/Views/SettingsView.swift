@@ -100,6 +100,10 @@ private struct ViewingSettings: View {
 private struct EditingSettings: View {
     @AppStorage(PrefKey.trashOriginalOnSave) private var trashOriginal = true
     @AppStorage(PrefKey.confirmOverwrite) private var confirmOverwrite = true
+    @AppStorage(CopyOperation.upscale.key) private var copyUpscale = true
+    @AppStorage(CopyOperation.colorize.key) private var copyColorize = true
+    @AppStorage(CopyOperation.blackAndWhite.key) private var copyBlackAndWhite = true
+    @AppStorage(CopyOperation.extend.key) private var copyExtend = true
 
     var body: some View {
         Form {
@@ -110,6 +114,17 @@ private struct EditingSettings: View {
                 Text("Saving")
             } footer: {
                 Text("Edits are non-destructive until you Save. With “Move the original to the Trash” on, you can always recover the unedited file.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section {
+                Toggle("Upscale with AI makes a copy", isOn: $copyUpscale)
+                Toggle("Colorize makes a copy", isOn: $copyColorize)
+                Toggle("Black & White makes a copy", isOn: $copyBlackAndWhite)
+                Toggle("Extend makes a copy", isOn: $copyExtend)
+            } header: {
+                Text("Copies")
+            } footer: {
+                Text("A copy is saved next to the original and stacked on it; the original stays as it was. Turned off, Upscale, Colorize and Black & White replace the image when they're done (the original goes to the Trash as when saving), and Extend becomes an edit you save. Photos from your Photos library and animations always get copies.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             ModelSettings(model: .generativeFill, title: "Generative Fill",

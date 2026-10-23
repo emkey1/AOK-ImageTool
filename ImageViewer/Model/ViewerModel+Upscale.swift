@@ -41,7 +41,8 @@ extension ViewerModel {
     private func saveUpscaled(url: URL, decoded d: DecodedImage, edits e: EditState, scale: Int) {
         saveCopy(of: url, decoded: d, edits: e, label: "\(scale)×", defaultFormat: .png,
                  working: "Upscaling…", systemImage: "arrow.up.left.and.arrow.down.right",
-                 failure: "Couldn't upscale “\(url.lastPathComponent)”") {
+                 failure: "Couldn't upscale “\(url.lastPathComponent)”",
+                 operation: .upscale, replaced: "Upscaled “\(url.lastPathComponent)” \(scale)×") {
             try await SuperResolution.upscale($0, scale: CGFloat(scale))
         }
     }

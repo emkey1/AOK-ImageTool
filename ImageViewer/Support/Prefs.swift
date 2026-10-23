@@ -67,6 +67,24 @@ nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {
     }
 }
 
+/// What makes a new picture: whether it saves it as a copy, stacked on the original (the default), or puts it
+/// in place of the image (Settings ▸ Editing ▸ Copies).
+nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
+    case upscale, colorize, blackAndWhite, extend
+
+    var id: String { rawValue }
+    var key: String { "makesCopy." + rawValue }
+
+    var title: String {
+        switch self {
+        case .upscale: "Upscale with AI"
+        case .colorize: "Colorize"
+        case .blackAndWhite: "Black & White"
+        case .extend: "Extend"
+        }
+    }
+}
+
 /// Typed, thread-safe accessors for preferences used outside of SwiftUI views.
 nonisolated enum Prefs {
     private static var d: UserDefaults { .standard }
@@ -91,6 +109,7 @@ nonisolated enum Prefs {
     static var showFilmstrip: Bool { bool(PrefKey.showFilmstrip, true) }
     static var autoDescribe: Bool { bool(PrefKey.autoDescribe, false) }
     static var stackCopies: Bool { bool(PrefKey.stackCopies, true) }
+    static func makesCopy(_ operation: CopyOperation) -> Bool { bool(operation.key, true) }
     /// What an upscaled animation is saved as.
     static var upscaledAnimationFormat: Animation.Container {
         Animation.Container(rawValue: d.string(forKey: PrefKey.upscaledAnimationFormat) ?? "") ?? .gif

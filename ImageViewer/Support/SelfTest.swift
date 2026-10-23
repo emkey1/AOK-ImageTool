@@ -27,7 +27,8 @@ enum SelfTest {
         // The test drives real models, which save preferences shared with the user's copy of the app;
         // put them back afterwards.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
-                           PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies]
+                           PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
+                           CopyOperation.blackAndWhite.key, PrefKey.confirmOverwrite, PrefKey.trashOriginalOnSave]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("ImageViewerSelfTest-\(UUID().uuidString.prefix(6))")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -412,6 +413,50 @@ enum SelfTest {
             pb.clearContents()
             pb.setString("just text", forType: .string)
             check(!ViewerModel.clipboardHasImage(pb), "text on the clipboard isn't taken for a picture")
+        }
+
+        // 4g. Copies or not (Settings ▸ Editing ▸ Copies): Extend makes a copy; Black & White switched off replaces the image.
+        print("\n[Copies or in place]")
+        if let src = items.first(where: { $0.name == "Mountain Lake.heic" })?.url {
+            let fm = FileManager.default
+            let folder = out.appendingPathComponent("copies")
+            try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+            let lake = folder.appendingPathComponent("Lake.heic")
+            try? fm.copyItem(at: src, to: lake)
+            let before = try? Data(contentsOf: lake)
+            let model = ViewerModel()
+            model.stacksEnabled = true
+            model.openFolder(folder, selecting: lake)
+            for _ in 0..<100 where model.decoded?.url != lake.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            if let d = model.decoded {
+                var e = EditState()
+                e.crop = CGRect(x: -0.15, y: 0, width: 1.3, height: 1)
+                e.extendSeed = 5
+                model.saveExtendedCopy(url: lake.standardizedFileURL, decoded: d, edits: e)
+                let extended = folder.appendingPathComponent("Lake (Extended).heic")
+                for _ in 0..<600 where !fm.fileExists(atPath: extended.path) || model.items.count < 2 { try? await Task.sleep(for: .milliseconds(100)) }
+                let width = ImageDecoder.header(url: extended)?.pixelSize.width ?? 0
+                check(abs(width - d.pixelSize.width * 1.3) < 3 && (try? Data(contentsOf: lake)) == before && model.edits[lake.standardizedFileURL] == nil
+                      && ImageStacks.source(of: extended) == "Lake.heic",
+                      "Extend makes a copy (\(Int(width)) px wide), stacked; the original stays as it was")
+            }
+            // Black & White in place.
+            Prefs.setBool(false, CopyOperation.blackAndWhite.key)
+            Prefs.setBool(false, PrefKey.confirmOverwrite)
+            Prefs.setBool(false, PrefKey.trashOriginalOnSave)   // (never the user's Trash)
+            model.select(lake.standardizedFileURL)   // (the original, under its extended copy in a closed stack)
+            for _ in 0..<100 where model.decoded?.url != lake.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            check(model.currentURL == lake.standardizedFileURL && model.items.count == 1, "a picture in a closed stack can be gone to")
+            model.saveBlackAndWhite(BlackAndWhite())
+            for _ in 0..<200 where (try? Data(contentsOf: lake)) == before { try? await Task.sleep(for: .milliseconds(100)) }
+            for _ in 0..<50 where model.savingURLs.contains(lake.standardizedFileURL) { try? await Task.sleep(for: .milliseconds(100)) }
+            let gray: Bool = {
+                guard let image = try? ImageDecoder.decode(url: lake, page: 0, allowHDR: false) else { return false }
+                let px = rgbaPixels(VisionServices.downscaledSync(image.cgImage, maxDimension: 64))
+                return stride(from: 0, to: px.count, by: 4).allSatisfy { abs(Int(px[$0]) - Int(px[$0 + 2])) < 6 }
+            }()
+            check(gray && !fm.fileExists(atPath: folder.appendingPathComponent("Lake (Black & White).heic").path),
+                  "with copies off, Black & White makes the image itself black and white\(model.alert.map { " (alert: \($0.title): \($0.message))" } ?? "")")
         }
 
         // 5. Pending edits survive a relaunch, but not a change to the file.

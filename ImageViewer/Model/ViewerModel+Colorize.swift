@@ -2,10 +2,17 @@ import AppKit
 
 extension ViewerModel {
     /// Saves a copy of the image at `url`, with its edits, made by `transform`, as "<name> (<label>)" next to
-    /// it. The copy records what it was made from, so it stacks on top of it, and is shown.
+    /// it. The copy records what it was made from, so it stacks on top of it, and is shown. When `operation` is
+    /// set not to make copies (Settings ▸ Editing ▸ Copies), the result takes the image's place instead.
     func saveCopy(of url: URL, decoded d: DecodedImage, edits e: EditState, label: String, defaultFormat: ExportFormat,
-                  working: String, systemImage: String, failure: String,
+                  working: String, systemImage: String, failure: String, operation: CopyOperation? = nil, replaced: String = "",
                   transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
+        // (A photo from the Photos library always gets a copy, added to Photos.)
+        if let operation, !Prefs.makesCopy(operation), PhotosLibrary.shared.photo(for: url) == nil,
+           let format = inPlaceFormat(for: d, edits: e) {
+            return replace(url, decoded: d, edits: e, format: format, label: label, working: working, systemImage: systemImage,
+                           failure: failure, replaced: replaced, transform: transform)
+        }
         var format = SupportedFormats.writableFormat(for: d.contentType).flatMap { [.jpeg, .heic, .avif, .png, .tiff].contains($0) ? $0 : nil }
             ?? defaultFormat
         if e.hasTransparency && !format.supportsAlpha { format = .png }   // a cutout keeps its transparency
@@ -32,6 +39,42 @@ extension ViewerModel {
                 showError(failure, error)
             }
         }
+    }
+
+    /// The result of Colorize, Upscale… in place of the image: the file is replaced (the original going to the
+    /// Trash as Save would), asking first when Save asks.
+    private func replace(_ url: URL, decoded d: DecodedImage, edits e: EditState, format: ExportFormat, label: String,
+                         working: String, systemImage: String, failure: String, replaced: String,
+                         transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
+        let go: () -> Void = { [weak self] in
+            guard let self else { return }
+            showToast(working, systemImage: systemImage)
+            Task {
+                do {
+                    try await self.writeOver(url: url, decoded: d, edits: e, format: format, transform: transform)
+                    self.showToast(replaced.isEmpty ? "Replaced “\(url.lastPathComponent)”" : replaced, systemImage: "checkmark.circle")
+                } catch {
+                    self.dismissToast()
+                    self.showError(failure, error)
+                }
+            }
+        }
+        guard Prefs.confirmOverwrite else { return go() }
+        let alert = NSAlert()
+        alert.messageText = "Replace “\(url.lastPathComponent)” with the \(label.lowercased()) version?"
+        alert.informativeText = (Prefs.trashOriginalOnSave
+            ? "The original is moved to the Trash, so you can still recover it."
+            : "The original file is replaced. This can't be undone.")
+            + " To keep the original and get a copy instead, turn on “\(label) makes a copy” in Settings ▸ Editing."
+        alert.addButton(withTitle: "Replace")
+        alert.addButton(withTitle: "Cancel")
+        alert.showsSuppressionButton = true
+        alert.suppressionButton?.title = "Don't ask again"
+        let handle: (NSApplication.ModalResponse) -> Void = { response in
+            if alert.suppressionButton?.state == .on { Prefs.setBool(false, PrefKey.confirmOverwrite) }
+            if response == .alertFirstButtonReturn { go() }
+        }
+        if let window { alert.beginSheetModal(for: window, completionHandler: handle) } else { handle(alert.runModal()) }
     }
 
     /// Where a copy of `original` is written: next to it, or, for a photo from Photos, somewhere to wait until
@@ -87,8 +130,33 @@ extension ViewerModel {
         }
         guard let url = currentURL, let d = decoded, d.url == url else { return }
         saveCopy(of: url, decoded: d, edits: currentEdits, label: "Colorized", defaultFormat: .heic,
-                 working: "Colorizing…", systemImage: "paintpalette", failure: "Couldn't colorize “\(url.lastPathComponent)”") {
+                 working: "Colorizing…", systemImage: "paintpalette", failure: "Couldn't colorize “\(url.lastPathComponent)”",
+                 operation: .colorize, replaced: "Colorized “\(url.lastPathComponent)”") {
             try await Colorizer.colorize($0)
+        }
+    }
+
+    /// Done in the Crop tool with the frame extended, when Extend makes copies: the extension is made (sharing
+    /// the preview's generation) and saved as "<name> (Extended)", stacked on the original, which stays as it was.
+    func saveExtendedCopy(url: URL, decoded d: DecodedImage, edits e: EditState) {
+        showToast("Extending…", systemImage: "arrow.up.left.and.arrow.down.right")
+        let report: @Sendable (Double) -> Bool = { [weak self] fraction in
+            let model = self
+            Task { @MainActor in model?.showToast("Extending… \(Int(fraction * 100))%", systemImage: "arrow.up.left.and.arrow.down.right") }
+            return false
+        }
+        Task {
+            do {
+                let fill = try await ExtendRenderer.makeFill(d, edits: e, progress: report)
+                var extended = e
+                extended.extendFill = fill.extendFill(try ExtendFillStore.save(fill.fill))
+                saveCopy(of: url, decoded: d, edits: extended, label: "Extended", defaultFormat: .heic,
+                         working: "Saving the extended copy…", systemImage: "arrow.up.left.and.arrow.down.right",
+                         failure: "Couldn't extend “\(url.lastPathComponent)”") { $0 }
+            } catch {
+                dismissToast()
+                showError("Couldn't extend “\(url.lastPathComponent)”", error)
+            }
         }
     }
 
@@ -96,9 +164,11 @@ extension ViewerModel {
     func saveBlackAndWhite(_ bw: BlackAndWhite) {
         guard let url = currentURL, let d = decoded, d.url == url else { return }
         BlackAndWhite.last = bw
+        let copy = Prefs.makesCopy(.blackAndWhite)
         saveCopy(of: url, decoded: d, edits: currentEdits, label: "Black & White", defaultFormat: .heic,
-                 working: "Making a black and white copy…", systemImage: "circle.lefthalf.filled",
-                 failure: "Couldn't make a black and white copy of “\(url.lastPathComponent)”") {
+                 working: copy ? "Making a black and white copy…" : "Making it black and white…", systemImage: "circle.lefthalf.filled",
+                 failure: "Couldn't make “\(url.lastPathComponent)” black and white",
+                 operation: .blackAndWhite, replaced: "Made “\(url.lastPathComponent)” black and white") {
             guard let made = EditRenderer.shared.blackAndWhite($0, bw) else { throw ImageWriteError.finalizeFailed }
             return made
         }

@@ -597,7 +597,12 @@ final class ViewerModel {
     }
 
     func select(_ url: URL) {
-        if let i = items.firstIndex(where: { $0.url == url }) { show(index: i) }
+        if let i = items.firstIndex(where: { $0.url == url }) { return show(index: i) }
+        // Inside a closed stack: it becomes the copy the stack shows.
+        if let root = stackOf[url] {
+            stackFront[root] = url
+            applySortAndFilter(selecting: url)
+        }
     }
 
     func nextPage() {
