@@ -22,9 +22,16 @@ struct FixBlurSheet: View {
             Label("Fix Blur", systemImage: "camera.metering.center.weighted").font(.title2.weight(.bold))
             Text(Prefs.makesCopy(.fixBlur) ? "Saves a sharpened copy next to the original, stacked on top of it." : "Sharpens the image itself (Settings ▸ Editing ▸ Copies).")
                 .foregroundStyle(.secondary)
+            modelsNeeded
             HStack(spacing: 10) {
                 pane("Before", before)
-                pane("After", effective.doesSomething ? after : before, working: previewing)
+                if effective.doesSomething {
+                    pane("After", after, working: previewing)
+                } else {
+                    pane("After", nil, message: blurInstalled || facesInstalled
+                         ? "Choose a kind of blur or Restore Faces."
+                         : "Download a model above to see the result here.")
+                }
             }
             .frame(minHeight: 260, maxHeight: .infinity)
             Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 10) {
@@ -39,7 +46,7 @@ struct FixBlurSheet: View {
                             .labelsHidden()
                             .frame(maxWidth: 330)
                             .disabled(!blurInstalled)
-                            if !blurInstalled { getModel(.fixBlur) }
+                            if !blurInstalled { needsModel }
                         }
                         Text(blurHelp).font(.caption).foregroundStyle(.secondary)
                     }
@@ -55,7 +62,7 @@ struct FixBlurSheet: View {
                         HStack {
                             Toggle("Restore faces", isOn: $options.faces)
                                 .disabled(!facesInstalled)
-                            if !facesInstalled { getModel(.restoreFaces) }
+                            if !facesInstalled { needsModel }
                         }
                         Text("Redraws blurry faces with \(BlurFixer.facesModelName): clearer eyes, mouths and hair. It makes up detail, so check that people still look like themselves; on a sharp face it mostly smooths the skin.")
                             .font(.caption).foregroundStyle(.secondary)
@@ -103,7 +110,7 @@ struct FixBlurSheet: View {
         }
     }
 
-    private func pane(_ title: String, _ image: CGImage?, working: Bool = false) -> some View {
+    private func pane(_ title: String, _ image: CGImage?, working: Bool = false, message: String? = nil) -> some View {
         VStack(spacing: 6) {
             ZStack {
                 RoundedRectangle(cornerRadius: 10).fill(Color(white: 0.12))
@@ -114,7 +121,14 @@ struct FixBlurSheet: View {
                         .scaledToFit()
                         .padding(6)
                 }
-                if image == nil || working { ProgressView() }
+                if let message {
+                    Text(message)
+                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
+                        .padding()
+                } else if image == nil || working {
+                    ProgressView()
+                }
             }
             Text(title).font(.caption).foregroundStyle(.secondary)
         }
@@ -128,10 +142,55 @@ struct FixBlurSheet: View {
         .frame(maxWidth: 330)
     }
 
-    private func getModel(_ download: DownloadableModel) -> some View {
-        Button("Get the Model (\(download.formattedSize))…") { model.offerDownload(download) {} }
-            .controlSize(.small)
-            .disabled(ModelDownloads.shared.status[download.id] != nil)
+    private var needsModel: some View {
+        Label("Needs its model (above)", systemImage: "arrow.down.circle")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+    }
+
+    /// The models that aren't installed, with their downloads, at the top: nothing works without them.
+    @ViewBuilder
+    private var modelsNeeded: some View {
+        let missing = [DownloadableModel.fixBlur, .restoreFaces].filter { $0.id == DownloadableModel.fixBlur.id ? !blurInstalled : !facesInstalled }
+        if !missing.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(missing.count == 2 ? "Fix Blur needs its models" : "One of Fix Blur's models isn't installed", systemImage: "arrow.down.circle.fill")
+                    .font(.headline)
+                Text("They run on this Mac, and each is a one-time download (also in Settings ▸ Editing).")
+                    .font(.caption).foregroundStyle(.secondary)
+                ForEach(missing) { m in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(m.id == DownloadableModel.fixBlur.id ? "Out of Focus and Camera Shake" : "Restore Faces").fontWeight(.semibold)
+                            Text("\(m.modelName), \(m.formattedSize), \(m.licenseName) license").font(.caption).foregroundStyle(.secondary)
+                            if let failure = ModelDownloads.shared.failure[m.id] {
+                                Text(failure).font(.caption).foregroundStyle(.red)
+                            }
+                        }
+                        Spacer()
+                        download(m)
+                    }
+                }
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.12)))
+        }
+    }
+
+    @ViewBuilder
+    private func download(_ m: DownloadableModel) -> some View {
+        let downloads = ModelDownloads.shared
+        switch downloads.status[m.id] {
+        case .downloading(let fraction)?:
+            ProgressView(value: fraction).frame(width: 110)
+            Text("\(Int(fraction * 100))%").monospacedDigit().font(.caption).frame(width: 34, alignment: .trailing)
+            Button("Cancel") { downloads.cancel(m) }.controlSize(.small)
+        case .installing?:
+            ProgressView().controlSize(.small)
+            Text("Installing…").font(.caption).foregroundStyle(.secondary)
+        case nil:
+            Button("Download (\(m.formattedSize))") { downloads.start(m) }
+        }
     }
 
     /// Most of the window's height.

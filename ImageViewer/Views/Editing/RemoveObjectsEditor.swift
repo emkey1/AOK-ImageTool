@@ -182,7 +182,10 @@ struct RemoveObjectsEditor: View {
         if method == .generate, promptText.trimmingCharacters(in: .whitespaces).isEmpty {
             return "Generate paints what you describe in place of what you mark. Describe it below first."
         }
-        if removals.isEmpty { return "Paint over what to remove, or click it. Circle something to remove all of it." }
+        if removals.isEmpty {
+            return "Paint over what to remove, or click it. Circle something to remove all of it."
+                + (eraseInstalled || !GenerativeModel.isSupported ? "" : " (Using Match Photo: for Erase, the best fill, click Get the Model for Erase… below.)")
+        }
         return "Removed. Paint or click to remove more; Try Again fills it differently, ⌘Z takes it back."
     }
 

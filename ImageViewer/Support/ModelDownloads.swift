@@ -154,7 +154,9 @@ enum ModelDownloadError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .badResponse(let status): "The server answered \(status)."
+        case .badResponse(let status):
+            status == 404 ? "It isn't available to download yet (the server answered 404). You can install a converted copy with More ▸ Install from Folder…"
+                : "The server answered \(status)."
         case .corrupt(let file): "“\(file)” didn't download correctly (its checksum doesn't match). Try again."
         case .noRoom(let needed): "There isn't enough free space: the download needs about \(ByteCountFormatter.string(fromByteCount: needed, countStyle: .file))."
         case .unpackFailed(let file): "“\(file)” couldn't be unpacked."
