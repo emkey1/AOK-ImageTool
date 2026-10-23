@@ -46,23 +46,31 @@ struct RemoveObjectsEditor: View {
     @State private var generateWhenInstalled = false
     /// What Generate paints in place of what's marked.
     @State private var promptText = ""
+    /// Zoom, relative to the picture fitting the view (1), and how far it's moved (points).
+    @State private var zoom: CGFloat = 1
+    @State private var pan: CGSize = .zero
+    @State private var zoomStart: CGFloat?
+    @State private var viewport: CGSize = .zero
+    @State private var scrollMonitor: Any?
 
     private static let markColor = Color(red: 1, green: 0.3, blue: 0.4)
+    static let maxZoom: CGFloat = 16
 
     var body: some View {
         VStack(spacing: 0) {
             GeometryReader { geo in
                 ZStack {
                     Color(white: 0.07)
-                    if let shown = showOriginal ? original : picture {
-                        let size = CGSize(width: shown.width, height: shown.height)
-                        let fitted = fitRect(size, in: CGRect(origin: .zero, size: geo.size).insetBy(dx: 30, dy: 30))
-                        Image(decorative: shown, scale: 1)
+                    if let image = showOriginal ? original : picture {
+                        let fitted = Self.fittedRect(image, in: geo.size)
+                        let shown = shownRect(fitted: fitted)
+                        Image(decorative: image, scale: 1)
                             .resizable()
-                            .frame(width: fitted.width, height: fitted.height)
-                            .position(x: fitted.midX, y: fitted.midY)
-                        markOverlay(in: fitted)
-                        if let hover, !busy, !showOriginal, fitted.contains(hover) {
+                            .interpolation(zoom > 1.5 ? .medium : .high)
+                            .frame(width: shown.width, height: shown.height)
+                            .position(x: shown.midX, y: shown.midY)
+                        markOverlay(in: shown)
+                        if let hover, !busy, !showOriginal, shown.contains(hover) {
                             Circle()
                                 .strokeBorder(.white, lineWidth: 1.5)
                                 .shadow(color: .black.opacity(0.6), radius: 1)
@@ -72,7 +80,8 @@ struct RemoveObjectsEditor: View {
                         }
                         Color.clear
                             .contentShape(Rectangle())
-                            .gesture(paintGesture(in: fitted))
+                            .gesture(paintGesture(in: shown))
+                            .simultaneousGesture(pinchGesture)
                             .onContinuousHover(coordinateSpace: .local) { phase in
                                 if case .active(let p) = phase { hover = p } else { hover = nil }
                             }
@@ -81,6 +90,12 @@ struct RemoveObjectsEditor: View {
                     }
                     hint.position(x: geo.size.width / 2, y: 20)
                 }
+                .clipped()
+                .onAppear { viewport = geo.size }
+                .onChange(of: geo.size) {
+                    viewport = geo.size
+                    setZoom(zoom, about: nil)
+                }
             }
             controls
         }
@@ -88,8 +103,27 @@ struct RemoveObjectsEditor: View {
             start = model.currentEdits
             if !method.isAvailable { method = .match }
             Task { await render(initial: true) }
+            // Two-finger scrolling (or the wheel) moves around a zoomed picture; with ⌘, it zooms.
+            scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { event in
+                guard event.window === model.window, let point = hover else { return event }
+                let scale: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 8
+                if event.modifierFlags.contains(.command) {
+                    setZoom(zoom * exp(event.scrollingDeltaY * scale * 0.01), about: point)
+                } else {
+                    move(by: CGSize(width: event.scrollingDeltaX * scale, height: event.scrollingDeltaY * scale))
+                }
+                return nil
+            }
         }
-        .onDisappear { task?.cancel() }
+        .onDisappear {
+            task?.cancel()
+            if let scrollMonitor { NSEvent.removeMonitor(scrollMonitor) }
+            scrollMonitor = nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .toolZoom)) { note in
+            guard note.object as AnyObject? === model, let step = note.userInfo?["step"] as? Int else { return }
+            step == 0 ? setZoom(1, about: nil) : setZoom(zoom * (step > 0 ? 1.5 : 1 / 1.5), about: hover)
+        }
         .onChange(of: ModelDownloads.shared.installCount) {
             eraseInstalled = RemovalModel.isInstalled
             if eraseInstalled && eraseWhenInstalled {
@@ -122,6 +156,56 @@ struct RemoveObjectsEditor: View {
     }
 
     // MARK: Canvas
+
+    private static func fittedRect(_ image: CGImage, in size: CGSize) -> CGRect {
+        fitRect(CGSize(width: image.width, height: image.height), in: CGRect(origin: .zero, size: size).insetBy(dx: 30, dy: 30))
+    }
+
+    /// Where the picture is drawn: fitted to the view, zoomed about its middle, moved by `pan`.
+    private func shownRect(fitted: CGRect) -> CGRect {
+        let w = fitted.width * zoom, h = fitted.height * zoom
+        return CGRect(x: fitted.midX - w / 2 + pan.width, y: fitted.midY - h / 2 + pan.height, width: w, height: h)
+    }
+
+    /// `offset` limited so the picture doesn't leave the view: centered where it's smaller than the view,
+    /// filling it where it's bigger.
+    private static func clamped(_ offset: CGSize, fitted: CGRect, zoom: CGFloat, view: CGSize) -> CGSize {
+        func axis(_ offset: CGFloat, size: CGFloat, mid: CGFloat, view: CGFloat) -> CGFloat {
+            guard size > view else { return 0 }
+            return min(max(offset, view - mid - size / 2), size / 2 - mid)
+        }
+        return CGSize(width: axis(offset.width, size: fitted.width * zoom, mid: fitted.midX, view: view.width),
+                      height: axis(offset.height, size: fitted.height * zoom, mid: fitted.midY, view: view.height))
+    }
+
+    /// Zooms to `z` (1 = fit), keeping what's under `point` (the middle, if nil) where it is.
+    private func setZoom(_ z: CGFloat, about point: CGPoint?) {
+        guard let picture, viewport.width > 0 else { return }
+        let fitted = Self.fittedRect(picture, in: viewport)
+        let shown = shownRect(fitted: fitted)
+        let newZoom = min(max(z, 1), Self.maxZoom)
+        let p = point ?? CGPoint(x: viewport.width / 2, y: viewport.height / 2)
+        let n = CGPoint(x: (p.x - shown.minX) / shown.width, y: (p.y - shown.minY) / shown.height)
+        let w = fitted.width * newZoom, h = fitted.height * newZoom
+        let offset = CGSize(width: p.x - n.x * w - (fitted.midX - w / 2), height: p.y - n.y * h - (fitted.midY - h / 2))
+        zoom = newZoom
+        pan = Self.clamped(offset, fitted: fitted, zoom: newZoom, view: viewport)
+    }
+
+    private func move(by delta: CGSize) {
+        guard let picture, zoom > 1 else { return }
+        let fitted = Self.fittedRect(picture, in: viewport)
+        pan = Self.clamped(CGSize(width: pan.width + delta.width, height: pan.height + delta.height), fitted: fitted, zoom: zoom, view: viewport)
+    }
+
+    private var pinchGesture: some Gesture {
+        MagnifyGesture()
+            .onChanged { value in
+                if zoomStart == nil { zoomStart = zoom }
+                setZoom((zoomStart ?? 1) * value.magnification, about: value.startLocation)
+            }
+            .onEnded { _ in zoomStart = nil }
+    }
 
     @ViewBuilder
     private func markOverlay(in fitted: CGRect) -> some View {
@@ -188,7 +272,7 @@ struct RemoveObjectsEditor: View {
             return "Generate paints what you describe in place of what you mark. Describe it below first."
         }
         if removals.isEmpty {
-            return "Paint over what to remove, or click it. Circle something to remove all of it."
+            return "Paint over what to remove, or click it. Circle something to remove all of it. Pinch or ⌘-scroll to zoom in."
                 + (eraseInstalled || !GenerativeModel.isSupported ? "" : " (Using Match Photo: for Erase, the best fill, click Get the Model for Erase… below.)")
         }
         return "Removed. Paint or click to remove more; Try Again fills it differently, ⌘Z takes it back."
@@ -236,6 +320,17 @@ struct RemoveObjectsEditor: View {
                     .help("Erase uses \(RemovalModel.displayName), which runs on this Mac (a one-time download of \(DownloadableModel.removal.formattedSize))")
                 }
                 Spacer()
+                Button { setZoom(zoom / 1.5, about: nil) } label: { Image(systemName: "minus.magnifyingglass") }
+                    .disabled(zoom <= 1)
+                    .help("Zoom out (⌘−)")
+                Button(zoom <= 1.001 ? "Fit" : String(format: "%.1f×", zoom)) { setZoom(1, about: nil) }
+                    .monospacedDigit()
+                    .frame(minWidth: 46)
+                    .help("Fit the picture in view (⌘0). Pinch, ⌘-scroll or ⌘+ to zoom in; scroll to move around.")
+                Button { setZoom(zoom * 1.5, about: nil) } label: { Image(systemName: "plus.magnifyingglass") }
+                    .disabled(zoom >= Self.maxZoom)
+                    .help("Zoom in (⌘+)")
+                Divider().frame(height: 18)
                 Image(systemName: "paintbrush.pointed")
                     .foregroundStyle(.secondary)
                 Slider(value: Binding(get: { brush }, set: { setBrush($0) }), in: 8...200) { Text("Brush") }
@@ -315,7 +410,8 @@ struct RemoveObjectsEditor: View {
         guard let d = model.decoded else { return }
         var e = shownEdits
         e.removals = allRemovals.isEmpty ? nil : allRemovals
-        guard let output = await EditRenderer.shared.render(d, edits: e, maxDimension: 2048, stage: .full) else { return }
+        // (Up to 4096 px, so it's still sharp zoomed in.)
+        guard let output = await EditRenderer.shared.render(d, edits: e, maxDimension: 4096, stage: .full) else { return }
         picture = output.image
         if initial { original = output.image }
     }

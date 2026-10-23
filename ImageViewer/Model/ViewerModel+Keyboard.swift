@@ -36,7 +36,7 @@ extension ViewerModel {
         ("Edit", [
             Shortcut(keys: "R  ·  ⇧R", action: "Rotate right / left"),
             Shortcut(keys: "C", action: "Crop & straighten"),
-            Shortcut(keys: "⇧⌘X", action: "Remove objects ([ ] brush size)"),
+            Shortcut(keys: "⇧⌘X", action: "Remove objects ([ ] brush, ⌘+ ⌘− ⌘0 zoom)"),
             Shortcut(keys: "\\", action: "Show original (before / after)"),
             Shortcut(keys: "⌘S  ·  ⇧⌘E", action: "Save / Export"),
             Shortcut(keys: "⌘V", action: "Paste a picture as a new image"),
@@ -78,6 +78,16 @@ extension ViewerModel {
         }
     }
 
+    /// + (or =), − and 0 as zoom in, out and fit.
+    static func zoomStep(_ chars: String?) -> Int? {
+        switch chars {
+        case "+", "=": 1
+        case "-", "_": -1
+        case "0": 0
+        default: nil
+        }
+    }
+
     func handleKeyDown(_ event: NSEvent) -> Bool {
         // ⌘⌫ and ⌘-arrows in a text field (here or in one of this window's sheets) edit the text; as menu
         // shortcuts they'd move the image to the Trash or open the enclosing folder.
@@ -104,9 +114,13 @@ extension ViewerModel {
             pasteImage()
             return true
         }
-        // In Remove Objects, ⌘Z and ⇧⌘Z step through its removals.
+        // In Remove Objects, ⌘Z and ⇧⌘Z step through its removals, and ⌘+, ⌘− and ⌘0 zoom its picture.
         if mods == .command, activeTool == .removeObjects, event.charactersIgnoringModifiers?.lowercased() == "z" {
             NotificationCenter.default.post(name: event.modifierFlags.contains(.shift) ? .toolRedo : .toolUndo, object: self)
+            return true
+        }
+        if activeTool == .removeObjects, mods == .command || mods.isEmpty, let step = Self.zoomStep(event.charactersIgnoringModifiers) {
+            NotificationCenter.default.post(name: .toolZoom, object: self, userInfo: ["step": step])
             return true
         }
         if mods == .option, activeTool == nil {
@@ -246,4 +260,5 @@ extension Notification.Name {
     static let toolUndo = Notification.Name("ImageViewer.toolUndo")
     static let toolRedo = Notification.Name("ImageViewer.toolRedo")
     static let toolBrush = Notification.Name("ImageViewer.toolBrush")
+    static let toolZoom = Notification.Name("ImageViewer.toolZoom")
 }
