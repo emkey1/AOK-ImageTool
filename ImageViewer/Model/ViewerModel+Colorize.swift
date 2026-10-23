@@ -117,6 +117,11 @@ extension ViewerModel {
         let stillHere = currentURL == original && activeTool == nil
         if let item = FolderScanner.item(for: dest) { insertItem(item, select: stillHere) }
         let copy = dest.standardizedFileURL
+        // The newest copy is what its stack shows from now on (unless a picture in it is the one being viewed).
+        if !stillHere, let root = stackOf[copy], stackFront[root] != copy {
+            stackFront[root] = copy
+            applySortAndFilter(selecting: currentURL)
+        }
         if stillHere || !items.contains(where: { $0.url == copy }) {
             showToast("Saved \(dest.lastPathComponent)", systemImage: "checkmark.circle")
         } else {

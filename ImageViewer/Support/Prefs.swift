@@ -31,6 +31,7 @@ nonisolated enum PrefKey {
     static let autoDescribe = "autoDescribe"
     static let recentFolders = "recentFolders"
     static let lastViewedFiles = "lastViewedFiles"
+    static let stackFronts = "stackFronts"
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
     static let stackCopies = "stackCopies"
@@ -183,6 +184,39 @@ enum RecentFolders {
 
     static func clear() {
         Prefs.set(nil, PrefKey.recentFolders)
+    }
+}
+
+/// Which copy each stack in a folder shows (the one last viewed or made), so it still does when the folder is
+/// opened again. Kept by path relative to the folder, for the folders used most recently.
+enum StackFronts {
+    static let maxFolders = 100
+
+    static func load(in folder: URL) -> [URL: URL] {
+        let all = UserDefaults.standard.dictionary(forKey: PrefKey.stackFronts) as? [String: [String: String]] ?? [:]
+        var fronts: [URL: URL] = [:]
+        for (root, front) in all[folder.standardizedFileURL.path] ?? [:] {
+            fronts[folder.appendingPathComponent(root).standardizedFileURL] = folder.appendingPathComponent(front).standardizedFileURL
+        }
+        return fronts
+    }
+
+    static func save(_ fronts: [URL: URL], in folder: URL) {
+        var all = UserDefaults.standard.dictionary(forKey: PrefKey.stackFronts) as? [String: [String: String]] ?? [:]
+        let base = folder.standardizedFileURL.path + "/"
+        func relative(_ url: URL) -> String? {
+            let path = url.standardizedFileURL.path
+            return path.hasPrefix(base) ? String(path.dropFirst(base.count)) : nil
+        }
+        var map: [String: String] = [:]
+        for (root, front) in fronts {
+            if let r = relative(root), let f = relative(front) { map[r] = f }
+        }
+        let key = folder.standardizedFileURL.path
+        guard all[key] ?? [:] != map else { return }
+        all[key] = map.isEmpty ? nil : map
+        if all.count > maxFolders { all.removeValue(forKey: all.keys.first { $0 != key } ?? key) }
+        Prefs.set(all, PrefKey.stackFronts)
     }
 }
 

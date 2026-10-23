@@ -316,7 +316,7 @@ enum SelfTest {
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
                            CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, PrefKey.confirmOverwrite,
                            PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
-                           PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key]
+                           PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key, PrefKey.stackFronts]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("ImageViewerSelfTest-\(UUID().uuidString.prefix(6))")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -566,6 +566,24 @@ enum SelfTest {
             check(model.items.count == 5 && model.currentItem?.name == "Beach (Colorized).jpg", "a stack spreads out, staying on the same copy")
             model.toggleStack(model.currentURL!)
             check(model.items.count == 2 && model.currentItem?.name == "Beach (Colorized).jpg", "and closes again, showing that copy")
+            // The copy last viewed is still the one shown when the folder is opened again.
+            let again = ViewerModel()
+            again.stacksEnabled = true
+            again.openFolder(folder, selecting: other)
+            for _ in 0..<100 where again.items.count != 2 { try? await Task.sleep(for: .milliseconds(50)) }
+            check(again.items.map(\.name).sorted() == ["Beach (Colorized).jpg", "Other.jpg"],
+                  "a stack still shows the copy last viewed when its folder is opened again (\(again.items.map(\.name)))")
+            // A copy made while another picture is shown goes on top of its stack.
+            model.select(other.standardizedFileURL)
+            let made = folder.appendingPathComponent("Beach (Sharpened).jpg")
+            try? FileManager.default.copyItem(at: beach, to: made)
+            ImageStacks.markDerived(made, from: beach)
+            model.copySaved(made, from: beach.standardizedFileURL)
+            check(model.items.map(\.name).sorted() == ["Beach (Sharpened).jpg", "Other.jpg"] && model.currentURL == other.standardizedFileURL,
+                  "a copy made while another picture is shown goes on top of its stack (\(model.items.map(\.name)))")
+            try? FileManager.default.removeItem(at: made)
+            model.rescan()
+            for _ in 0..<50 where model.allItems.contains(where: { $0.name == "Beach (Sharpened).jpg" }) { try? await Task.sleep(for: .milliseconds(50)) }
             if let original = model.allItems.first(where: { $0.name == "Beach.jpg" }) {
                 model.rename(original, to: "Shore")
                 check(ImageStacks.source(of: holiday) == "Shore.jpg" && ImageStacks.source(of: colorized) == "Shore.jpg"

@@ -181,8 +181,14 @@ final class ViewerModel {
     private(set) var stackOf: [URL: URL] = [:]
     /// Stacks shown spread out, every copy side by side.
     var expandedStacks: Set<URL> = []
-    /// Which copy a closed stack shows, by its original (the newest when not set).
-    @ObservationIgnored var stackFront: [URL: URL] = [:]
+    /// Which copy a closed stack shows, by its original (the newest when not set): the one last viewed or made.
+    /// Remembered per folder (`StackFronts`).
+    @ObservationIgnored var stackFront: [URL: URL] = [:] {
+        didSet {
+            guard stackFront != oldValue, let folderURL, !PhotosRoundTrip.isFromPhotos(folderURL.appendingPathComponent("x")) else { return }
+            StackFronts.save(stackFront, in: folderURL)
+        }
+    }
 
     // MARK: Edits
     private(set) var edits: [URL: EditState] = [:]
@@ -390,7 +396,7 @@ final class ViewerModel {
         folderURL = folder.standardizedFileURL
         self.restrictedTo = restrictedTo
         expandedStacks = []
-        stackFront = [:]
+        stackFront = StackFronts.load(in: folder)
         if !PhotosRoundTrip.isFromPhotos(folder) { RecentFolders.add(folder) }
         watcher.watch(folder)
         if !searchText.isEmpty { searchText = "" }
