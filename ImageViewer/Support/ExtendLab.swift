@@ -103,6 +103,16 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -seedTest <image>`: a thumbnail seeded from a picture is there to read straight away.
+        if let i = args.firstIndex(of: "-seedTest"), i + 1 < args.count {
+            let url = URL(fileURLWithPath: args[i + 1])
+            guard let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false) else { exit(1) }
+            let probe = FileManager.default.temporaryDirectory.appendingPathComponent("probe.gif")
+            ThumbnailCache.shared.seed(d.cgImage, for: probe)
+            let small = ThumbnailCache.shared.cached(probe, tier: .small), large = ThumbnailCache.shared.cached(probe, tier: .large)
+            print("small \(small.map { "\($0.width)×\($0.height)" } ?? "none"), large \(large.map { "\($0.width)×\($0.height)" } ?? "none")")
+            exit(0)
+        }
         // `-extendTest -borders <folder>`: which images have a print border, and the picture inside it.
         if let i = args.firstIndex(of: "-borders"), i + 1 < args.count {
             let folder = URL(fileURLWithPath: args[i + 1])

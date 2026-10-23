@@ -123,7 +123,11 @@ struct ExportSheet: View {
     }
 
     private var destinationFolder: URL? {
-        destination ?? request.urls.first?.deletingLastPathComponent()
+        // A photo from Photos lives in Photos (its file here is a working copy): Pictures instead.
+        if destination == nil, let first = request.urls.first, PhotosRoundTrip.isFromPhotos(first) {
+            return FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        }
+        return destination ?? request.urls.first?.deletingLastPathComponent()
     }
 
     private func chooseFolder() {

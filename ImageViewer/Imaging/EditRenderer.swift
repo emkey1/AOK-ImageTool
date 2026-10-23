@@ -164,15 +164,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         }
 
         // 3. Perspective (document) correction.
-        if let q = e.perspective {
-            let ext = img.extent
-            func p(_ n: CGPoint) -> CIVector { CIVector(x: ext.minX + n.x * ext.width, y: ext.minY + n.y * ext.height) }
-            img = normalized(img.applyingFilter("CIPerspectiveCorrection", parameters: [
-                "inputTopLeft": p(q.topLeft), "inputTopRight": p(q.topRight),
-                "inputBottomRight": p(q.bottomRight), "inputBottomLeft": p(q.bottomLeft),
-                "inputCrop": true,
-            ]))
-        }
+        if let q = e.perspective { img = perspectiveCorrected(img, q) }
 
         // 4. Geometry. Before the adjustments (which are per-pixel, so the order doesn't change them) so that
         //    Extend's fill, made from this stage, gets the same adjustments as the original pixels.
@@ -222,16 +214,47 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         img = normalized(img)
 
         // 11. Vignette (relative to the final frame).
-        if e.vignette > 0 {
-            let ext = img.extent
-            img = img.applyingFilter("CIVignetteEffect", parameters: [
-                kCIInputCenterKey: CIVector(x: ext.midX, y: ext.midY),
-                kCIInputRadiusKey: 0.62 * max(ext.width, ext.height),
-                kCIInputIntensityKey: e.vignette,
-                "inputFalloff": 0.6,
-            ]).cropped(to: ext)
+        return vignetted(img, e.vignette)
+    }
+
+    /// The edits that hold for every frame of a Live Photo (perspective, turns, straightening, light and
+    /// color, filters, crop, vignette) on one frame, upright. `still` is the photo they were made on (Auto's
+    /// recipe comes from it); `renderScale` is the frame's size relative to it. A cutout, a background and
+    /// Extend are for the still only.
+    func applyToFrame(_ frame: CIImage, edits e: EditState, still: DecodedImage, renderScale: CGFloat) -> CIImage {
+        var img = normalized(frame)
+        if let q = e.perspective { img = perspectiveCorrected(img, q) }
+        img = applyOrientation(img, e)
+        if e.straighten != 0 { img = straightened(img, degrees: e.straighten) }
+        img = normalized(img)
+        let frameRect = img.extent
+        img = applyAdjustments(img, e, decoded: still, scale: renderScale)
+        if let c = e.crop, !e.cropExtendsBeyondImage {
+            let rect = Self.pixelRect(c, in: frameRect).integral.intersection(img.extent)
+            if rect.width >= 1, rect.height >= 1 { img = img.cropped(to: rect) }
         }
-        return img
+        return vignetted(normalized(img), e.vignette)
+    }
+
+    private func perspectiveCorrected(_ img: CIImage, _ q: Quad) -> CIImage {
+        let ext = img.extent
+        func p(_ n: CGPoint) -> CIVector { CIVector(x: ext.minX + n.x * ext.width, y: ext.minY + n.y * ext.height) }
+        return normalized(img.applyingFilter("CIPerspectiveCorrection", parameters: [
+            "inputTopLeft": p(q.topLeft), "inputTopRight": p(q.topRight),
+            "inputBottomRight": p(q.bottomRight), "inputBottomLeft": p(q.bottomLeft),
+            "inputCrop": true,
+        ]))
+    }
+
+    private func vignetted(_ img: CIImage, _ amount: Double) -> CIImage {
+        guard amount > 0 else { return img }
+        let ext = img.extent
+        return img.applyingFilter("CIVignetteEffect", parameters: [
+            kCIInputCenterKey: CIVector(x: ext.midX, y: ext.midY),
+            kCIInputRadiusKey: 0.62 * max(ext.width, ext.height),
+            kCIInputIntensityKey: amount,
+            "inputFalloff": 0.6,
+        ]).cropped(to: ext)
     }
 
     /// The per-pixel adjustments, in pipeline order. `scale` is the image's size relative to the source.

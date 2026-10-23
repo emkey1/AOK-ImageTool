@@ -2,6 +2,7 @@
 import AppKit
 import CoreImage
 import ImageIO
+import Photos
 import Security
 import UniformTypeIdentifiers
 
@@ -307,6 +308,74 @@ enum SelfTest {
                   "a copy is added to Photos, not written into its library (\(added.names))")
             model.moveToTrash([photo.standardizedFileURL])
             check(fm.fileExists(atPath: photo.path) && model.alert != nil, "Photos' file can't be moved to the Trash from here")
+        }
+
+        // 4e. Photos library (Open from Photos): what can be checked without the user's library.
+        print("\n[Photos library]")
+        if let fox = decodedByName["Red Fox.heic"] {
+            // A Live Photo's frame through the frame renderer looks like the still through the full one.
+            var e = EditState()
+            e.crop = CGRect(x: 0.1, y: 0.2, width: 0.5, height: 0.6)
+            e.exposure = 0.6
+            e.quarterTurns = 1
+            e.filter = .warm
+            let still = EditRenderer.shared.renderSync(fox, edits: e, maxDimension: nil)?.image
+            let framed = EditRenderer.shared.applyToFrame(CIImage(cgImage: fox.cgImage), edits: e, still: fox, renderScale: 1)
+            let frame = ImageDecoder.ciContext.createCGImage(framed, from: framed.extent, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)
+            if let still, let frame {
+                let a = rgbaPixels(VisionServices.downscaledSync(still, maxDimension: 64)), b = rgbaPixels(VisionServices.downscaledSync(frame, maxDimension: 64))
+                let diff = a.count == b.count ? zip(a, b).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) } / max(a.count, 1) : 999
+                check(still.width == frame.width && still.height == frame.height && diff < 4,
+                      "a Live Photo frame gets the same edit as the still (\(frame.width)×\(frame.height), difference \(diff))")
+            } else {
+                check(false, "frame rendering")
+            }
+            // Frames come in the camera's orientation: upright for editing, then back.
+            let tile = CIImage(color: CIColor(red: 1, green: 0, blue: 0)).cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+                .composited(over: CIImage(color: CIColor(red: 0, green: 0, blue: 1)).cropped(to: CGRect(x: 0, y: 0, width: 3, height: 2)))
+            func corner(_ image: CIImage) -> [UInt8] {
+                var px = [UInt8](repeating: 0, count: 4)
+                ImageDecoder.ciContext.render(image, toBitmap: &px, rowBytes: 4, bounds: CGRect(x: image.extent.minX, y: image.extent.minY, width: 1, height: 1),
+                                              format: .RGBA8, colorSpace: nil)
+                return px
+            }
+            let orientations: [CGImagePropertyOrientation] = [.up, .upMirrored, .down, .downMirrored, .leftMirrored, .right, .rightMirrored, .left]
+            check(orientations.allSatisfy { o in
+                let back = tile.oriented(o).oriented(PhotosLibrary.inverse(o))
+                return back.extent.size == tile.extent.size && corner(back) == corner(tile)
+            }, "each of the 8 orientations is undone after editing")
+        }
+        do {
+            var e = EditState()
+            e.exposure = 0.4
+            e.crop = CGRect(x: 0, y: 0, width: 0.8, height: 1)
+            let data = PHAdjustmentData(formatIdentifier: PhotosLibrary.formatIdentifier, formatVersion: PhotosLibrary.formatVersion,
+                                        data: (try? JSONEncoder().encode(e)) ?? Data())
+            let other = PHAdjustmentData(formatIdentifier: "com.apple.photo", formatVersion: "1", data: Data([1, 2, 3]))
+            check(PhotosLibrary.edits(from: data) == e && PhotosLibrary.edits(from: other) == nil,
+                  "an edit's settings come back from Photos; other apps' edits aren't taken for ours")
+            // Saved or not, for a photo from the library (registered as if opened from Photos).
+            if let src = items.first(where: { $0.name == "sale-sign.jpg" })?.url {
+                let folder = PhotosLibrary.folder.appendingPathComponent("selftest-\(UUID().uuidString.prefix(6))")
+                try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                defer { try? FileManager.default.removeItem(at: folder) }
+                let file = folder.appendingPathComponent("IMG_0002.jpg")
+                try? FileManager.default.copyItem(at: src, to: file)
+                PhotosLibrary.shared.registerForTesting(file, isLive: true, savedEdits: e)
+                let model = ViewerModel()
+                model.setEditsDictionary(file.standardizedFileURL, e)
+                model.openFolder(folder, selecting: file, restrictedTo: [file.standardizedFileURL])
+                for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+                let reopened = !model.hasUnsavedEdits
+                model.updateEdits("Exposure") { $0.exposure = 0.9 }
+                let changed = model.hasUnsavedEdits
+                model.updateEdits("Revert") { $0 = .identity }
+                let reverted = model.hasUnsavedEdits && model.unsavedURLs == [file.standardizedFileURL]
+                check(reopened && changed && reverted && model.windowSubtitle.contains("Live Photo from Photos"),
+                      "a reopened photo's saved edit isn't unsaved; changing it, or taking it off (a revert in Photos), is")
+                check(PhotosLibrary.stillOnly({ var c = EditState(); c.cutout = .subject; return c }()) && !PhotosLibrary.stillOnly(e),
+                      "a cutout makes a Live Photo save as a still; light and crop don't")
+            }
         }
 
         // 5. Pending edits survive a relaunch, but not a change to the file.
@@ -920,8 +989,14 @@ enum SelfTest {
                           && ImageStacks.source(of: made) == "spinner.gif" && model.stacks.count == 1,
                           "Upscale with AI on a cropped animation: \(result?.count ?? 0) frames, \(result?.width ?? 0)×\(result?.height ?? 0), stacked on the original")
                     let leftovers = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasPrefix(".") }
-                    check(leftovers.isEmpty && ThumbnailCache.shared.cached(made.standardizedFileURL, tier: .small) != nil,
-                          "the file appears whole (no temporary left) with its thumbnail ready")
+                    check(leftovers.isEmpty, "the file appears whole (no temporary left)")
+                    // A copy's thumbnail is made from the picture just made (the cache may let it go later, under memory pressure).
+                    if let frame = Animation(url: made)?.frame(0) {
+                        let probe = folder.appendingPathComponent("probe.gif")
+                        ThumbnailCache.shared.seed(frame, for: probe)
+                        check(ThumbnailCache.shared.cached(probe, tier: .small).map { max($0.width, $0.height) } == 160
+                              && ThumbnailCache.shared.cached(probe, tier: .large) != nil, "a copy's thumbnails are ready without reading it back")
+                    }
                     // Limits: a 57-frame 480 × 480 animation, like a typical GIF from the web.
                     let gif2 = Animation.upscaleEstimate(frames: 57, width: 480, height: 480, scale: 2, as: .gif)
                     let gif3 = Animation.upscaleEstimate(frames: 57, width: 480, height: 480, scale: 3, as: .gif)

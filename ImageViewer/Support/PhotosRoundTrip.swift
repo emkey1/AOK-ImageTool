@@ -13,9 +13,14 @@ nonisolated enum PhotosRoundTrip {
         }
     }
 
-    /// The file is one Photos is having edited (it's inside a Photos library).
-    static func isFromPhotos(_ url: URL) -> Bool {
+    /// The file is one Photos handed over with Edit With (it's inside a Photos library).
+    static func isEditWithFile(_ url: URL) -> Bool {
         url.path.contains(".photoslibrary/")
+    }
+
+    /// The file stands for a photo in Photos: handed over with Edit With, or opened with Open from Photos.
+    static func isFromPhotos(_ url: URL) -> Bool {
+        isEditWithFile(url) || PhotosLibrary.isWorkingFile(url)
     }
 
     /// Where copies made from such a photo are written before they're added to Photos (not inside its library).

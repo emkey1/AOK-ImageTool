@@ -239,7 +239,7 @@ final class ViewerModel {
         currentURL.flatMap { edits[$0] } ?? .identity
     }
 
-    var hasUnsavedEdits: Bool { !edits.isEmpty }
+    var hasUnsavedEdits: Bool { !unsavedURLs.isEmpty }
 
     var pageCount: Int { decoded?.pageCount ?? 1 }
 
@@ -256,7 +256,9 @@ final class ViewerModel {
         }
         var parts = ["\(i + 1) of \(items.count)"]
         if let p = currentStackPosition { parts.append("Stack \(p.index + 1)/\(p.count)") }
-        if let url = currentURL, PhotosRoundTrip.isFromPhotos(url) { parts.append("From Photos") }
+        if let url = currentURL, PhotosRoundTrip.isFromPhotos(url) {
+            parts.append(PhotosLibrary.shared.photo(for: url)?.isLive == true ? "Live Photo from Photos" : "From Photos")
+        }
         if let shown = display, shown.url == currentURL, !shown.isPlaceholder {
             parts.append(MetadataFormatting.dimensions(shown.logicalSize))
         } else if let d = decoded, d.url == currentURL {
@@ -335,10 +337,8 @@ final class ViewerModel {
         let urls = urls.map(\.standardizedFileURL)
         guard let first = urls.first else { return }
         if urls.count == 1 {
-            if PhotosRoundTrip.isFromPhotos(first) {
-                // Photos' Edit With: just this photo (Photos' library folder isn't for browsing).
-                openFolder(first.deletingLastPathComponent(), selecting: first, restrictedTo: [first])
-                showToast("Editing a photo from Photos: Save sends your changes back to it", systemImage: "photo.on.rectangle")
+            if PhotosRoundTrip.isEditWithFile(first) {
+                openEditWithFile(first)
                 return
             }
             if FolderScanner.isDirectory(first) {
@@ -354,6 +354,30 @@ final class ViewerModel {
         } else {
             openFolder(first, selecting: nil)
         }
+    }
+
+    /// Photos' Edit With: just this photo (Photos' library folder isn't for browsing). macOS only lets the app
+    /// read it with access to Photos, which is asked for the first time.
+    private func openEditWithFile(_ file: URL, askedForAccess: Bool = false) {
+        let readable: Bool = {
+            guard let handle = try? FileHandle(forReadingFrom: file) else { return false }
+            try? handle.close()
+            return true
+        }()
+        guard readable else {
+            if askedForAccess {
+                alert = AlertInfo(title: "AOK-ImageTool can't read the photo Photos handed over",
+                                  message: "Allow it in System Settings ▸ Privacy & Security ▸ Photos, or use File ▸ Open from Photos… instead.")
+            } else {
+                Task {
+                    try? await PhotosLibrary.requestAccess()
+                    openEditWithFile(file, askedForAccess: true)
+                }
+            }
+            return
+        }
+        openFolder(file.deletingLastPathComponent(), selecting: file, restrictedTo: [file])
+        showToast("Editing a photo from Photos: Save sends your changes back to it", systemImage: "photo.on.rectangle")
     }
 
     func openFolder(_ folder: URL, selecting: URL?, restrictedTo: Set<URL>? = nil) {
@@ -999,6 +1023,8 @@ final class ViewerModel {
     // Internal setter for edit bookkeeping in other files. Also keeps the copy that survives a relaunch current.
     func setEditsDictionary(_ url: URL, _ state: EditState?) {
         edits[url] = state
+        // (Not for a photo opened from Photos: its working file is gone after a relaunch.)
+        guard !PhotosLibrary.isWorkingFile(url) else { return }
         PendingEdits.shared.set(state, for: url, modificationDate: allItems.first { $0.url == url }?.modificationDate)
     }
 }

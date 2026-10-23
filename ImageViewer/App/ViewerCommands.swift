@@ -26,6 +26,9 @@ struct ViewerCommands: Commands {
                 .keyboardShortcut("n")
             Button("Open…") { open() }
                 .keyboardShortcut("o")
+            Button("Open from Photos…") { viewer?.openFromPhotos() }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .disabled(viewer == nil)
             Menu("Open Recent") {
                 ForEach(RecentFolders.all, id: \.self) { url in
                     Button(url.lastPathComponent) { open([url]) }

@@ -47,17 +47,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Updater.shared.checkInBackgroundIfDue()
         guard copies.count <= 1 else { return }
         ModelDownloads.removeLeftovers()
+        PhotosLibrary.removeOldWorkingFiles()
         Updater.removeLeftovers()
         BackdropStore.prune(keeping: PendingEdits.shared.backdropPaths)
         ExtendFillStore.prune(keeping: PendingEdits.shared.extendFillPaths)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let count = ViewerRegistry.shared.all.reduce(0) { $0 + $1.edits.count }
+        let unsaved = ViewerRegistry.shared.all.flatMap(\.unsavedURLs)
+        let count = unsaved.count
         guard count > 0, !Updater.isRelaunchingForUpdate else { return .terminateNow }
+        let fromPhotos = unsaved.filter { PhotosLibrary.shared.photo(for: $0) != nil }.count
         let alert = NSAlert()
         alert.messageText = "You have unsaved edits to \(count) image\(count == 1 ? "" : "s")."
-        alert.informativeText = "They're kept, and come back the next time you open their folder."
+        alert.informativeText = fromPhotos == 0
+            ? "They're kept, and come back the next time you open their folder."
+            : fromPhotos == count
+                ? "They're edits to photos from Photos, which are lost when you quit. Save them first (⌘S) to keep them in Photos."
+                : "Edits to files come back the next time you open their folder; edits to photos from Photos are lost unless you save them first."
         alert.addButton(withTitle: "Quit")
         alert.addButton(withTitle: "Cancel")
         return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel

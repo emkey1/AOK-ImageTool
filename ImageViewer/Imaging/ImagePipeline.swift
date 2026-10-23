@@ -157,7 +157,7 @@ nonisolated final class ThumbnailCache: @unchecked Sendable {
     }
 
     private func key(_ url: URL, _ tier: Tier) -> NSString {
-        "\(tier.rawValue)|\(url.path)" as NSString
+        "\(tier.rawValue)|\(url.standardizedFileURL.path)" as NSString   // (one form for every spelling of a path)
     }
 
     func cached(_ url: URL, tier: Tier) -> CGImage? {
@@ -199,7 +199,6 @@ nonisolated final class ThumbnailCache: @unchecked Sendable {
     /// Thumbnails for a file this app just made, from the picture it made (reading a big file back, an
     /// upscaled animation or photo, takes a while and queues behind the folder's other thumbnails).
     func seed(_ image: CGImage, for url: URL) {
-        let url = url.standardizedFileURL
         for tier in [Tier.small, .large] {
             let thumb = VisionServices.downscaledSync(image, maxDimension: tier.rawValue)
             cache.setObject(Box(thumb), forKey: key(url, tier), cost: thumb.bytesPerRow * thumb.height)

@@ -228,16 +228,15 @@
 </ul>
 
 <h2 id="photos">Editing photos from Photos</h2>
-<p>Photos can hand a picture in your library to AOK-ImageTool and take the result back as an edit, which iCloud Photos then carries to your other devices.</p>
-<ol>
-  <li>In Photos, select a photo and choose <b>Image › Edit With › AOK-ImageTool</b>. (If it isn't listed, choose <b>Other…</b> and pick AOK-ImageTool.)</li>
-  <li>The photo opens on its own; the title says <b>From Photos</b>. Edit it as usual.</li>
-  <li><b>Save</b> <kbd>⌘S</kbd> sends the edit back. Photos shows it right away and keeps the original, so <b>Revert to Original</b> in Photos undoes it.</li>
-</ol>
+<p>AOK-ImageTool can edit the photos in your Photos library. Edits are saved as Photos edits: <b>Revert to Original</b> in Photos undoes them, and iCloud Photos carries them to your other devices.</p>
 <ul>
-  <li><b>Copies</b> you make of it (Upscale with AI, Colorize, Black &amp; White) are added to your Photos library as new photos. The first time, macOS asks whether AOK-ImageTool may add to Photos.</li>
-  <li>Rename, move or delete the photo in Photos; here, those are left out so the edit isn't lost.</li>
-  <li>Photos sometimes hands over a format that can't be written back, such as RAW. Export a copy instead, and add it to Photos.</li>
+  <li><b>File › Open from Photos…</b> <kbd>⇧⌘O</kbd> picks photos in your library, one or many, to browse with the arrow keys and edit as usual. The first time, macOS asks whether AOK-ImageTool may use your Photos library. Originals kept in iCloud are downloaded as they're needed. The title says <b>From Photos</b>, or <b>Live Photo from Photos</b>.</li>
+  <li><b>Save</b> <kbd>⌘S</kbd> sends the edit to Photos.</li>
+  <li><b>Live Photos stay live.</b> Light, color, filters, crop, rotation and straightening apply to every frame of the motion too. A removed background and Extend are for a single picture, so a Live Photo with those is saved as a still; you're asked first.</li>
+  <li><b>Edit again later.</b> A photo you edited here opens with its settings, so you can carry on adjusting instead of starting over. Take every edit off (<b>File › Revert to Original</b>) and save, and it's back to its original in Photos too.</li>
+  <li><b>Copies</b> you make (Upscale with AI, Colorize, Black &amp; White) are added to your Photos library as new photos.</li>
+  <li>Edits not yet saved to Photos are lost when you quit (edits to files are kept). Rename, move or delete the photos themselves in Photos.</li>
+  <li><b>Image › Edit With › AOK-ImageTool</b> in Photos works too, for one photo at a time: Save sends the edit back. Photos turns off a Live Photo's motion when it hands it to another app this way, so use Open from Photos for Live Photos.</li>
 </ul>
 
 <h2 id="settings">Settings</h2>
@@ -269,6 +268,7 @@
   <tr><td><kbd>⌥⌘E</kbd> <kbd>⌥⌘C</kbd></td><td>Auto enhance, adjust color</td></tr>
   <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
   <tr><td><kbd>⌘S</kbd> <kbd>⇧⌘E</kbd></td><td>Save, export</td></tr>
+  <tr><td><kbd>⇧⌘O</kbd></td><td>Open from Photos</td></tr>
   <tr><td><kbd>⌥⌘R</kbd> <kbd>⇧⌘R</kbd> <kbd>⌘⌫</kbd></td><td>Rename, show in Finder, move to Trash</td></tr>
   <tr><td><kbd>⌘↑</kbd> <kbd>⌥⌘←</kbd> <kbd>⌥⌘→</kbd></td><td>Enclosing folder, previous / next folder</td></tr>
   <tr><td><kbd>⇧⌘F</kbd></td><td>Start or stop the slideshow</td></tr>

@@ -41,7 +41,7 @@ extension ViewerModel {
         guard hasUnsavedEdits else { return true }
         guard window.attachedSheet == nil else { return false }
 
-        let urls = edits.keys.sorted { $0.path < $1.path }
+        let urls = unsavedURLs
         let alert = NSAlert()
         alert.messageText = urls.count == 1
             ? "Do you want to save the changes to “\(urls[0].lastPathComponent)”?"
@@ -52,7 +52,8 @@ extension ViewerModel {
         case (true, false): "Saving replaces the original file."
         case (false, false): "Saving replaces the original files."
         }
-        alert.informativeText = saving + " If you discard, your changes are lost."
+        let toPhotos = urls.allSatisfy { PhotosLibrary.shared.photo(for: $0) != nil }
+        alert.informativeText = (toPhotos ? "Saving sends the edits to Photos." : saving) + " If you discard, your changes are lost."
         alert.addButton(withTitle: urls.count == 1 ? "Save" : "Save All")
         alert.addButton(withTitle: "Cancel")
         let discard = alert.addButton(withTitle: "Discard")
@@ -71,7 +72,7 @@ extension ViewerModel {
 
     private func saveAllAndClose() {
         isSavingBeforeClose = true
-        let count = edits.count
+        let count = unsavedURLs.count
         showToast(count == 1 ? "Saving…" : "Saving \(count) images…", systemImage: "arrow.down.doc")
         Task {
             let failures = await saveAllEdits()

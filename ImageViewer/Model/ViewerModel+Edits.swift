@@ -108,6 +108,9 @@ extension ViewerModel {
             return
         }
         let e = currentEdits
+        if PhotosLibrary.shared.photo(for: url) != nil {
+            return saveToPhotos(url: url, decoded: d, edits: e)
+        }
         guard !e.isIdentity else {
             showToast("No changes to save", systemImage: "checkmark.circle")
             return
@@ -187,7 +190,7 @@ extension ViewerModel {
             guard let output = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil) else {
                 throw ImageWriteError.finalizeFailed
             }
-            if PhotosRoundTrip.isFromPhotos(url) {
+            if PhotosRoundTrip.isEditWithFile(url) {
                 // Photos watches this file: write over it where it is (Photos keeps the original).
                 try ImageWriter.overwrite(original: url, with: output.image, format: format, quality: 0.93, sourceProperties: d.properties)
                 return
@@ -209,7 +212,8 @@ extension ViewerModel {
     func saveAllEdits() async -> [String] {
         var failures: [String] = []
         let hdr = Prefs.hdrEnabled
-        for (url, e) in edits.sorted(by: { $0.key.path < $1.key.path }) {
+        for url in unsavedURLs {
+            let e = edits[url] ?? .identity
             do {
                 let d: DecodedImage
                 if let current = decoded, current.url == url {
@@ -220,6 +224,10 @@ extension ViewerModel {
                     d = try await Task.detached(priority: .userInitiated) {
                         try ImageDecoder.decode(url: url, page: 0, allowHDR: hdr)
                     }.value
+                }
+                if PhotosLibrary.shared.photo(for: url) != nil {
+                    try await savePhoto(url, decoded: d, edits: e, keepLive: !PhotosLibrary.stillOnly(e))
+                    continue
                 }
                 guard let format = inPlaceFormat(for: d, edits: e) else {
                     failures.append("\(url.lastPathComponent): can't be saved in its own format")
