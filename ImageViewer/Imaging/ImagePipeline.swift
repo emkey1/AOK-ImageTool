@@ -150,6 +150,10 @@ nonisolated final class ThumbnailCache: @unchecked Sendable {
     }
 
     private let cache = NSCache<NSString, Box>()
+    /// The newest seeded thumbnails, kept outside the cache, which can let go of anything under memory
+    /// pressure: a copy just made always shows straight away.
+    private var seeded: [(key: NSString, box: Box)] = []
+    private let seededLock = NSLock()
     private let limiter = AsyncLimiter(max(2, ProcessInfo.processInfo.activeProcessorCount - 2))
 
     init() {
@@ -161,7 +165,9 @@ nonisolated final class ThumbnailCache: @unchecked Sendable {
     }
 
     func cached(_ url: URL, tier: Tier) -> CGImage? {
-        cache.object(forKey: key(url, tier))?.image
+        let k = key(url, tier)
+        if let hit = cache.object(forKey: k) { return hit.image }
+        return seededLock.withLock { seeded.first { $0.key == k }?.box.image }
     }
 
     /// Best available cached thumbnail, preferring the larger tier.
@@ -192,8 +198,9 @@ nonisolated final class ThumbnailCache: @unchecked Sendable {
     }
 
     func invalidate(_ url: URL) {
-        cache.removeObject(forKey: key(url, .small))
-        cache.removeObject(forKey: key(url, .large))
+        let keys = [key(url, .small), key(url, .large)]
+        for k in keys { cache.removeObject(forKey: k) }
+        seededLock.withLock { seeded.removeAll { keys.contains($0.key) } }
     }
 
     /// Thumbnails for a file this app just made, from the picture it made (reading a big file back, an
@@ -201,7 +208,13 @@ nonisolated final class ThumbnailCache: @unchecked Sendable {
     func seed(_ image: CGImage, for url: URL) {
         for tier in [Tier.small, .large] {
             let thumb = VisionServices.downscaledSync(image, maxDimension: tier.rawValue)
-            cache.setObject(Box(thumb), forKey: key(url, tier), cost: thumb.bytesPerRow * thumb.height)
+            let k = key(url, tier), box = Box(thumb)
+            cache.setObject(box, forKey: k, cost: thumb.bytesPerRow * thumb.height)
+            seededLock.withLock {
+                seeded.removeAll { $0.key == k }
+                seeded.insert((k, box), at: 0)
+                if seeded.count > 8 { seeded.removeLast() }
+            }
         }
     }
 }

@@ -74,6 +74,9 @@ struct ViewerCommands: Commands {
 
         CommandGroup(after: .pasteboard) {
             Divider()
+            // (⌘V does this too while the image or grid has the focus; see handleKeyDown.)
+            Button("Paste as New Image") { viewer?.pasteImage() }
+                .disabled(viewer == nil)
             Button("Copy Image") { viewer?.copyImage() }
                 .disabled(!hasImage)
             Button("Copy Subject") { viewer?.intelligence.copySubject() }

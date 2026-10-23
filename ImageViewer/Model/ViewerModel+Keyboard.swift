@@ -38,6 +38,7 @@ extension ViewerModel {
             Shortcut(keys: "C", action: "Crop & straighten"),
             Shortcut(keys: "\\", action: "Show original (before / after)"),
             Shortcut(keys: "⌘S  ·  ⇧⌘E", action: "Save / Export"),
+            Shortcut(keys: "⌘V", action: "Paste a picture as a new image"),
         ]),
         ("View", [
             Shortcut(keys: "F", action: "Full screen"),
@@ -96,6 +97,12 @@ extension ViewerModel {
             return false
         }
         let mods = event.modifierFlags.intersection([.command, .control, .option])
+        // ⌘V with the image or grid in focus pastes a picture as a new image (in text fields it pastes text).
+        if mods == .command, !event.modifierFlags.contains(.shift), event.charactersIgnoringModifiers == "v",
+           activeTool == nil, Self.clipboardHasImage() {
+            pasteImage()
+            return true
+        }
         if mods == .option, activeTool == nil {
             switch event.specialKey {
             case .leftArrow?, .upArrow?:

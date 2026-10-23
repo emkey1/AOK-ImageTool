@@ -300,6 +300,73 @@ extension ViewerModel {
         showToast("Copied path", systemImage: "link")
     }
 
+    // MARK: - Paste
+
+    /// Whether the clipboard holds a picture, or image files, to paste.
+    static func clipboardHasImage(_ pb: NSPasteboard = .general) -> Bool {
+        pb.canReadObject(forClasses: [NSImage.self], options: nil) || !clipboardImageFiles(pb).isEmpty
+    }
+
+    nonisolated private static func clipboardImageFiles(_ pb: NSPasteboard) -> [URL] {
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [
+            .urlReadingFileURLsOnly: true,
+            .urlReadingContentsConformToTypes: SupportedFormats.readableTypes.map(\.identifier),
+        ]
+        return (pb.readObjects(forClasses: [NSURL.self], options: options) as? [URL]) ?? []
+    }
+
+    /// Edit ▸ Paste as New Image (⌘V with the image or grid in focus): a picture on the clipboard becomes a new
+    /// file in this folder ("Pasted Image <date>"), kept as it was copied when it's a JPEG or HEIC and as PNG
+    /// otherwise; image files copied in Finder are copied in. With no folder open, or a photo from Photos
+    /// showing, they go to Pictures and open there.
+    func pasteImage(from pb: NSPasteboard = .general) {
+        let fm = FileManager.default
+        let here = folderURL.flatMap { folder -> URL? in
+            guard !PhotosRoundTrip.isFromPhotos(folder.appendingPathComponent("x")), fm.isWritableFile(atPath: folder.path) else { return nil }
+            return folder
+        }
+        let pictures = fm.urls(for: .picturesDirectory, in: .userDomainMask)[0]
+        let destination = here ?? pictures
+        var made: [URL] = []
+        do {
+            let files = Self.clipboardImageFiles(pb)
+            if !files.isEmpty {
+                for file in files {
+                    let dest = ImageWriter.uniqueURL(in: destination, baseName: file.deletingPathExtension().lastPathComponent, ext: file.pathExtension)
+                    try fm.copyItem(at: file, to: dest)
+                    made.append(dest)
+                }
+            } else {
+                let stamp = DateFormatter()
+                stamp.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+                let name = "Pasted Image \(stamp.string(from: Date()))"
+                if let (data, ext) = [(NSPasteboard.PasteboardType(UTType.heic.identifier), "heic"),
+                                      (NSPasteboard.PasteboardType(UTType.jpeg.identifier), "jpg")]
+                    .lazy.compactMap({ type, ext in pb.data(forType: type).map { ($0, ext) } }).first {
+                    let dest = ImageWriter.uniqueURL(in: destination, baseName: name, ext: ext)
+                    try data.write(to: dest)
+                    made.append(dest)
+                } else if let image = NSImage(pasteboard: pb), let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+                    let dest = ImageWriter.uniqueURL(in: destination, baseName: name, ext: "png")
+                    try ImageWriter.write(cg, to: dest, format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                    made.append(dest)
+                }
+            }
+        } catch {
+            return showError("Couldn't paste the image", error)
+        }
+        guard let first = made.first else {
+            return showToast("There's no picture on the clipboard", systemImage: "doc.on.clipboard")
+        }
+        if here != nil {
+            for url in made { if let item = FolderScanner.item(for: url) { insertItem(item, select: url == first) } }
+        } else {
+            open(made.count == 1 ? [first] : made)
+        }
+        showToast(made.count == 1 ? "Pasted as “\(first.lastPathComponent)”" : "Pasted \(made.count) images",
+                  systemImage: "doc.on.clipboard")
+    }
+
     // MARK: - System integration
 
     func revealInFinder() {

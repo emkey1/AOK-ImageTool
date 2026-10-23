@@ -378,6 +378,42 @@ enum SelfTest {
             }
         }
 
+        // 4f. Paste: a picture on the clipboard becomes a new image in the folder (a private pasteboard, never the user's).
+        print("\n[Paste]")
+        if let src = items.first(where: { $0.name == "transparent.png" })?.url, let jpeg = items.first(where: { $0.name == "sale-sign.jpg" })?.url {
+            let folder = out.appendingPathComponent("paste")
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let seed = folder.appendingPathComponent("seed.png")
+            try? FileManager.default.copyItem(at: src, to: seed)
+            let model = ViewerModel()
+            model.openFolder(folder, selecting: seed)
+            for _ in 0..<100 where model.decoded?.url != seed.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            let pb = NSPasteboard(name: NSPasteboard.Name("AOK-ImageTool self-test"))
+            defer { pb.releaseGlobally() }
+            // A picture (here TIFF data, as many apps copy): a PNG with its transparency.
+            pb.clearContents()
+            pb.writeObjects([NSImage(contentsOf: src)!])
+            model.pasteImage(from: pb)
+            let pasted = model.items.first { $0.name.hasPrefix("Pasted Image") }
+            let png = pasted.flatMap { try? ImageDecoder.decode(url: $0.url, page: 0, allowHDR: false) }
+            check(pasted?.url.pathExtension == "png" && png?.hasTransparentPixels == true && model.currentURL == pasted?.url,
+                  "a copied picture is pasted as a new PNG in the folder, transparency kept, and shown (\(pasted?.name ?? "none"))")
+            // A JPEG as copied: kept byte for byte.
+            pb.clearContents()
+            pb.setData(try? Data(contentsOf: jpeg), forType: NSPasteboard.PasteboardType(UTType.jpeg.identifier))
+            model.pasteImage(from: pb)
+            let asJPEG = model.items.first { $0.name.hasPrefix("Pasted Image") && $0.url.pathExtension == "jpg" }
+            check(asJPEG.flatMap { try? Data(contentsOf: $0.url) } == (try? Data(contentsOf: jpeg)), "a copied JPEG is pasted as it was, not re-encoded")
+            // Image files copied in Finder: copied in, under their names.
+            pb.clearContents()
+            pb.writeObjects([jpeg as NSURL])
+            model.pasteImage(from: pb)
+            check(model.items.contains { $0.name == "sale-sign.jpg" }, "image files copied in Finder are pasted in under their own names")
+            pb.clearContents()
+            pb.setString("just text", forType: .string)
+            check(!ViewerModel.clipboardHasImage(pb), "text on the clipboard isn't taken for a picture")
+        }
+
         // 5. Pending edits survive a relaunch, but not a change to the file.
         print("\n[Pending edits]")
         if let src = items.first(where: { $0.name == "sale-sign.jpg" })?.url {
