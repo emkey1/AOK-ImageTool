@@ -294,11 +294,17 @@ struct IntelligencePanel: View {
                      ? "Looks like a screenshot, receipt or document."
                      : percent > 0.66 ? "A strong shot." : percent > 0.4 ? "A decent shot." : "Probably not a keeper.")
                     .font(.caption).foregroundStyle(.secondary)
+            } else if let url = model.currentURL, ai.scoring.contains(url) {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Scoring this shot…").font(.caption).foregroundStyle(.secondary)
+                }
             } else {
                 Text("Analyze the folder to score every shot and rank the best ones.")
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
+        .task(id: model.currentURL) { ai.scoreCurrentIfNeeded() }
     }
 
     // MARK: Folder

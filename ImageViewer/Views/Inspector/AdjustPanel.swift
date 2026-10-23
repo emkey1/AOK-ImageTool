@@ -12,6 +12,8 @@ struct AdjustPanel: View {
             VStack(alignment: .leading, spacing: 18) {
                 quickActions(e)
 
+                straightenSection(e)
+
                 PanelSection(title: "Light", systemImage: "sun.max") {
                     slider("Exposure", \.exposure, -2...2, format: { String(format: "%+.2f EV", $0) })
                     slider("Brightness", \.brightness, -1...1)
@@ -145,6 +147,35 @@ struct AdjustPanel: View {
         }
     }
 
+    /// Straightening without opening the crop tool: the corners it turns out of the frame are cropped away
+    /// (the pipeline crops to the largest upright rectangle of the same shape).
+    private func straightenSection(_ e: EditState) -> some View {
+        PanelSection(title: "Straighten", systemImage: "level") {
+            slider("Angle", \.straighten, -45...45, format: { String(format: "%+.1f°", $0) }, undoName: "Straighten")
+            HStack(spacing: 4) {
+                nudge("−1°", by: -1, e)
+                nudge("−0.1°", by: -0.1, e)
+                Spacer()
+                Button("Auto") { model.intelligence.autoStraighten() }
+                    .help("Level the horizon, or upright lines such as walls and door frames")
+                Spacer()
+                nudge("+0.1°", by: 0.1, e)
+                nudge("+1°", by: 1, e)
+            }
+            .controlSize(.small)
+        }
+    }
+
+    /// Turns the picture by `step` degrees (clockwise for positive), as one undo step.
+    private func nudge(_ title: String, by step: Double, _ e: EditState) -> some View {
+        Button(title) {
+            model.updateEdits("Straighten") { $0.straighten = min(max((($0.straighten + step) * 10).rounded() / 10, -45), 45) }
+        }
+        .monospacedDigit()
+        .disabled(step < 0 ? e.straighten <= -45 : e.straighten >= 45)
+        .help(step < 0 ? "Turn \(title.dropFirst()) counterclockwise" : "Turn \(title.dropFirst()) clockwise")
+    }
+
     /// Copies saved next to the original (and stacked on it), rather than edits to it.
     private var copiesSection: some View {
         PanelSection(title: "Copies", systemImage: "square.stack") {
@@ -186,7 +217,7 @@ struct AdjustPanel: View {
 
     private func slider(_ title: String, _ keyPath: WritableKeyPath<EditState, Double>, _ range: ClosedRange<Double>,
                         format: @escaping (Double) -> String = { String(format: "%+.0f", $0 * 100) },
-                        resetValue: Double = 0) -> some View {
+                        resetValue: Double = 0, undoName: String? = nil) -> some View {
         AdjustmentSlider(
             title: title,
             value: Binding(
@@ -200,11 +231,13 @@ struct AdjustPanel: View {
                 if editing {
                     dragStart = model.currentEdits
                 } else if let start = dragStart {
-                    model.commitEdits(from: start, actionName: title)
+                    model.commitEdits(from: start, actionName: undoName ?? title)
                     dragStart = nil
+                    // (Straightening an extended photo makes its extension again.)
+                    model.refillExtensionIfNeeded()
                 }
             },
-            reset: { model.updateEdits("Reset \(title)") { $0[keyPath: keyPath] = resetValue } }
+            reset: { model.updateEdits("Reset \(undoName ?? title)") { $0[keyPath: keyPath] = resetValue } }
         )
     }
 }

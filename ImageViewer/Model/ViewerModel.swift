@@ -1005,6 +1005,7 @@ final class ViewerModel {
         allItems.removeAll { $0.url == item.url }
         allItems.append(item)
         applySortAndFilter(selecting: select ? item.url : nil)
+        intelligence.itemsDidChange()
     }
 
     func replaceURL(_ old: URL, with newItem: ImageItem) {

@@ -8,6 +8,8 @@
 - **Paste a picture** (⌘V, or Edit ▸ Paste as New Image) as a new file in the folder: screenshots, pictures from the web or other apps, image files copied in Finder.
 - **Edit photos from your Photos library:** File ▸ Open from Photos… (⇧⌘O). Save stores the edit in Photos (Revert to Original there undoes it; iCloud Photos syncs it), with its settings, so it opens with them again. Live Photos stay live: the edit applies to every frame. Copies you make are added to Photos as new photos. Photos' Image ▸ Edit With ▸ AOK-ImageTool works too, for stills.
 - **Upscale with AI works on animations** (GIF, animated PNG, WebP, HEIC): every frame, with its timing and looping, saved as a GIF or, in full color, an animated PNG (Upscale ▸ Save Animation As). Turns, crops and color adjustments apply to every frame. The menu shows each scale's size, and leaves out any that would be too large.
+- **Straighten in Adjust:** an angle slider with 1° and 0.1° buttons and Auto, without opening the crop tool; the corners turned out of the frame are cropped away.
+- **Shot Quality and Best Shots include new copies:** in a folder you've analyzed, pictures added or changed later are analyzed by themselves (a stack shows its newest copy, which had no score, so the stack sank to the bottom of Best Shots). Shot Quality scores the shown picture on its own when the folder hasn't been analyzed.
 - Copies made by Upscale, Colorize and Black & White show in the filmstrip as soon as they're saved, instead of after the new file is read back.
 
 ## 1.0.0

@@ -169,6 +169,54 @@ enum SelfTest {
         }
     }
 
+    /// Shot Quality and Best Shots in a folder with stacks: a picture is scored on its own before the folder is
+    /// analyzed, every shown picture (stacks' top copies too) after, and a copy made later is scored by itself.
+    /// (`AOK_SELFTEST_ONLY=quality` runs just these.)
+    private static func shotQualityChecks(folder: URL, out: URL) async {
+        let fm = FileManager.default
+        let qfolder = out.appendingPathComponent("quality")
+        try? fm.createDirectory(at: qfolder, withIntermediateDirectories: true)
+        for name in ["Mountain Lake.heic", "Red Fox.heic", "Sailboat.heic", "Sunflowers.heic", "sale-sign.jpg"] {
+            try? fm.copyItem(at: folder.appendingPathComponent(name), to: qfolder.appendingPathComponent(name))
+        }
+        for name in ["Mountain Lake", "Red Fox"] {
+            let copy = qfolder.appendingPathComponent("\(name) (2×).heic")
+            try? fm.copyItem(at: folder.appendingPathComponent("\(name).heic"), to: copy)
+            ImageStacks.markDerived(copy, from: qfolder.appendingPathComponent("\(name).heic"))
+        }
+        let model = ViewerModel()
+        model.stacksEnabled = true
+        model.openFolder(qfolder, selecting: qfolder.appendingPathComponent("Sailboat.heic"))
+        for _ in 0..<100 where model.items.count < 5 || model.decoded == nil { try? await Task.sleep(for: .milliseconds(50)) }
+        try? await Task.sleep(for: .milliseconds(300))
+        let ai = model.intelligence
+        // Not analyzed yet: Shot Quality scores the picture shown, and only it.
+        ai.scoreCurrentIfNeeded()
+        for _ in 0..<100 where !ai.scoring.isEmpty || ai.index.isEmpty { try? await Task.sleep(for: .milliseconds(50)) }
+        check(model.currentURL.flatMap { ai.index[$0]?.score } != nil && ai.qualityScores.count == 1,
+              "Shot Quality scores the shown picture on its own (\(ai.qualityScores.count) scored)")
+        ai.analyzeFolder()
+        for _ in 0..<600 where ai.isIndexing || ai.indexedCount < model.allItems.count { try? await Task.sleep(for: .milliseconds(100)) }
+        var scores = ai.qualityScores
+        check(model.items.allSatisfy { scores[$0.url] != nil }, "every shown picture, stacks' top copies too, has a score")
+        model.sortKey = .quality
+        try? await Task.sleep(for: .milliseconds(300))
+        var ranked = model.items.map { scores[$0.url] ?? -2 }
+        check(zip(ranked, ranked.dropFirst()).allSatisfy { $0 >= $1 }, "Best Shots lists them best first: \(model.items.map(\.name))")
+        // A copy made afterwards tops its stack, and is scored without analyzing again.
+        let later = qfolder.appendingPathComponent("Sunflowers (Retouched).heic")
+        try? fm.copyItem(at: folder.appendingPathComponent("Sunflowers.heic"), to: later)
+        ImageStacks.markDerived(later, from: qfolder.appendingPathComponent("Sunflowers.heic"))
+        if let item = FolderScanner.item(for: later) { model.insertItem(item, select: false) }
+        for _ in 0..<100 where ai.qualityScores[later.standardizedFileURL] == nil { try? await Task.sleep(for: .milliseconds(100)) }
+        scores = ai.qualityScores
+        ranked = model.items.map { scores[$0.url] ?? -2 }
+        check(scores[later.standardizedFileURL] != nil && model.items.contains { $0.url == later.standardizedFileURL }
+              && zip(ranked, ranked.dropFirst()).allSatisfy { $0 >= $1 },
+              "a copy made later is scored by itself and keeps its stack in place")
+        model.sortKey = .name
+    }
+
     static func run() async {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-selfTest"), i + 1 < args.count else {
@@ -181,7 +229,8 @@ enum SelfTest {
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
                            CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, PrefKey.confirmOverwrite,
-                           PrefKey.trashOriginalOnSave]
+                           PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
+                           PrefKey.removalBrush]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("ImageViewerSelfTest-\(UUID().uuidString.prefix(6))")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -216,6 +265,16 @@ enum SelfTest {
             check(RemovalModel.isInstalled && ModelDownloads.shared.failure[model.id] == nil,
                   "\(model.archives[0].file) downloads, matches its checksum and installs in \(Int(Date().timeIntervalSince(started))) s"
                   + (ModelDownloads.shared.failure[model.id].map { " (\($0))" } ?? ""))
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "quality" {
+            print("\n[Shot quality with stacks]")
+            await shotQualityChecks(folder: folder, out: out)
+            for (key, value) in savedPrefs {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
@@ -1186,6 +1245,7 @@ enum SelfTest {
         check(model.items.last.map { $0.name == "sale-sign.jpg" || $0.name == "brochure.pdf" || $0.name == "pages.tiff" } ?? false,
               "utility images rank last (\(model.items.suffix(2).map(\.name)))")
         model.sortKey = .name
+        await shotQualityChecks(folder: folder, out: out)
         model.intelligence.computeDuplicates()
         for _ in 0..<50 where model.intelligence.isFindingDuplicates { try? await Task.sleep(for: .milliseconds(100)) }
         print("  • duplicate groups: \(model.intelligence.duplicateGroups.map { $0.urls.map(\.lastPathComponent) })")

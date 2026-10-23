@@ -17,6 +17,8 @@ struct DuplicateGroup: Identifiable {
 
 enum IndexReason {
     case search, quality, duplicates, similar, user
+    /// Pictures added or changed in a folder that's been analyzed.
+    case refresh
 }
 
 /// Apple Intelligence + Vision features for the current image and the open folder.
@@ -66,6 +68,14 @@ final class IntelligenceModel {
     }
 
     var isIndexing: Bool { indexProgress != nil }
+    /// Images being scored on their own (Shot Quality in a folder that hasn't been analyzed).
+    private(set) var scoring: Set<URL> = []
+
+    /// The folder has been analyzed (most of it, at least), so what's added to it is analyzed too.
+    private var folderAnalyzed: Bool {
+        guard let viewer, !viewer.allItems.isEmpty else { return false }
+        return indexedCount * 2 >= viewer.allItems.count
+    }
 
     // MARK: - Lifecycle
 
@@ -100,6 +110,7 @@ final class IntelligenceModel {
             }
             rebuildBlobs()
             viewer?.applySortAndFilter()
+            analyzeNewcomers()
         }
     }
 
@@ -107,6 +118,30 @@ final class IntelligenceModel {
         rebuildBlobs()
         if !pendingReasons.isEmpty, indexTask == nil, let reason = pendingReasons.first {
             ensureIndexed(reason: reason)
+        } else {
+            analyzeNewcomers()
+        }
+    }
+
+    /// In a folder that's been analyzed, pictures added or changed since (copies, saved edits, new files) are
+    /// analyzed in the background, so Best Shots, search and Shot Quality include them. (A copy tops its stack:
+    /// without this, a stack had no score and sank to the bottom of Best Shots.)
+    private func analyzeNewcomers() {
+        guard indexTask == nil, let viewer, folderAnalyzed, viewer.allItems.contains(where: needsIndex) else { return }
+        ensureIndexed(reason: .refresh)
+    }
+
+    /// Shot Quality for the current image when the folder hasn't been analyzed: this one is scored on its own.
+    func scoreCurrentIfNeeded() {
+        guard let viewer, let item = viewer.currentItem, needsIndex(item), indexTask == nil, !scoring.contains(item.url) else { return }
+        let url = item.url, date = item.modificationDate
+        scoring.insert(url)
+        Task {
+            defer { scoring.remove(url) }
+            guard var entry = await Self.analyze(url: url, modDate: date), viewer.allItems.contains(where: { $0.url == url }) else { return }
+            entry.description = index[url]?.description
+            setEntry(entry, for: url)
+            if viewer.sortKey == .quality { viewer.applySortAndFilter() }
         }
     }
 
@@ -245,7 +280,10 @@ final class IntelligenceModel {
         let reasons = pendingReasons
         pendingReasons = []
         guard let viewer else { return }
-        if reasons.contains(.search) || reasons.contains(.quality) { viewer.applySortAndFilter() }
+        if reasons.contains(.search) || reasons.contains(.quality)
+            || (reasons.contains(.refresh) && (viewer.sortKey == .quality || !viewer.trimmedSearch.isEmpty)) {
+            viewer.applySortAndFilter()
+        }
         if reasons.contains(.duplicates) { computeDuplicates() }
         if reasons.contains(.similar), let ref = viewer.currentURL { computeSimilar(to: ref) }
         if reasons.contains(.user) {
