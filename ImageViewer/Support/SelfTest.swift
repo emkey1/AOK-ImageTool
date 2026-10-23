@@ -217,6 +217,92 @@ enum SelfTest {
         model.sortKey = .name
     }
 
+    /// Fix Blur: a softened and a shaken detail come back closer to the original; faces are aligned to the
+    /// template right; a copy is saved and stacked. (`AOK_SELFTEST_ONLY=blur` runs just these.)
+    private static func fixBlurChecks(_ photo: DecodedImage, out: URL) async {
+        let ctx = EditRenderer.shared.context
+        let space = photo.cgImage.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        // The face template's points, turned, scaled and moved, are found again.
+        let turn = CGAffineTransform(rotationAngle: 0.2).scaledBy(x: 2.5, y: 2.5).translatedBy(x: 40, y: -12)
+        let moved = BlurFixer.template.map { $0.applying(turn) }
+        if let found = BlurFixer.similarity(from: BlurFixer.template, to: moved) {
+            let error = zip(BlurFixer.template.map { $0.applying(found) }, moved).map { hypot($0.x - $1.x, $0.y - $1.y) }.max() ?? 99
+            check(error < 0.01, String(format: "faces are aligned to the template exactly (off by %.4f px)", error))
+        } else {
+            check(false, "faces are aligned to the template")
+        }
+        guard let sharp = photo.cgImage.cropping(to: CGRect(x: 600, y: 600, width: 640, height: 640)) else { return check(false, "a detail") }
+        let rect = CGRect(x: 0, y: 0, width: sharp.width, height: sharp.height)
+        func degraded(_ filter: String, _ params: [String: Any]) -> CGImage? {
+            ctx.createCGImage(CIImage(cgImage: sharp).clampedToExtent().applyingFilter(filter, parameters: params).cropped(to: rect),
+                              from: rect, format: .RGBA8, colorSpace: space)
+        }
+        func distance(_ a: CGImage, _ b: CGImage) -> Double {
+            func px(_ image: CGImage) -> [UInt8] {
+                var p = [UInt8](repeating: 0, count: image.width * image.height * 4)
+                let c = CGContext(data: &p, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                c.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                return p
+            }
+            let pa = px(a), pb = px(b)
+            var total = 0
+            for i in stride(from: 0, to: pa.count, by: 4) { for c in 0..<3 { total += abs(Int(pa[i + c]) - Int(pb[i + c])) } }
+            return Double(total) / Double(pa.count / 4 * 3)
+        }
+        let cases: [(BlurFixer.Blur, String, CGImage?)] = [
+            (.focus, "soft focus", degraded("CIGaussianBlur", [kCIInputRadiusKey: 1.6])),
+            (.shake, "camera shake", degraded("CIMotionBlur", [kCIInputRadiusKey: 3, kCIInputAngleKey: 0.35])),
+        ]
+        for (blur, title, input) in cases {
+            guard let input else { check(false, title); continue }
+            guard blur.model?.isInstalled == true else { print("  • the \(blur.title) model isn't installed; skipping"); continue }
+            var options = BlurFixer.Options()
+            options.blur = blur
+            options.faces = false
+            let started = Date()
+            do {
+                let fixed = try await BlurFixer.fix(input, options)
+                writeJPEG(fixed, to: out.appendingPathComponent("fixblur-\(blur.rawValue).jpg"))
+                let before = distance(input, sharp), after = distance(fixed, sharp)
+                check(after < before * 0.85, String(format: "%@ fixes %@: %.1f → %.1f from the sharp original, in %.1f s",
+                                                    blur.title, title, before, after, Date().timeIntervalSince(started)))
+            } catch {
+                check(false, "\(blur.title) fixes \(title): \(error.localizedDescription)")
+            }
+        }
+        if BlurFixer.faceModel.isInstalled {
+            var options = BlurFixer.Options()
+            options.blur = .none
+            if let same = try? await BlurFixer.fix(sharp, options) {
+                check(distance(same, sharp) < 0.5, "Restore Faces leaves a picture without faces as it was")
+            } else {
+                check(false, "Restore Faces on a picture without faces")
+            }
+        }
+        // Done: a stacked copy.
+        guard BlurFixer.focusModel.isInstalled else { return }
+        let fm = FileManager.default
+        let folder = out.appendingPathComponent("sharpen")
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("Harbor.png")
+        try? ImageWriter.write(sharp, to: file, format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+        let model = ViewerModel()
+        model.stacksEnabled = true
+        model.openFolder(folder, selecting: file)
+        for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+        var options = BlurFixer.Options()
+        options.faces = false
+        model.fixBlurCurrent(options)
+        let copy = folder.appendingPathComponent("Harbor (Sharpened).png")
+        for _ in 0..<300 where !fm.fileExists(atPath: copy.path) { try? await Task.sleep(for: .milliseconds(100)) }
+        for _ in 0..<50 where model.items.contains(where: { $0.url == file.standardizedFileURL }) && model.stackOf.isEmpty {
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        check(fm.fileExists(atPath: copy.path) && ImageStacks.source(of: copy) == "Harbor.png",
+              "Fix Blur saves “Harbor (Sharpened)”, stacked on the original\(model.alert.map { " (\($0.title): \($0.message))" } ?? "")")
+    }
+
     static func run() async {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-selfTest"), i + 1 < args.count else {
@@ -230,7 +316,7 @@ enum SelfTest {
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
                            CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, PrefKey.confirmOverwrite,
                            PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
-                           PrefKey.removalBrush]
+                           PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("ImageViewerSelfTest-\(UUID().uuidString.prefix(6))")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -254,17 +340,18 @@ enum SelfTest {
                 check(false, "\(item.name): \(error.localizedDescription)")
             }
         }
-        // `AOK_SELFTEST_ONLY=download` (with AOK_MODELS_URL and a scratch AOK_MODELS_DIR): the object removal
-        // model's archive downloads, matches its checksum and installs.
+        // `AOK_SELFTEST_ONLY=download` (with AOK_MODELS_URL and a scratch AOK_MODELS_DIR): the object removal and
+        // Fix Blur models' archives download, match their checksums and install.
         if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "download" {
             print("\n[Model download]")
-            let model = DownloadableModel.removal
-            let started = Date()
-            ModelDownloads.shared.start(model)
-            for _ in 0..<3000 where ModelDownloads.shared.status[model.id] != nil { try? await Task.sleep(for: .milliseconds(100)) }
-            check(RemovalModel.isInstalled && ModelDownloads.shared.failure[model.id] == nil,
-                  "\(model.archives[0].file) downloads, matches its checksum and installs in \(Int(Date().timeIntervalSince(started))) s"
-                  + (ModelDownloads.shared.failure[model.id].map { " (\($0))" } ?? ""))
+            for model in [DownloadableModel.removal, .fixBlur, .restoreFaces] {
+                let started = Date()
+                ModelDownloads.shared.start(model)
+                for _ in 0..<3000 where ModelDownloads.shared.status[model.id] != nil { try? await Task.sleep(for: .milliseconds(100)) }
+                check(model.isInstalled() && ModelDownloads.shared.failure[model.id] == nil,
+                      "\(model.archives[0].file) downloads, matches its checksum and installs in \(Int(Date().timeIntervalSince(started))) s"
+                      + (ModelDownloads.shared.failure[model.id].map { " (\($0))" } ?? ""))
+            }
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
@@ -272,6 +359,16 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "quality" {
             print("\n[Shot quality with stacks]")
             await shotQualityChecks(folder: folder, out: out)
+            for (key, value) in savedPrefs {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "blur", let harbor = decodedByName["Harbor Village.heic"] {
+            print("\n[Fix Blur]")
+            await fixBlurChecks(harbor, out: out)
             for (key, value) in savedPrefs {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
@@ -1135,6 +1232,10 @@ enum SelfTest {
         // 6d. Remove Objects.
         print("\n[Remove Objects]")
         if let boat = decodedByName["Sailboat.heic"] { await removeObjectsChecks(boat, out: out) }
+
+        // 6e. Fix Blur.
+        print("\n[Fix Blur]")
+        if let harbor = decodedByName["Harbor Village.heic"] { await fixBlurChecks(harbor, out: out) }
 
         // 7. Vision.
         print("\n[Vision]")

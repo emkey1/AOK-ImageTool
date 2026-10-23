@@ -36,6 +36,7 @@ struct ViewerWindow: View {
         .sheet(isPresented: $model.showDuplicates) { DuplicatesSheet() }
         .sheet(isPresented: $model.showGenerateBackground) { GenerateBackgroundSheet() }
         .sheet(isPresented: $model.showBlackAndWhite) { BlackAndWhiteSheet() }
+        .sheet(isPresented: $model.showFixBlur) { FixBlurSheet() }
         .alert(model.alert?.title ?? "", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } })) {
             Button("OK") { model.alert = nil }
         } message: {

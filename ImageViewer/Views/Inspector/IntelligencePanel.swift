@@ -258,6 +258,10 @@ struct IntelligencePanel: View {
                 if Colorizer.isInstalled {
                     ActionButton("Colorize", systemImage: "paintpalette") { model.colorizeCurrent() }
                 }
+                if GenerativeModel.isSupported {
+                    ActionButton("Fix Blur…", systemImage: "camera.metering.center.weighted") { model.beginFixBlur() }
+                        .disabled(!model.canFixBlur)
+                }
             }
             .disabled(!model.canEdit || ai.busy != nil)
         }

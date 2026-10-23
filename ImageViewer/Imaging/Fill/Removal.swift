@@ -1,7 +1,5 @@
 import CoreGraphics
 import CoreImage
-import CoreML
-import CoreVideo
 import Foundation
 import ImageIO
 
@@ -49,140 +47,22 @@ nonisolated enum RemovalError: LocalizedError {
 
 /// Remove Objects' Erase model: Big LaMa (Apache-2.0, github.com/advimman/lama), converted to Core ML by
 /// scripts/convert-removal-model.sh and installed per user like the other models. It looks at 800 × 800 pixels
-/// and a mask, and paints the masked area in from what's around it.
+/// and a mask, and paints the masked area in from what's around it. (Converted at full precision: its Fourier
+/// convolutions overflow in half precision.)
 nonisolated enum RemovalModel {
     static let displayName = "LaMa"
-    static let side = 800
-    static let modelName = "LaMa.mlmodelc"
-
-    enum Failure: LocalizedError {
-        case missingModel, badOutput
-
-        var errorDescription: String? {
-            switch self {
-            case .missingModel: "The object removal model isn't installed."
-            case .badOutput: "The object removal model returned an unexpected result."
-            }
-        }
-    }
-
-    static var directory: URL {
-        AppStorageLocation.models.appendingPathComponent("Remove")
-    }
-
-    static var isInstalled: Bool {
-        GenerativeModel.isSupported && FileManager.default.fileExists(atPath: directory.appendingPathComponent(modelName).path)
-    }
-
-    /// Installs a converted model: LaMa.mlmodelc itself or a folder holding it.
-    static func install(from source: URL) throws {
-        try InstalledModel.install(modelName, from: source, into: directory) { unload() }
-    }
-
-    static func remove() throws {
-        unload()
-        if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
-    }
-
-    static var sizeOnDisk: Int64 { InstalledModel.size(of: directory) }
-
-    // MARK: Model (loaded on first use, released after a few idle minutes)
-
-    private static let queue = DispatchQueue(label: "RemovalModel", qos: .userInitiated)
-    nonisolated(unsafe) private static var model: MLModel?    // queue only
-    nonisolated(unsafe) private static var jobs = 0           // queue only
-
-    private static func unload() {
-        queue.async {
-            model = nil
-            jobs += 1
-        }
-    }
+    static let model = ImageModel(purpose: "object removal", folder: "Remove", modelName: "LaMa.mlmodelc", side: 800)
+    static var side: Int { model.side }
+    static var directory: URL { model.directory }
+    static var isInstalled: Bool { model.isInstalled }
+    static func install(from source: URL) throws { try model.install(from: source) }
+    static func remove() throws { try model.remove() }
+    static var sizeOnDisk: Int64 { model.sizeOnDisk }
 
     /// `image` (`side` × `side`, drawn in `space`) with the pixels `mask` marks (`side` × `side` bytes, rows
     /// top-down, nonzero = fill) painted in.
     static func inpaint(_ image: CGImage, mask: [UInt8], space: CGColorSpace) async throws -> CGImage {
-        guard isInstalled else { throw Failure.missingModel }
-        return try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                do {
-                    if model == nil {
-                        let config = MLModelConfiguration()
-                        // (Full precision on the GPU: its Fourier convolutions overflow in half precision.)
-                        config.computeUnits = .cpuAndGPU
-                        model = try MLModel(contentsOf: directory.appendingPathComponent(modelName), configuration: config)
-                    }
-                    let input = try MLDictionaryFeatureProvider(dictionary: [
-                        "image": MLFeatureValue(pixelBuffer: try pixelBuffer(image, space: space)),
-                        "mask": MLFeatureValue(pixelBuffer: try maskBuffer(mask)),
-                    ])
-                    let output = try model!.prediction(from: input)
-                    guard let buffer = output.featureValue(for: "output")?.imageBufferValue else { throw Failure.badOutput }
-                    continuation.resume(returning: try picture(buffer, space: space))
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-                jobs += 1
-                let job = jobs
-                queue.asyncAfter(deadline: .now() + 180) { if jobs == job { model = nil } }
-            }
-        }
-    }
-
-    private static func newBuffer(_ format: OSType) throws -> CVPixelBuffer {
-        var buffer: CVPixelBuffer?
-        guard CVPixelBufferCreate(nil, side, side, format, [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &buffer) == kCVReturnSuccess,
-              let buffer else { throw Failure.badOutput }
-        return buffer
-    }
-
-    private static func pixelBuffer(_ image: CGImage, space: CGColorSpace) throws -> CVPixelBuffer {
-        let buffer = try newBuffer(kCVPixelFormatType_32BGRA)
-        CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard let ctx = CGContext(data: CVPixelBufferGetBaseAddress(buffer), width: side, height: side, bitsPerComponent: 8,
-                                  bytesPerRow: CVPixelBufferGetBytesPerRow(buffer), space: space,
-                                  bitmapInfo: CGImageAlphaInfo.noneSkipFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-        else { throw Failure.badOutput }
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
-        return buffer
-    }
-
-    private static func maskBuffer(_ mask: [UInt8]) throws -> CVPixelBuffer {
-        let buffer = try newBuffer(kCVPixelFormatType_OneComponent8)
-        CVPixelBufferLockBaseAddress(buffer, [])
-        defer { CVPixelBufferUnlockBaseAddress(buffer, []) }
-        guard let base = CVPixelBufferGetBaseAddress(buffer) else { throw Failure.badOutput }
-        let rowBytes = CVPixelBufferGetBytesPerRow(buffer)
-        mask.withUnsafeBufferPointer { m in
-            for y in 0..<side {
-                let row = base.advanced(by: y * rowBytes).assumingMemoryBound(to: UInt8.self)
-                for x in 0..<side { row[x] = m[y * side + x] != 0 ? 255 : 0 }
-            }
-        }
-        return buffer
-    }
-
-    /// The model's output as a picture in `space` (copied out: Core ML reuses its buffers).
-    private static func picture(_ buffer: CVPixelBuffer, space: CGColorSpace) throws -> CGImage {
-        CVPixelBufferLockBaseAddress(buffer, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(buffer, .readOnly) }
-        let format = CVPixelBufferGetPixelFormatType(buffer)
-        let order: CGBitmapInfo
-        switch format {
-        case kCVPixelFormatType_32BGRA: order = .byteOrder32Little
-        case kCVPixelFormatType_32ARGB: order = .byteOrder32Big
-        default: throw Failure.badOutput
-        }
-        let w = CVPixelBufferGetWidth(buffer), h = CVPixelBufferGetHeight(buffer), rowBytes = CVPixelBufferGetBytesPerRow(buffer)
-        guard let base = CVPixelBufferGetBaseAddress(buffer) else { throw Failure.badOutput }
-        let data = Data(bytes: base, count: rowBytes * h)
-        guard let provider = CGDataProvider(data: data as CFData),
-              let image = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: rowBytes, space: space,
-                                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipFirst.rawValue | order.rawValue),
-                                  provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
-        else { throw Failure.badOutput }
-        return image
+        try await model.predict(image, mask: mask, space: space)
     }
 }
 

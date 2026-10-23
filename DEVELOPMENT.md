@@ -39,6 +39,7 @@ scripts/
   convert-inpainting-model.sh    Builds the generative fill model from the official weights
   convert-colorize-model.sh      Builds the colorizing model (DDColor) from its official weights
   convert-removal-model.sh       Builds the object removal model (Big LaMa) from its weights
+  convert-sharpen-models.sh      Builds Fix Blur's models (Restormer's two, GFPGAN) from their official weights
   make-test-images.swift         Makes the synthetic files in TestImages/
   archive.sh                     Archives and sends the app to be notarized
   make-dmg.sh, dmg-layout.swift  The installer (after AOK-Foray's)
@@ -51,7 +52,7 @@ The project uses Xcode's synchronized folder, so new files under `ImageViewer/` 
 
 ## Models
 
-The three optional models aren't in the repository or the app. The app downloads them from this repository's
+The optional models aren't in the repository or the app. The app downloads them from this repository's
 [`models-1` release](https://github.com/emkey1/AOK-ImageTool/releases/tag/models-1) (a prerelease, so the updater
 never takes it for a new version of the app):
 
@@ -60,6 +61,8 @@ never takes it for a new version of the app):
 | `AOK-SD15-Inpainting-Unet.zip`, `AOK-SD15-Inpainting-Other.zip` | Stable Diffusion 1.5 Inpainting for Core ML: the UNet; the text encoder, VAE encoder and decoder, tokenizer files | CreativeML Open RAIL-M (LICENSE.txt and NOTICE.txt inside) |
 | `AOK-DDColor.zip` | DDColor large for Core ML | Apache 2.0 (LICENSE.txt and NOTICE.txt inside) |
 | `AOK-LaMa.zip` | Big LaMa for Core ML (full precision, 800 × 800) | Apache 2.0 (LICENSE.txt and NOTICE.txt inside) |
+| `AOK-Restormer.zip` | Restormer's motion and defocus deblurring for Core ML (half precision, 384 × 384 tiles) | MIT (LICENSE.txt and NOTICE.txt inside) |
+| `AOK-GFPGAN.zip` | GFPGAN v1.4 for Core ML (full precision, 512 × 512 aligned faces) | Apache 2.0 with listed exceptions (LICENSE.txt and NOTICE.txt inside) |
 
 Each archive's size and SHA-256 are in `Support/ModelDownloads.swift`; a download that doesn't match isn't installed.
 Splitting Stable Diffusion in two keeps each file under GitHub's 2 GB limit per release asset.
@@ -70,6 +73,7 @@ To rebuild them from the official weights:
 scripts/convert-inpainting-model.sh ~/Downloads/sd-inpainting --install
 scripts/convert-colorize-model.sh ~/Downloads/ddcolor --install
 scripts/convert-removal-model.sh ~/Downloads/lama --install
+scripts/convert-sharpen-models.sh ~/Downloads/sharpen --install
 ```
 
 Each script uses a throwaway Python environment inside the folder you name and pinned versions of the converters

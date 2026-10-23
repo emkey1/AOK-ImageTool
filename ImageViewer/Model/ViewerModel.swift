@@ -134,6 +134,7 @@ final class ViewerModel {
     /// The on-device model's background sheet (GenerateSheets.swift).
     var showGenerateBackground = false
     var showBlackAndWhite = false
+    var showFixBlur = false
     var showDuplicates = false
     var alert: AlertInfo?
     private(set) var toast: ToastMessage?

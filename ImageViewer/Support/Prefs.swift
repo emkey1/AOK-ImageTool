@@ -35,6 +35,7 @@ nonisolated enum PrefKey {
     static let sortAscending = "sortAscending"
     static let stackCopies = "stackCopies"
     static let blackAndWhite = "blackAndWhite"
+    static let fixBlur = "fixBlur"
     static let checkForUpdates = "CheckForUpdates"
     static let lastUpdateCheck = "LastUpdateCheck"
     static let skippedVersion = "SkippedVersion"
@@ -72,7 +73,7 @@ nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {
 /// What makes a new picture: whether it saves it as a copy, stacked on the original (the default), or puts it
 /// in place of the image (Settings ▸ Editing ▸ Copies).
 nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
-    case upscale, colorize, blackAndWhite, extend, removeObjects
+    case upscale, colorize, blackAndWhite, fixBlur, extend, removeObjects
 
     var id: String { rawValue }
     var key: String { "makesCopy." + rawValue }
@@ -82,6 +83,7 @@ nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
         case .upscale: "Upscale with AI"
         case .colorize: "Colorize"
         case .blackAndWhite: "Black & White"
+        case .fixBlur: "Fix Blur"
         case .extend: "Extend"
         case .removeObjects: "Remove Objects"
         }

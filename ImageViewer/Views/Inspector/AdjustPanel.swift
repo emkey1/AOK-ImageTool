@@ -186,6 +186,8 @@ struct AdjustPanel: View {
                 Button("Black & White…") { model.showBlackAndWhite = true }
                 if GenerativeModel.isSupported {
                     Button("Colorize") { model.colorizeCurrent() }
+                    Button("Fix Blur…") { model.beginFixBlur() }
+                        .disabled(!model.canFixBlur)
                 }
                 if SuperResolution.isSupported {
                     Menu("Upscale") {

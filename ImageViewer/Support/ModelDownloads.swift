@@ -65,6 +65,36 @@ nonisolated struct DownloadableModel: Identifiable, Sendable {
         isInstalled: { Colorizer.isInstalled }
     )
 
+    static let fixBlur = DownloadableModel(
+        id: "fix-blur",
+        purpose: "blur fixing",
+        modelName: BlurFixer.blurModelName,
+        licenseName: "MIT",
+        licenseURL: URL(string: "https://github.com/swz30/Restormer/blob/main/LICENSE.md")!,
+        licenseRestrictsUse: false,
+        archives: [
+            Archive(file: "AOK-Restormer.zip", size: 96_496_895,
+                    sha256: "59a24cc87ddb79eedc7d6451a3a4e54a7b2d0212b0c5d7c022f4d8284396cb59"),
+        ],
+        install: { try BlurFixer.installBlurModels(from: $0) },
+        isInstalled: { BlurFixer.blurModelsInstalled }
+    )
+
+    static let restoreFaces = DownloadableModel(
+        id: "restore-faces",
+        purpose: "face restoration",
+        modelName: "\(BlurFixer.facesModelName) v1.4",
+        licenseName: "Apache 2.0",
+        licenseURL: URL(string: "https://github.com/TencentARC/GFPGAN/blob/master/LICENSE")!,
+        licenseRestrictsUse: false,
+        archives: [
+            Archive(file: "AOK-GFPGAN.zip", size: 315_114_321,
+                    sha256: "295f566f23a966071b04ae3a920c224d0a576f44a8e586141b2fdb4d7de0f7eb"),
+        ],
+        install: { try BlurFixer.faceModel.install(from: $0) },
+        isInstalled: { BlurFixer.faceModel.isInstalled }
+    )
+
     static let removal = DownloadableModel(
         id: "remove-objects",
         purpose: "object removal",

@@ -52,6 +52,37 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -fixBlur <image> <out.png> [focus|shake|none] [faces]`: Fix Blur on the photo. With SHAKE=<pixels>
+        // in the environment, the photo is first blurred that much by a simulated camera shake (written to
+        // <out>-blurred.png), so the result can be compared with the sharp original.
+        if let i = args.firstIndex(of: "-fixBlur"), i + 2 < args.count {
+            let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])
+            let mode = i + 3 < args.count ? args[i + 3] : "focus"
+            let faces = i + 4 < args.count && args[i + 4] == "faces"
+            guard let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false) else { exit(1) }
+            var photo = d.cgImage
+            if let shake = ProcessInfo.processInfo.environment["SHAKE"].flatMap(Double.init) {
+                let rect = CGRect(x: 0, y: 0, width: photo.width, height: photo.height)
+                let blurred = CIImage(cgImage: photo).clampedToExtent()
+                    .applyingFilter("CIMotionBlur", parameters: [kCIInputRadiusKey: shake, kCIInputAngleKey: 0.35]).cropped(to: rect)
+                photo = ImageDecoder.ciContext.createCGImage(blurred, from: rect, format: .RGBA8, colorSpace: photo.colorSpace)!
+                try? ImageWriter.write(photo, to: out.deletingPathExtension().appendingPathExtension("blurred.png"), format: .png, quality: 1,
+                                       sourceProperties: [:], metadata: .removeAll)
+            }
+            var options = BlurFixer.Options()
+            options.blur = BlurFixer.Blur(rawValue: mode) ?? .none
+            options.faces = faces
+            if let s = ProcessInfo.processInfo.environment["FACE_STRENGTH"].flatMap(Double.init) { options.faceStrength = s }
+            let t0 = Date()
+            do {
+                let made = try await BlurFixer.fix(photo, options)
+                try ImageWriter.write(made, to: out, format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                print(String(format: "%d×%d in %.1f s", made.width, made.height, Date().timeIntervalSince(t0)))
+            } catch {
+                print("failed:", error.localizedDescription)
+            }
+            exit(0)
+        }
         // `-extendTest -download <generative-fill|colorize>`: downloads and installs a model (AOK_MODELS_URL and
         // AOK_MODELS_DIR point it at another server and folder).
         if let i = args.firstIndex(of: "-download"), i + 1 < args.count,

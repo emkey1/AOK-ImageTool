@@ -195,6 +195,11 @@ struct ViewerCommands: Commands {
             Button("Black & White…") { viewer?.showBlackAndWhite = true }
                 .disabled(!canEdit)
                 .help("Save a black and white copy next to the original")
+            if GenerativeModel.isSupported {
+                Button("Fix Blur…") { viewer?.beginFixBlur() }
+                    .disabled(!(viewer?.canFixBlur ?? false) || !canEdit)
+                    .help("Save a sharpened copy: camera shake or soft focus taken out, faces restored")
+            }
             Toggle("Show Original", isOn: Binding(get: { viewer?.showOriginal ?? false }, set: { viewer?.showOriginal = $0 }))
                 .disabled(!hasEdits)
             if SuperResolution.isSupported {

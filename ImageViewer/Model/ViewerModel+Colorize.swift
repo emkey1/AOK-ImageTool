@@ -160,6 +160,43 @@ extension ViewerModel {
         }
     }
 
+    /// Fix Blur (and restoring faces) can't do an animation's frames.
+    var canFixBlur: Bool {
+        guard let d = decoded, d.url == currentURL, let url = currentURL, !savingURLs.contains(url) else { return false }
+        return !d.isAnimated
+    }
+
+    /// Image ▸ Fix Blur…: the sheet, once a model it needs is installed (it offers the downloads itself).
+    func beginFixBlur() {
+        guard canFixBlur else { return }
+        guard GenerativeModel.isSupported else {
+            alert = AlertInfo(title: "This needs a Mac with Apple silicon", message: "Fix Blur's models run on Apple silicon only.")
+            return
+        }
+        showFixBlur = true
+    }
+
+    /// Saves a sharpened copy of the current image, with its edits, next to the original (see `BlurFixer`).
+    func fixBlurCurrent(_ options: BlurFixer.Options) {
+        guard let url = currentURL, let d = decoded, d.url == url else { return }
+        let relay = ModelRelay(self)
+        let working = Prefs.makesCopy(.fixBlur) ? "Fixing the blur…" : "Sharpening…"
+        saveCopy(of: url, decoded: d, edits: currentEdits, label: "Sharpened", defaultFormat: .heic,
+                 working: working, systemImage: "camera.metering.center.weighted",
+                 failure: "Couldn't fix the blur in “\(url.lastPathComponent)”",
+                 operation: .fixBlur, replaced: "Sharpened “\(url.lastPathComponent)”") {
+            try await BlurFixer.fix($0, options) { fraction in
+                Task { @MainActor in
+                    // (Only while it's working: a late update mustn't cover "Saved …".)
+                    if let model = relay.model, model.toast?.text.hasPrefix(working) == true {
+                        model.showToast("\(working) \(Int(fraction * 100))%", systemImage: "camera.metering.center.weighted")
+                    }
+                }
+                return false
+            }
+        }
+    }
+
     /// Saves a black and white copy of the current image, with its edits, next to the original.
     func saveBlackAndWhite(_ bw: BlackAndWhite) {
         guard let url = currentURL, let d = decoded, d.url == url else { return }
