@@ -48,12 +48,33 @@ nonisolated enum VisionServices {
                                                     colorSpace: CGColorSpace(name: CGColorSpace.sRGB)) ?? image
     }
 
+    /// An ordinary 8-bit sRGB copy of `image` in memory of its own (at most `maxDimension` on a side), for
+    /// handing to the system's analyzers. They draw the picture to convert it, and a decoded HDR photo (floating
+    /// point, in ImageIO's memory) read that way while Core Image reads it too has crashed Live Text, reading
+    /// past the end of the picture.
+    @concurrent
+    static func plainCopy(_ image: CGImage, maxDimension: Int? = nil) async -> CGImage {
+        plainCopySync(image, maxDimension: maxDimension)
+    }
+
+    static func plainCopySync(_ image: CGImage, maxDimension: Int? = nil) -> CGImage {
+        let longest = max(image.width, image.height)
+        let scale = maxDimension.map { min(1, Double($0) / Double(longest)) } ?? 1
+        var ci = CIImage(cgImage: image)
+        if scale < 1 {
+            ci = ci.clampedToExtent().applyingFilter("CILanczosScaleTransform", parameters: [kCIInputScaleKey: scale, kCIInputAspectRatioKey: 1])
+        }
+        let rect = CGRect(x: 0, y: 0, width: (Double(image.width) * scale).rounded(), height: (Double(image.height) * scale).rounded())
+        return ImageDecoder.ciContext.createCGImage(ci.cropped(to: rect), from: rect, format: .RGBA8,
+                                                    colorSpace: CGColorSpace(name: CGColorSpace.sRGB), deferred: false) ?? image
+    }
+
     // MARK: - Subjects & objects
 
     /// Mask (white = keep) of all foreground subjects, at the image's pixel size.
     @concurrent
     static func subjectMask(for image: CGImage) async throws -> CIImage {
-        let handler = ImageRequestHandler(image)
+        let handler = ImageRequestHandler(plainCopySync(image))
         guard let observation = try await handler.perform(GenerateForegroundInstanceMaskRequest()),
               !observation.allInstances.isEmpty
         else { throw VisionError.noSubject }

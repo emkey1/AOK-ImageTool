@@ -1274,6 +1274,18 @@ enum SelfTest {
 
         // 7. Vision.
         print("\n[Vision]")
+        if let lake = decodedByName["Mountain Lake.heic"] {
+            // What the system's analyzers get: a plain 8-bit copy of their own, even of a floating-point picture.
+            let rect = CGRect(x: 0, y: 0, width: lake.cgImage.width, height: lake.cgImage.height)
+            if let float = ImageDecoder.ciContext.createCGImage(CIImage(cgImage: lake.cgImage), from: rect, format: .RGBAf,
+                                                                colorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)) {
+                let copy = VisionServices.plainCopySync(float, maxDimension: 1024)
+                let same = VisionServices.plainCopySync(lake.cgImage)
+                check(copy.bitsPerComponent == 8 && max(copy.width, copy.height) == 1024 && copy.colorSpace?.name == CGColorSpace.sRGB
+                      && same.width == lake.cgImage.width && same !== lake.cgImage,
+                      "Live Text and Vision get a plain 8-bit copy of their own (\(float.bitsPerComponent)-bit float → \(copy.bitsPerComponent)-bit)")
+            }
+        }
         if let fox = decodedByName["Red Fox.heic"] {
             do {
                 let mask = try await VisionServices.subjectMask(for: fox.cgImage)

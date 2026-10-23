@@ -334,7 +334,10 @@ final class CanvasController: NSObject {
             try? await Task.sleep(for: .milliseconds(450))
             guard !Task.isCancelled, let self else { return }
             let config = ImageAnalyzer.Configuration([.text, .visualLookUp, .machineReadableCode])
-            guard let analysis = try? await self.analyzer.analyze(image, orientation: .up, configuration: config) else { return }
+            // (Its own plain copy: see VisionServices.plainCopy. Text stays readable at 4096 px.)
+            let copy = await VisionServices.plainCopy(image, maxDimension: 4096)
+            guard !Task.isCancelled,
+                  let analysis = try? await self.analyzer.analyze(copy, orientation: .up, configuration: config) else { return }
             guard !Task.isCancelled, self.display?.contentKey == key else { return }
             self.analyzedContentKey = key
             overlay.analysis = analysis

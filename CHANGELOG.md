@@ -14,6 +14,7 @@
 - **Straighten in Adjust:** an angle slider with 1° and 0.1° buttons and Auto, without opening the crop tool; the corners turned out of the frame are cropped away.
 - **A stack shows the copy you viewed or made last**, also after the folder is opened again or the app relaunched; a copy made while you're on another picture goes on top of its stack.
 - **Shot Quality and Best Shots include new copies:** in a folder you've analyzed, pictures added or changed later are analyzed by themselves (a stack shows its newest copy, which had no score, so the stack sank to the bottom of Best Shots). Shot Quality scores the shown picture on its own when the folder hasn't been analyzed.
+- Fixed a crash while editing an HDR photo (seen while straightening): macOS's Live Text analysis read past the end of the decoded photo while the edit preview read it too. Live Text and subject detection now get a plain copy of their own.
 - A fitted picture is all in view: it no longer reaches under the filmstrip (the canvas left room for the toolbar it was already below, pushing the picture down).
 - Copies made by Upscale, Colorize and Black & White show in the filmstrip as soon as they're saved, instead of after the new file is read back.
 
