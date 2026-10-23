@@ -114,6 +114,8 @@ final class ViewerModel {
     @ObservationIgnored private var toolImage: URL?
     /// Set to open the Crop tool already extending, with this fill; the tool takes it when it appears.
     var pendingExtend: ExtendMethod?
+    /// Something to do once this image has loaded (see `whenShown`).
+    @ObservationIgnored var whenLoaded: (url: URL, action: () -> Void)?
     private(set) var isSlideshowRunning = false
     private(set) var isSlideshowPaused = false
     private(set) var isFullScreen = false
@@ -705,6 +707,10 @@ final class ViewerModel {
         decoded = image
         refreshDisplay()
         refillExtensionIfNeeded()
+        if let pending = whenLoaded, pending.url == image.url.standardizedFileURL {
+            whenLoaded = nil
+            pending.action()
+        }
         if DebugHooks.extendOnLaunch, activeTool == nil { activeTool = .crop }
         if DebugHooks.scene != nil { DebugScenes.apply(to: self) }
         schedulePrefetch()

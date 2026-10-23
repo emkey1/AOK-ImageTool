@@ -774,6 +774,23 @@ enum SelfTest {
                       && ImageStacks.source(of: extended) == "Lake.heic",
                       "Extend makes a copy (\(Int(width)) px wide), stacked; the original stays as it was")
             }
+            // Extend after a crop starts from the crop: the cropped picture is saved first, and Extend opens on it.
+            model.select(lake.standardizedFileURL)
+            for _ in 0..<100 where model.decoded?.url != lake.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            if let d = model.decoded {
+                model.updateEdits("Crop") { $0.crop = CGRect(x: 0.1, y: 0.2, width: 0.6, height: 0.5) }
+                model.beginExtend(.match)
+                let cropped = folder.appendingPathComponent("Lake (Cropped).heic").standardizedFileURL
+                for _ in 0..<300 where model.activeTool != .crop || model.currentURL != cropped { try? await Task.sleep(for: .milliseconds(100)) }
+                let size = ImageDecoder.header(url: cropped)?.pixelSize ?? .zero
+                check(abs(size.width - d.pixelSize.width * 0.6) < 3 && abs(size.height - d.pixelSize.height * 0.5) < 3
+                      && model.currentURL == cropped && model.activeTool == .crop && ImageStacks.source(of: cropped) == "Lake.heic"
+                      && model.edits[lake.standardizedFileURL]?.crop != nil,
+                      "Extend after a crop saves “Lake (Cropped)” (\(Int(size.width))×\(Int(size.height))) and extends that")
+                model.activeTool = nil
+                model.select(lake.standardizedFileURL)
+                model.updateEdits("Uncrop") { $0.crop = nil }
+            }
             // Black & White in place.
             Prefs.setBool(false, CopyOperation.blackAndWhite.key)
             Prefs.setBool(false, PrefKey.confirmOverwrite)

@@ -36,13 +36,40 @@ extension ViewerModel {
         offerDownload(.generativeFill) { [weak self] in self?.beginExtend(.generate) }
     }
 
-    /// Opens the Crop tool in Extend mode, with this fill (by default the one last chosen).
+    /// Opens the Crop tool in Extend mode, with this fill (by default the one last chosen). A picture that's
+    /// been cropped is saved cropped first (see `extendCropped`).
     func beginExtend(_ method: ExtendMethod? = nil) {
         guard canExtend else { return }
+        let e = currentEdits
+        if let url = currentURL, let d = decoded, e.crop != nil, !e.cropExtendsBeyondImage, !PhotosRoundTrip.isFromPhotos(url) {
+            return extendCropped(url: url, decoded: d, edits: e, method: method)
+        }
         viewMode = .viewer
         let method = method ?? Prefs.preferredExtendMethod
         pendingExtend = method == .generate && !GenerativeModel.isInstalled ? .match : method
         activeTool = .crop
+    }
+
+    /// Extend after a crop: the frame should start at the crop, not bring back what was cropped away. So the
+    /// cropped picture is saved first, as "<name> (Cropped)" stacked on the original (or, with Extend's copies
+    /// off, in place of it), and Extend opens on that.
+    private func extendCropped(url: URL, decoded d: DecodedImage, edits e: EditState, method: ExtendMethod?) {
+        saveCopy(of: url, decoded: d, edits: e, label: "Cropped", defaultFormat: .heic, working: "Saving the crop…", systemImage: "crop",
+                 failure: "Couldn't save the crop of “\(url.lastPathComponent)”", operation: .extend,
+                 replaced: "Saved the crop in “\(url.lastPathComponent)”", then: { [weak self] made in
+            self?.whenShown(made) { self?.beginExtend(method) }
+        }) { $0 }
+    }
+
+    /// Shows `url` (if it isn't the current image) and does `action` once it has loaded.
+    func whenShown(_ url: URL, _ action: @escaping () -> Void) {
+        let url = url.standardizedFileURL
+        if currentURL != url {
+            activeTool = nil
+            select(url)
+        }
+        if decoded?.url.standardizedFileURL == url, !isLoading { return action() }
+        whenLoaded = (url, action)
     }
 
     /// Makes Extend's fill when the crop reaches past the image and no current fill covers it — after an

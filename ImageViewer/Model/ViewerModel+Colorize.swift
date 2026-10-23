@@ -3,15 +3,17 @@ import AppKit
 extension ViewerModel {
     /// Saves a copy of the image at `url`, with its edits, made by `transform`, as "<name> (<label>)" next to
     /// it. The copy records what it was made from, so it stacks on top of it, and is shown. When `operation` is
-    /// set not to make copies (Settings ▸ Editing ▸ Copies), the result takes the image's place instead.
+    /// set not to make copies (Settings ▸ Editing ▸ Copies), the result takes the image's place instead. `then`
+    /// gets the file made (the copy, or the image replaced) once it's saved and listed (not for a photo from
+    /// Photos, whose copy goes to the library).
     func saveCopy(of url: URL, decoded d: DecodedImage, edits e: EditState, label: String, defaultFormat: ExportFormat,
                   working: String, systemImage: String, failure: String, operation: CopyOperation? = nil, replaced: String = "",
-                  transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
+                  then: ((URL) -> Void)? = nil, transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
         // (A photo from the Photos library always gets a copy, added to Photos.)
         if let operation, !Prefs.makesCopy(operation), PhotosLibrary.shared.photo(for: url) == nil,
            let format = inPlaceFormat(for: d, edits: e) {
-            return replace(url, decoded: d, edits: e, format: format, label: label, working: working, systemImage: systemImage,
-                           failure: failure, replaced: replaced, transform: transform)
+            return replace(url, decoded: d, edits: e, format: format, label: label, operation: operation, working: working,
+                           systemImage: systemImage, failure: failure, replaced: replaced, then: then, transform: transform)
         }
         var format = SupportedFormats.writableFormat(for: d.contentType).flatMap { [.jpeg, .heic, .avif, .png, .tiff].contains($0) ? $0 : nil }
             ?? defaultFormat
@@ -34,6 +36,7 @@ extension ViewerModel {
                     return dest
                 }.value
                 try await finishCopy(dest, from: url)
+                if !PhotosRoundTrip.isFromPhotos(url) { then?(dest.standardizedFileURL) }
             } catch {
                 dismissToast()
                 showError(failure, error)
@@ -44,8 +47,8 @@ extension ViewerModel {
     /// The result of Colorize, Upscale… in place of the image: the file is replaced (the original going to the
     /// Trash as Save would), asking first when Save asks.
     private func replace(_ url: URL, decoded d: DecodedImage, edits e: EditState, format: ExportFormat, label: String,
-                         working: String, systemImage: String, failure: String, replaced: String,
-                         transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
+                         operation: CopyOperation, working: String, systemImage: String, failure: String, replaced: String,
+                         then: ((URL) -> Void)?, transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
         let go: () -> Void = { [weak self] in
             guard let self else { return }
             showToast(working, systemImage: systemImage)
@@ -53,6 +56,7 @@ extension ViewerModel {
                 do {
                     try await self.writeOver(url: url, decoded: d, edits: e, format: format, transform: transform)
                     self.showToast(replaced.isEmpty ? "Replaced “\(url.lastPathComponent)”" : replaced, systemImage: "checkmark.circle")
+                    then?(url.standardizedFileURL)
                 } catch {
                     self.dismissToast()
                     self.showError(failure, error)
@@ -65,7 +69,7 @@ extension ViewerModel {
         alert.informativeText = (Prefs.trashOriginalOnSave
             ? "The original is moved to the Trash, so you can still recover it."
             : "The original file is replaced. This can't be undone.")
-            + " To keep the original and get a copy instead, turn on “\(label) makes a copy” in Settings ▸ Editing."
+            + " To keep the original and get a copy instead, turn on “\(operation.title) makes a copy” in Settings ▸ Editing."
         alert.addButton(withTitle: "Replace")
         alert.addButton(withTitle: "Cancel")
         alert.showsSuppressionButton = true

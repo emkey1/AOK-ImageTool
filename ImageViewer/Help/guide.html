@@ -121,7 +121,7 @@
   <source media="(prefers-color-scheme: dark)" srcset="guide-stacks-dark.heic">
   <img class="shot" src="guide-stacks-light.heic" alt="The filmstrip with a stack spread out: a black and white copy, an upscaled copy and the original photo side by side on a shared background.">
 </picture>
-<p>Black &amp; White, Colorize, Fix Blur, Upscale with AI, Extend, Remove Objects, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
+<p>Black &amp; White, Colorize, Fix Blur, Upscale with AI, Extend (and the cropped picture it starts from, when there's a crop), Remove Objects, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
 <ul>
   <li><b>A stack takes one place</b> in the filmstrip and the grid, showing its newest copy on top. Lines above the thumbnail and a count in its corner mark it.</li>
   <li><b>Step through a stack</b> with <kbd>⌥←</kbd> and <kbd>⌥→</kbd> (or <b>Go › Newer Copy in Stack</b> and <b>Older Copy in Stack</b>): newest first, the original last. The window's title says where you are, such as “Stack 2/3”.</li>
@@ -179,6 +179,7 @@
   <li><b>Done</b> saves the extended photo as a copy, “<i>name</i> (Extended)”, which <a href="#stacks">stacks</a> on the original; the original stays as it was. The final fill is made first (“Extending…” at the top right, with its progress). For Generate, a second pass redraws the new area at higher resolution and blends it into the photo's edges, which takes about another half minute.</li>
 </ol>
 <p>To extend the photo itself instead, turn off <b>Extend makes a copy</b> in <b>Settings › Editing</b>. Done then keeps the extension as an edit of the photo, made in the background (Save waits until it's done), and the rest of this list applies to it.</p>
+<p><b>A cropped photo</b> is extended from the crop, not from the whole photo: choosing Extend first saves the cropped picture as a copy, “<i>name</i> (Cropped)”, stacked on the original, and Extend opens on that copy. (With Extend's copies off, the crop is saved into the photo itself first, as Save would.) The parts you cropped away stay out; the new area is generated around what you kept.</p>
 <ul>
   <li><b>Adjustments apply to the new area too</b>, so you can extend first and adjust later.</li>
   <li><b>Rotating, straightening or a bigger frame</b> make a new fill; a smaller frame inside the extended area reuses the one you have. The same edits always make the same fill again, even after a relaunch.</li>

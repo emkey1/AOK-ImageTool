@@ -3,8 +3,8 @@
 # AOK-ImageTool
 
 A fast, keyboard-first photo viewer and editor for the Mac: browse a folder with the arrow keys, pick the keepers,
-edit without touching the original, extend a photo past its edges, cut out subjects, and use Apple's on-device
-intelligence. Your pictures never leave your Mac.
+edit without touching the original, extend a photo past its edges, remove objects, fix blur, cut out subjects, and use
+Apple's on-device intelligence, on files or on your Photos library. Your pictures never leave your Mac.
 
 <p align="center">
   <picture>
@@ -17,17 +17,21 @@ intelligence. Your pictures never leave your Mac.
   reads, including HEIC, AVIF, JPEG XL, WebP, 30+ camera RAW formats, PDF and SVG, with HDR shown in HDR.
 - **Pick the keepers.** P, X and U pick, reject and unflag (as Finder color labels); filter, sort by Apple's
   judgment of the best shots, find duplicates and similar photos.
-- **Edit without fear.** Light, color, detail and filters, crop and straighten (Auto levels the horizon). Nothing
-  touches the file until you Save, every change can be undone, and unsaved edits survive quitting.
+- **Edit without fear.** Light, color, detail and filters, crop and straighten (by the degree or tenth of a degree, or
+  Auto, which levels the horizon). Nothing touches the file until you Save, every change can be undone, and unsaved
+  edits survive quitting.
+- **Your Photos library too.** Open photos from Photos (Live Photos stay live), edit them here, and Save sends the edit
+  back as a Photos edit you can revert, synced by iCloud Photos. Or use Photos' Image ▸ Edit With.
 - **Extend a photo** past its edges, to 16:9 or any frame: continue its own texture, or **Generate** new content with
   an image model that runs on your Mac.
 - **Fix blur:** take soft focus or camera shake out of a photo, and restore blurry faces, with models that run on
   your Mac.
 - **Remove objects:** paint over a passer-by, a sign or a power line, click it or circle it, and it's filled in from
   what's around it, with LaMa (a model made for this) running on your Mac.
-- **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Fix Blur, Upscale with AI, Extend,
-  Remove Objects and Reimagine save new copies, stacked with the original in the filmstrip so a folder stays tidy. (Settings can have
-  them change the image itself instead.)
+- **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Fix Blur, Upscale with AI (animated
+  GIFs too), Extend, Remove Objects and Reimagine save new copies, stacked with the original in the filmstrip so a
+  folder stays tidy. (Settings can have them change the image itself instead.)
+- **Paste a picture** (⌘V) from anywhere as a new image in the folder.
 - **Apple Intelligence** where your Mac has it: describe a photo (alt text, keywords, a file name), ask about it, search
   a folder by what's in the pictures or the text in them, remove backgrounds and generate new ones.
 - **A full guide** inside the app (Help ▸ AOK-ImageTool Guide, ⌘?).
