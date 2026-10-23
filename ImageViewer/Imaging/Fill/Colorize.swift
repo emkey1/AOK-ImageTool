@@ -30,27 +30,9 @@ nonisolated enum Colorizer {
         GenerativeModel.isSupported && FileManager.default.fileExists(atPath: directory.appendingPathComponent(modelName).path)
     }
 
-    /// Installs a converted model: the .mlmodelc itself or a folder holding it. It's copied next to the
-    /// installed one first and swapped in, so a failed copy leaves the old one (and choosing the installed
-    /// one itself changes nothing).
+    /// Installs a converted model: the .mlmodelc itself or a folder holding it.
     static func install(from source: URL) throws {
-        let model = (source.lastPathComponent == modelName ? source : source.appendingPathComponent(modelName)).standardizedFileURL
-        guard FileManager.default.fileExists(atPath: model.path) else { throw GenerativeModel.InstallError.notAModel }
-        let fm = FileManager.default
-        let dest = directory.appendingPathComponent(modelName).standardizedFileURL
-        guard model != dest else { return }
-        try fm.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let staging = directory.deletingLastPathComponent().appendingPathComponent(".installing-\(UUID().uuidString)")
-        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
-        do {
-            try fm.copyItem(at: model, to: staging.appendingPathComponent(modelName))
-            unload()
-            if fm.fileExists(atPath: directory.path) { try fm.removeItem(at: directory) }
-            try fm.moveItem(at: staging, to: directory)
-        } catch {
-            try? fm.removeItem(at: staging)
-            throw error
-        }
+        try InstalledModel.install(modelName, from: source, into: directory) { unload() }
     }
 
     static func remove() throws {
@@ -58,14 +40,7 @@ nonisolated enum Colorizer {
         if FileManager.default.fileExists(atPath: directory.path) { try FileManager.default.removeItem(at: directory) }
     }
 
-    static var sizeOnDisk: Int64 {
-        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else { return 0 }
-        var total: Int64 = 0
-        for case let url as URL in files {
-            total += Int64((try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
-        }
-        return total
-    }
+    static var sizeOnDisk: Int64 { InstalledModel.size(of: directory) }
 
     // MARK: Model (loaded on first use, released after a few idle minutes)
 

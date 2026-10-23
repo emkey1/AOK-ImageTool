@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Updater.removeLeftovers()
         BackdropStore.prune(keeping: PendingEdits.shared.backdropPaths)
         ExtendFillStore.prune(keeping: PendingEdits.shared.extendFillPaths)
+        RemovalStore.prune(keeping: PendingEdits.shared.removalPaths)
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

@@ -222,6 +222,10 @@ struct IntelligencePanel: View {
                     model.viewMode = .viewer
                     model.activeTool = .selectObject
                 }
+                ActionButton("Remove Objects…", systemImage: "eraser") {
+                    model.beginRemoveObjects()
+                }
+                .disabled(!model.canRemoveObjects)
                 ActionButton("Copy Subject", systemImage: "doc.on.clipboard") {
                     ai.copySubject()
                 }

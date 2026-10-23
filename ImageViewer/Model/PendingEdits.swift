@@ -94,6 +94,10 @@ final class PendingEdits {
         Set(entries.values.compactMap { $0.edits.extendFill?.path })
     }
 
+    var removalPaths: Set<String> {
+        Set(entries.values.flatMap { $0.edits.removals?.map(\.path) ?? [] })
+    }
+
     // MARK: - Storage
 
     /// Writes pending changes now (at quit).

@@ -54,6 +54,7 @@
   <a href="#search">Searching</a>
   <a href="#editing">Editing</a>
   <a href="#extend">Extend and Generate</a>
+  <a href="#remove">Removing objects</a>
   <a href="#cutouts">Subjects and backgrounds</a>
   <a href="#intelligence">Apple Intelligence</a>
   <a href="#files">Saving, exporting and files</a>
@@ -120,14 +121,14 @@
   <source media="(prefers-color-scheme: dark)" srcset="guide-stacks-dark.heic">
   <img class="shot" src="guide-stacks-light.heic" alt="The filmstrip with a stack spread out: a black and white copy, an upscaled copy and the original photo side by side on a shared background.">
 </picture>
-<p>Black &amp; White, Colorize, Upscale with AI, Extend, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
+<p>Black &amp; White, Colorize, Upscale with AI, Extend, Remove Objects, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
 <ul>
   <li><b>A stack takes one place</b> in the filmstrip and the grid, showing its newest copy on top. Lines above the thumbnail and a count in its corner mark it.</li>
   <li><b>Step through a stack</b> with <kbd>⌥←</kbd> and <kbd>⌥→</kbd> (or <b>Go › Newer Copy in Stack</b> and <b>Older Copy in Stack</b>): newest first, the original last. The window's title says where you are, such as “Stack 2/3”.</li>
   <li><b>Spread it out.</b> Click the count, or choose <b>Show All Copies in Stack</b> (Go menu, or right-click), to see every copy side by side; click the count again to stack them up. The stack then shows the copy you were on.</li>
   <li><b>Copies of copies</b> (a colorized photo, then upscaled) stay in the original's stack. Renaming the original keeps its copies with it.</li>
   <li><b>View › Stack Copies with Originals</b> turns stacking off, showing every file on its own.</li>
-  <li><b>Changing the image itself instead.</b> In <b>Settings › Editing › Copies</b>, turn off “makes a copy” for Upscale with AI, Colorize, Black &amp; White or Extend, and its result replaces the image, as Save would: the original goes to the Trash (if Save does that), after asking first (if Save asks). Photos from your Photos library and animations always get a copy.</li>
+  <li><b>Changing the image itself instead.</b> In <b>Settings › Editing › Copies</b>, turn off “makes a copy” for Upscale with AI, Colorize, Black &amp; White, Extend or Remove Objects, and its result replaces the image, as Save would: the original goes to the Trash (if Save does that), after asking first (if Save asks). Photos from your Photos library and animations always get a copy.</li>
 </ul>
 <p class="note">A copy remembers what it was made from in the file's extended attributes; copies with names like “Beach (Colorized)” or “Beach (2×)” stack even without that.</p>
 
@@ -185,6 +186,21 @@
   <li><b>Photos with see-through areas</b> can't be extended until they have a background (see <a href="#cutouts">below</a>), since there's nothing to continue.</li>
 </ul>
 <p class="note">Generated content is new, not recovered: it's the model's idea of what might be there. It can add things, such as another flower or something on the floor, so check the result before you share it, and try again if it isn't right. The bigger the frame, the more it has to make up: modest extensions look most natural. On a big photo the new area is a little softer than the original.</p>
+
+<h2 id="remove">Removing objects</h2>
+<p><b>Intelligence › Remove Objects…</b> <kbd>⇧⌘X</kbd> (or <b>Remove Objects…</b> in the Intelligence panel) takes things out of a photo: a passer-by, a sign, a power line, a stain. What was behind them is filled in from what's around them.</p>
+<ol>
+  <li><b>Mark what to remove.</b> Paint over it (<kbd>[</kbd> and <kbd>]</kbd>, or the slider, size the brush), <b>click</b> it to take the whole object (a person, a pet, a car…), or <b>circle</b> it to take everything inside the circle. Cover it generously, with its shadow or reflection if it has one.</li>
+  <li><b>It's removed</b> as soon as you let go, as one step. Mark more to remove more. <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd> step back and forward; <b>Try Again</b> removes the last one again, filled differently (and with the Fill chosen now); <b>Original</b> compares with the picture before.</li>
+  <li><b>Done</b> saves the result as a copy, “<i>name</i> (Retouched)”, which <a href="#stacks">stacks</a> on the original; the original stays as it was. With <b>Remove Objects makes a copy</b> turned off in <b>Settings › Editing</b>, the removals become an edit of the photo instead (non-destructive, undoable, saved with Save).</li>
+</ol>
+<p>Choose the <b>Fill</b> in the bar:</p>
+<ul>
+  <li><b>Erase</b> (best for most things) paints in what was behind with <b>LaMa</b>, a model made for removing objects that runs on this Mac in about a second. It needs Apple silicon and the <a href="#model">object removal model</a>, a one-time download: click <b>Get the Model for Erase…</b> in the bar.</li>
+  <li><b>Match Photo</b> copies the photo's own texture into the gap, like Extend's Match Photo. It works on any Mac without a download and is very good on grass, sand, sky, water and walls, less so where there's structure (a building, a fence).</li>
+  <li><b>Generate</b> replaces rather than removes: type what to put there (“tall grass”, “a wooden bench”) and the <a href="#model">generative fill model</a> paints it in, in the photo's light. (Asked for nothing, a model like this paints a new object into the gap, so it isn't offered for plain removal.)</li>
+</ul>
+<p>Removals are made on the photo itself, so cropping, turning, extending or adjusting it afterwards keeps them. On a Live Photo they make it a still, as Extend does.</p>
 
 <h2 id="cutouts">Subjects and backgrounds</h2>
 <ul>
@@ -247,7 +263,7 @@
 <ul>
   <li><b>General:</b> what <kbd>↑</kbd> <kbd>↓</kbd> do (browse or zoom); whether <kbd>Space</kbd> shows the next image; wrapping around at the end of a folder; moving on after a pick or reject; including subfolders and hidden files; slideshow timing; <a href="#updates">checking for updates</a>; and the list of supported formats.</li>
   <li><b>Viewing:</b> the canvas background, the checkerboard behind transparency, enlarging small images, crisp pixels when zoomed in, HDR, and file names under thumbnails.</li>
-  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, whether Upscale with AI, Colorize, Black &amp; White and Extend each make a <a href="#stacks">copy</a> or change the image itself, and the <a href="#model">generative fill and colorizing models</a>: their status, <b>Download</b>, <b>Remove…</b>, and under <b>More</b>, installing one you converted yourself and the model's license.</li>
+  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, whether Upscale with AI, Colorize, Black &amp; White, Extend and Remove Objects each make a <a href="#stacks">copy</a> or change the image itself, and the <a href="#model">image models</a> (generative fill, colorizing, object removal): their status, <b>Download</b>, <b>Remove…</b>, and under <b>More</b>, installing one you converted yourself and the model's license.</li>
   <li><b>Intelligence:</b> whether Apple Intelligence is available, describing images automatically, Live Text, and <b>Clear Cached Analysis</b> (search analysis is made again when needed).</li>
 </ul>
 
@@ -267,6 +283,7 @@
   <tr><td><kbd>P</kbd> <kbd>X</kbd> <kbd>U</kbd></td><td>Pick, reject, unflag</td></tr>
   <tr><td><kbd>R</kbd> <kbd>⇧R</kbd></td><td>Rotate right / left</td></tr>
   <tr><td><kbd>C</kbd> <kbd>⌘K</kbd> <kbd>⇧⌘K</kbd></td><td>Crop &amp; straighten, Extend</td></tr>
+  <tr><td><kbd>⇧⌘X</kbd></td><td><a href="#remove">Remove objects</a>; in it, <kbd>[</kbd> <kbd>]</kbd> size the brush and <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd> step through its removals</td></tr>
   <tr><td><kbd>\</kbd></td><td>Show the original</td></tr>
   <tr><td><kbd>⌥⌘E</kbd> <kbd>⌥⌘C</kbd></td><td>Auto enhance, adjust color</td></tr>
   <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
@@ -291,17 +308,18 @@
   <tr><td>Select Object refining with more clicks</td><td>the object under the click</td><td>same</td><td>same</td><td>✓</td></tr>
   <tr><td>Extend › Generate, Background › Generate on This Mac</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">generative fill model</a> is installed. With Apple Intelligence (macOS 26 and later), it also describes the setting and the subject for the model.</td></tr>
   <tr><td>Colorize</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">colorizing model</a> is installed</td></tr>
+  <tr><td>Remove Objects › Erase</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">object removal model</a> is installed (Match Photo works everywhere). Clicking an object takes the one under the click on macOS 15 and 26; on 27, any object.</td></tr>
 </table>
 <p>¹ On a Mac with Apple Intelligence, turned on in System Settings.</p>
 
-<h2 id="model">The generative fill and colorizing models</h2>
-<p>Two features use image models that run on this Mac but aren't built into the app, because they're large: <b>Generate</b> (in Extend and Generate a Background) uses <b>Stable Diffusion 1.5 Inpainting</b>, about 2 GB, and <b>Colorize</b> uses <b>DDColor</b>, about 425 MB. Both need Apple silicon.</p>
+<h2 id="model">The image models</h2>
+<p>Three features use image models that run on this Mac but aren't built into the app, because they're large: <b>Generate</b> (in Extend, Remove Objects and Generate a Background) uses <b>Stable Diffusion 1.5 Inpainting</b>, about 2 GB; <b>Colorize</b> uses <b>DDColor</b>, about 425 MB; and Remove Objects' <b>Erase</b> uses <b>LaMa</b>, about 190 MB. They need Apple silicon.</p>
 <ul>
   <li><b>Getting them.</b> The first time you use the feature, the app offers to download its model; or click <b>Download</b> in <b>Settings › Editing</b>. Progress shows there and at the top of the window, and you can keep working meanwhile. Each download is checked against a fingerprint built into the app before it's installed.</li>
-  <li><b>Licenses.</b> Stable Diffusion's license, <b>CreativeML Open RAIL-M</b>, limits how the model may be used (no illegal or harmful content, no deceiving or harassing people, among others), so the app asks you to accept it before downloading; <b>View License</b> shows it. DDColor's is <b>Apache 2.0</b>.</li>
+  <li><b>Licenses.</b> Stable Diffusion's license, <b>CreativeML Open RAIL-M</b>, limits how the model may be used (no illegal or harmful content, no deceiving or harassing people, among others), so the app asks you to accept it before downloading; <b>View License</b> shows it. DDColor's and LaMa's are <b>Apache 2.0</b>.</li>
   <li><b>Where they live:</b> <code>~/Library/Application Support/com.oneopa.AOK-ImageTool/Models</code>. <b>Remove…</b> in Settings deletes one; you can download it again any time.</li>
   <li><b>Memory.</b> While you use Generate its model takes about 2.5 GB of memory; it's let go after a few idle minutes. The first use after installing takes a few seconds longer while macOS prepares the model for this Mac.</li>
-  <li><b>Making them yourself.</b> The project's <code>scripts/convert-inpainting-model.sh</code> and <code>scripts/convert-colorize-model.sh</code> convert the official weights; <b>More › Install from Folder…</b> in Settings installs the result.</li>
+  <li><b>Making them yourself.</b> The project's <code>scripts/convert-inpainting-model.sh</code>, <code>scripts/convert-colorize-model.sh</code> and <code>scripts/convert-removal-model.sh</code> convert the official weights; <b>More › Install from Folder…</b> in Settings installs the result.</li>
 </ul>
 
 <h2 id="updates">Updates</h2>

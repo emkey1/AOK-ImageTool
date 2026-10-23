@@ -32,6 +32,7 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 enum ActiveTool: Equatable {
     case crop
     case selectObject
+    case removeObjects
 }
 
 /// What the canvas should draw right now.

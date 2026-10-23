@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **Remove Objects** (Intelligence ▸ Remove Objects…, ⇧⌘X): paint over something, click it or circle it, and it's gone, filled in from what's around it. Three fills: **Erase** (LaMa, a model made for removing objects, a one-time 190 MB download in Settings), **Match Photo** (the photo's own texture, no download), and **Generate**, which paints what you describe in its place. Each removal is a step (⌘Z, Try Again, compare with the original); Done saves "Name (Retouched)", stacked on the original, or, with Settings ▸ Editing ▸ "Remove Objects makes a copy" off, keeps the removals as an edit.
 - **Extend saves a copy:** Done in the Crop tool saves "Name (Extended)", stacked on the original, which stays as it was.
 - **Copies or in place:** Settings ▸ Editing ▸ Copies chooses, for Upscale with AI, Colorize, Black & White and Extend, whether each makes a copy (the default) or changes the image itself, the way Save does (the original to the Trash, asking first if Save asks).
 - **Paste a picture** (⌘V, or Edit ▸ Paste as New Image) as a new file in the folder: screenshots, pictures from the web or other apps, image files copied in Finder.

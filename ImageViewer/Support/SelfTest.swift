@@ -17,6 +17,158 @@ enum SelfTest {
         if !ok { failures += 1 }
     }
 
+    /// For looking at a result afterwards (in the output folder).
+    private static func writeJPEG(_ image: CGImage, to url: URL) {
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else { return }
+        CGImageDestinationAddImage(dest, image, [kCGImageDestinationLossyCompressionQuality: 0.85] as CFDictionary)
+        CGImageDestinationFinalize(dest)
+    }
+
+    /// Remove Objects: the boat taken off the lake by each fill; a patch changes only what it covers.
+    /// (`AOK_SELFTEST_ONLY=remove` runs just these.)
+    private static func removeObjectsChecks(_ boat: DecodedImage, out: URL) async {
+        func rgbaPixels(_ image: CGImage) -> [UInt8] {
+            var px = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            let ctx = CGContext(data: &px, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return px
+        }
+        let size = boat.pixelSize
+        let frame = CGRect(origin: .zero, size: size)
+        // The boat and its reflection (Core Image coordinates, y up).
+        let marked = CGRect(x: size.width * 0.49, y: size.height * 0.25, width: size.width * 0.38, height: size.height * 0.19).integral
+        let mask = CIImage(color: .white).cropped(to: marked).composited(over: CIImage(color: .black).cropped(to: frame))
+        func render(_ e: EditState) -> CGImage? { EditRenderer.shared.renderSync(boat, edits: e, maxDimension: nil)?.image }
+        /// Of the marked area: the share of blue pixels (the boat; the water around it is the sunset's orange).
+        func whiteness(_ image: CGImage) -> Double {
+            let area = CGRect(x: marked.minX, y: size.height - marked.maxY, width: marked.width, height: marked.height)
+            guard let part = image.cropping(to: area) else { return 1 }
+            let px = rgbaPixels(part)
+            let n = px.count / 4
+            let white = (0..<n).filter { i in
+                let r = Int(px[i * 4]), g = Int(px[i * 4 + 1]), b = Int(px[i * 4 + 2])
+                _ = g
+                return b > r + 30
+            }.count
+            return Double(white) / Double(max(n, 1))
+        }
+        func corner(_ image: CGImage) -> [UInt8] { image.cropping(to: CGRect(x: 0, y: 0, width: 96, height: 96)).map(rgbaPixels) ?? [] }
+        func percent(_ v: Double) -> String { String(format: "%.1f%%", v * 100) }
+        if let plain = render(.identity) {
+            let before = whiteness(plain)
+            check(before > 0.04, "the marked area holds the boat (\(percent(before)) of it blue)")
+            var methods: [RemovalMethod] = [.match]
+            if RemovalModel.isInstalled { methods.insert(.erase, at: 0) } else { print("  • removal model not installed; skipping Erase") }
+            for method in methods {
+                let started = Date()
+                do {
+                    let removal = try await ObjectRemover.remove(boat, after: [], mask: mask, grow: 6, method: method, seed: 7)
+                    let seconds = Date().timeIntervalSince(started)
+                    var e = EditState()
+                    e.removals = [removal]
+                    guard let removed = render(e) else { throw RemovalError.failed }
+                    let after = whiteness(removed)
+                    writeJPEG(removed, to: out.appendingPathComponent("removed-\(method.rawValue).jpg"))
+                    let patch = EditRenderer.pixelRect(removal.rect, in: frame)
+                    check(after < 0.01 && corner(removed) == corner(plain) && patch.contains(marked) && e.referencedFilesExist,
+                          "\(method.title) removes the boat (blue \(percent(before)) → \(percent(after))) in \(String(format: "%.1f", seconds)) s; the rest is untouched")
+                    if method == .match {
+                        // A second removal builds on the first; undoing (dropping it) leaves the first.
+                        let top = CGRect(x: size.width * 0.1, y: size.height * 0.8, width: size.width * 0.1, height: size.height * 0.08).integral
+                        let second = try await ObjectRemover.remove(boat, after: [removal], mask: CIImage(color: .white).cropped(to: top)
+                            .composited(over: CIImage(color: .black).cropped(to: frame)), grow: 4, method: .match, seed: 2)
+                        var both = e
+                        both.removals = [removal, second]
+                        let data = try JSONEncoder().encode(both)
+                        check(try JSONDecoder().decode(EditState.self, from: data) == both && render(both).map(whiteness) ?? 1 < 0.01,
+                              "removals stack up, and are kept with the edits")
+                        var gone = both
+                        gone.removals?[1].path = out.appendingPathComponent("missing.png").path
+                        check(!gone.referencedFilesExist, "edits whose patch is gone are noticed (a photo edited on another Mac)")
+                    }
+                } catch {
+                    check(false, "\(method.title) removes the boat: \(error.localizedDescription)")
+                }
+            }
+            // Generate replaces: it needs to be told with what.
+            do {
+                _ = try await ObjectRemover.remove(boat, after: [], mask: mask, grow: 6, method: .generate, seed: 7, prompt: " ")
+                check(false, "Generate without a description is refused")
+            } catch RemovalError.noDescription {
+                check(true, "Generate without a description is refused")
+            } catch {
+                check(false, "Generate without a description is refused (\(error.localizedDescription))")
+            }
+            if GenerativeModel.isInstalled {
+                let started = Date()
+                do {
+                    let removal = try await ObjectRemover.remove(boat, after: [], mask: mask, grow: 6, method: .generate, seed: 7,
+                                                                 prompt: "a small red wooden rowing boat")
+                    var e = EditState()
+                    e.removals = [removal]
+                    guard let made = render(e) else { throw RemovalError.failed }
+                    writeJPEG(made, to: out.appendingPathComponent("removed-generate.jpg"))
+                    /// Mean difference from the original over the marked area.
+                    func change(_ a: CGImage, _ b: CGImage) -> Double {
+                        let area = CGRect(x: marked.minX, y: size.height - marked.maxY, width: marked.width, height: marked.height)
+                        guard let pa = a.cropping(to: area).map(rgbaPixels), let pb = b.cropping(to: area).map(rgbaPixels) else { return 0 }
+                        return Double(zip(pa, pb).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(max(pa.count, 1))
+                    }
+                    let changed = change(made, plain)
+                    check(changed > 8 && corner(made) == corner(plain),
+                          String(format: "Generate paints something new there (changed by %.0f) in %.0f s; the rest is untouched", changed, Date().timeIntervalSince(started)))
+                } catch {
+                    check(false, "Generate paints a description: \(error.localizedDescription)")
+                }
+            } else {
+                print("  • generative model not installed; skipping Generate")
+            }
+        }
+        // A mark drawn over the image turned and flipped lands where it was drawn on the image itself.
+        if let maskImage = ImageDecoder.ciContext.createCGImage(mask, from: frame) {
+            let maskDecoded = DecodedImage(url: out.appendingPathComponent("mask.png"), cgImage: maskImage, isHDR: false, isAnimated: false,
+                                           pageCount: 1, pageIndex: 0, typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+            var ok = true
+            for (turns, flip) in [(1, true), (2, false), (3, false), (0, true)] {
+                var turned = EditState()
+                turned.quarterTurns = turns
+                turned.flipHorizontal = flip
+                let shown = EditRenderer.shared.makeImage(maskDecoded, edits: turned, maxDimension: 1024, stage: .full)
+                let back = ObjectRemover.sourceMask(shown, shownWith: turned, size: size)
+                guard let b = VisionServices.maskBounds(back, imageSize: size) else { ok = false; continue }
+                let tolerance = size.width * 0.012
+                if abs(b.minX - marked.minX) > tolerance || abs(b.maxX - marked.maxX) > tolerance
+                    || abs(b.minY - marked.minY) > tolerance || abs(b.maxY - marked.maxY) > tolerance { ok = false }
+            }
+            check(ok, "marks made on a turned or flipped image map back onto it")
+        }
+        // Done: a copy stacked on the original, or (copies off) an edit.
+        let fm = FileManager.default
+        let folder = out.appendingPathComponent("retouch")
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("Boat.heic")
+        try? fm.copyItem(at: boat.url, to: file)
+        let model = ViewerModel()
+        model.stacksEnabled = true
+        model.openFolder(folder, selecting: file)
+        for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+        if let d = model.decoded, let removal = try? await ObjectRemover.remove(d, after: [], mask: mask, grow: 6, method: .match, seed: 7) {
+            model.finishRemovingObjects([removal], url: file.standardizedFileURL, decoded: d)
+            let copy = folder.appendingPathComponent("Boat (Retouched).heic")
+            for _ in 0..<300 where !fm.fileExists(atPath: copy.path) || model.items.count < 1 { try? await Task.sleep(for: .milliseconds(100)) }
+            check(fm.fileExists(atPath: copy.path) && ImageStacks.source(of: copy) == "Boat.heic" && model.edits[file.standardizedFileURL] == nil,
+                  "Done saves “Boat (Retouched)”, stacked on the original, which stays as it was")
+            Prefs.setBool(false, CopyOperation.removeObjects.key)
+            model.select(file.standardizedFileURL)
+            for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            model.finishRemovingObjects([removal], url: file.standardizedFileURL, decoded: d)
+            check(model.edits[file.standardizedFileURL]?.removals == [removal], "with copies off, the removal is an edit of the image")
+        } else {
+            check(false, "a removal for Done")
+        }
+    }
+
     static func run() async {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-selfTest"), i + 1 < args.count else {
@@ -28,7 +180,8 @@ enum SelfTest {
         // put them back afterwards.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
-                           CopyOperation.blackAndWhite.key, PrefKey.confirmOverwrite, PrefKey.trashOriginalOnSave]
+                           CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, PrefKey.confirmOverwrite,
+                           PrefKey.trashOriginalOnSave]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("ImageViewerSelfTest-\(UUID().uuidString.prefix(6))")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -51,6 +204,31 @@ enum SelfTest {
             } catch {
                 check(false, "\(item.name): \(error.localizedDescription)")
             }
+        }
+        // `AOK_SELFTEST_ONLY=download` (with AOK_MODELS_URL and a scratch AOK_MODELS_DIR): the object removal
+        // model's archive downloads, matches its checksum and installs.
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "download" {
+            print("\n[Model download]")
+            let model = DownloadableModel.removal
+            let started = Date()
+            ModelDownloads.shared.start(model)
+            for _ in 0..<3000 where ModelDownloads.shared.status[model.id] != nil { try? await Task.sleep(for: .milliseconds(100)) }
+            check(RemovalModel.isInstalled && ModelDownloads.shared.failure[model.id] == nil,
+                  "\(model.archives[0].file) downloads, matches its checksum and installs in \(Int(Date().timeIntervalSince(started))) s"
+                  + (ModelDownloads.shared.failure[model.id].map { " (\($0))" } ?? ""))
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "remove", let boat = decodedByName["Sailboat.heic"] {
+            print("\n[Remove Objects]")
+            await removeObjectsChecks(boat, out: out)
+            for (key, value) in savedPrefs {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
         }
         if let rot = decodedByName["rotated-exif6.jpg"] {
             check(rot.pixelSize == CGSize(width: 600, height: 900), "EXIF orientation 6 displays as 600×900 portrait")
@@ -894,6 +1072,10 @@ enum SelfTest {
         } else {
             print("  • generative model not installed; skipping generation")
         }
+
+        // 6d. Remove Objects.
+        print("\n[Remove Objects]")
+        if let boat = decodedByName["Sailboat.heic"] { await removeObjectsChecks(boat, out: out) }
 
         // 7. Vision.
         print("\n[Vision]")

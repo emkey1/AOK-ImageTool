@@ -77,6 +77,14 @@ nonisolated struct ExtendFill: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+/// An area painted out by Remove Objects: a patch over the original pixels, before any other edit.
+nonisolated struct Removal: Codable, Equatable, Hashable, Sendable {
+    /// A picture kept by `RemovalStore`, see-through around what it replaces so it blends in.
+    var path: String
+    /// Where it goes: normalized, top-left origin, in the image as decoded (upright, before other edits).
+    var rect: CGRect
+}
+
 /// How Extend fills the new area.
 nonisolated enum ExtendMethod: String, Codable, CaseIterable, Identifiable, Sendable {
     /// Content-aware: texture copied from the photo itself (fast, always available).
@@ -212,6 +220,11 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
 
     var effectiveExtendMethod: ExtendMethod { extendMethod ?? .match }
 
+    /// Objects painted out (Remove Objects), in the order they were removed. Extend continues the result.
+    var removals: [Removal]? {
+        didSet { if removals != oldValue { extendFill = nil } }
+    }
+
     // Light
     var autoEnhance = false
     var exposure: Double = 0            // EV, -2...2
@@ -285,6 +298,7 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         copy.extendSeed = nil
         copy.extendMethod = nil
         copy.extendPrompt = nil
+        copy.removals = nil
         copy.removeCutout()
         return !copy.isIdentity
     }
@@ -317,10 +331,10 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     mutating func resetAdjustments() {
         // The fill comes last: setting straighten or perspective clears it.
         let geometry = (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-                        extendSeed, extendMethod, extendPrompt, extendFill)
+                        removals, extendSeed, extendMethod, extendPrompt, extendFill)
         self = EditState()
         (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-         extendSeed, extendMethod, extendPrompt, extendFill) = geometry
+         removals, extendSeed, extendMethod, extendPrompt, extendFill) = geometry
     }
 
     mutating func resetGeometry() {
@@ -334,6 +348,14 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         extendSeed = nil
         extendMethod = nil
         extendPrompt = nil
+    }
+
+    /// The pictures the edits use (an Extend fill, a background, removed objects' patches) are all on this Mac.
+    var referencedFilesExist: Bool {
+        var paths = (removals ?? []).map(\.path)
+        if let fill = extendFill { paths.append(fill.path) }
+        if case .image(let path) = background { paths.append(path) }
+        return paths.allSatisfy { FileManager.default.fileExists(atPath: $0) }
     }
 
     /// What an Extend fill is made from: everything up to the geometry stage, plus how it's filled. Equal

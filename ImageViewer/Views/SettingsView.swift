@@ -104,6 +104,7 @@ private struct EditingSettings: View {
     @AppStorage(CopyOperation.colorize.key) private var copyColorize = true
     @AppStorage(CopyOperation.blackAndWhite.key) private var copyBlackAndWhite = true
     @AppStorage(CopyOperation.extend.key) private var copyExtend = true
+    @AppStorage(CopyOperation.removeObjects.key) private var copyRemoveObjects = true
 
     var body: some View {
         Form {
@@ -121,10 +122,11 @@ private struct EditingSettings: View {
                 Toggle("Colorize makes a copy", isOn: $copyColorize)
                 Toggle("Black & White makes a copy", isOn: $copyBlackAndWhite)
                 Toggle("Extend makes a copy", isOn: $copyExtend)
+                Toggle("Remove Objects makes a copy", isOn: $copyRemoveObjects)
             } header: {
                 Text("Copies")
             } footer: {
-                Text("A copy is saved next to the original and stacked on it; the original stays as it was. Turned off, Upscale, Colorize and Black & White replace the image when they're done (the original goes to the Trash as when saving), and Extend becomes an edit you save. Photos from your Photos library and animations always get copies.")
+                Text("A copy is saved next to the original and stacked on it; the original stays as it was. Turned off, Upscale, Colorize and Black & White replace the image when they're done (the original goes to the Trash as when saving), and Extend and Remove Objects become edits you save. Photos from your Photos library and animations always get copies.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             ModelSettings(model: .generativeFill, title: "Generative Fill",
@@ -137,12 +139,16 @@ private struct EditingSettings: View {
                           folder: Colorizer.directory, sizeOnDisk: { Colorizer.sizeOnDisk },
                           remove: { try Colorizer.remove() }, installFromFolder: { try Colorizer.install(from: $0) },
                           folderPrompt: "Choose DDColor.mlmodelc, or the folder that holds it.")
+            ModelSettings(model: .removal, title: "Remove Objects",
+                          footer: "Remove Objects' Erase paints in what was behind what you remove with \(RemovalModel.displayName), a model made for it, on this Mac. Without it, Match Photo and Generate still work.",
+                          folder: RemovalModel.directory, sizeOnDisk: { RemovalModel.sizeOnDisk },
+                          remove: { try RemovalModel.remove() }, installFromFolder: { try RemovalModel.install(from: $0) },
+                          folderPrompt: "Choose LaMa.mlmodelc (made by scripts/convert-removal-model.sh), or the folder that holds it.")
         }
         .formStyle(.grouped)
     }
 }
 
-/// Status of the colorizing model (DDColor).
 /// A downloadable model's status, download and removal (Settings ▸ Editing).
 private struct ModelSettings: View {
     let model: DownloadableModel

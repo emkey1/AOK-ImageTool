@@ -21,8 +21,10 @@ intelligence. Your pictures never leave your Mac.
   touches the file until you Save, every change can be undone, and unsaved edits survive quitting.
 - **Extend a photo** past its edges, to 16:9 or any frame: continue its own texture, or **Generate** new content with
   an image model that runs on your Mac.
-- **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Upscale with AI, Extend and
-  Reimagine save new copies, stacked with the original in the filmstrip so a folder stays tidy. (Settings can have
+- **Remove objects:** paint over a passer-by, a sign or a power line, click it or circle it, and it's filled in from
+  what's around it, with LaMa (a model made for this) running on your Mac.
+- **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Upscale with AI, Extend, Remove
+  Objects and Reimagine save new copies, stacked with the original in the filmstrip so a folder stays tidy. (Settings can have
   them change the image itself instead.)
 - **Apple Intelligence** where your Mac has it: describe a photo (alt text, keywords, a file name), ask about it, search
   a folder by what's in the pictures or the text in them, remove backgrounds and generate new ones.

@@ -260,6 +260,9 @@ struct ViewerCommands: Commands {
             .disabled(!(viewer?.canAddBackground ?? false))
             Button("Select Object…") { viewer?.viewMode = .viewer; viewer?.activeTool = .selectObject }
                 .disabled(!canEdit)
+            Button("Remove Objects…") { viewer?.beginRemoveObjects() }
+                .keyboardShortcut("x", modifiers: [.command, .shift])
+                .disabled(!(viewer?.canRemoveObjects ?? false))
             Divider()
             // Extend opens with the fill used last (Generate, once its model is installed).
             Button("Extend…") { viewer?.beginExtend() }
@@ -295,6 +298,7 @@ struct ViewerCommands: Commands {
                 .keyboardShortcut("?", modifiers: .command)
             Button("Editing") { GuideWindowController.shared.show(.editing) }
             Button("Extend & Generative Fill") { GuideWindowController.shared.show(.extend) }
+            Button("Removing Objects") { GuideWindowController.shared.show(.remove) }
             Button("Apple Intelligence") { GuideWindowController.shared.show(.intelligence) }
             Divider()
             Button("Keyboard Shortcuts") { viewer?.showShortcuts = true }

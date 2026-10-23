@@ -109,7 +109,9 @@ final class PhotosLibrary {
     private static func editingInput(for asset: PHAsset) async throws -> PHContentEditingInput {
         let options = PHContentEditingInputRequestOptions()
         options.isNetworkAccessAllowed = true
-        options.canHandleAdjustmentData = { $0.formatIdentifier == formatIdentifier && $0.formatVersion == formatVersion }
+        // (Only when the files the edit refers to are still here, e.g. not on another Mac: else Photos hands over
+        // the photo as it looks now, to edit further.)
+        options.canHandleAdjustmentData = { edits(from: $0)?.referencedFilesExist == true }
         return try await withCheckedThrowingContinuation { continuation in
             asset.requestContentEditingInput(with: options) { input, info in
                 if let input {
@@ -213,8 +215,9 @@ final class PhotosLibrary {
         }
     }
 
-    /// Edits a Live Photo's motion can't take: they're for one picture (a cutout, a background, Extend).
+    /// Edits a Live Photo's motion can't take: they're for one picture (a cutout, a background, Extend,
+    /// removed objects).
     nonisolated static func stillOnly(_ e: EditState) -> Bool {
-        e.cutout != nil || e.background != nil || e.cropExtendsBeyondImage
+        e.cutout != nil || e.background != nil || e.cropExtendsBeyondImage || e.removals != nil
     }
 }

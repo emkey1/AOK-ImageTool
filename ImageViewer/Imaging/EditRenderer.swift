@@ -64,6 +64,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     private var autoRecipes: [URL: [(String, [String: Any])]] = [:]
     private var proxies: [(key: String, image: CGImage)] = []
     private var backdrops: [String: CIImage] = [:]
+    private var patches: [String: CIImage] = [:]
     private var lightingCache: [String: (subject: [CGFloat], background: [CGFloat])] = [:]
 
     // MARK: - Public API
@@ -124,7 +125,8 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     // MARK: - Pipeline
 
     func makeImage(_ decoded: DecodedImage, edits e: EditState, maxDimension: CGFloat?, stage: Stage) -> CIImage {
-        let base = baseImage(decoded, maxDimension: maxDimension)
+        // 0. Objects painted out (Remove Objects), part of the picture from here on.
+        let base = withRemovals(baseImage(decoded, maxDimension: maxDimension), e.removals)
         var img = base
         let scale = img.extent.width / max(decoded.pixelSize.width, 1)
 
@@ -438,6 +440,36 @@ nonisolated final class EditRenderer: @unchecked Sendable {
             lightingCache[key] = (subject, background)
         }
         return (subject, background)
+    }
+
+    /// Remove Objects' patches laid over `image` in order (they're placed by normalized rects, so they fit a
+    /// proxy as well as the full image).
+    private func withRemovals(_ image: CIImage, _ removals: [Removal]?) -> CIImage {
+        guard let removals, !removals.isEmpty else { return image }
+        let ext = image.extent
+        var img = image
+        for removal in removals {
+            guard let patch = removalPatch(removal.path) else { continue }
+            let target = Self.pixelRect(removal.rect, in: ext)
+            img = patch
+                .transformed(by: CGAffineTransform(scaleX: target.width / patch.extent.width, y: target.height / patch.extent.height))
+                .transformed(by: CGAffineTransform(translationX: target.minX, y: target.minY))
+                .composited(over: img)
+        }
+        return img.cropped(to: ext)
+    }
+
+    /// Patches, decoded once at full size and kept for later renders.
+    private func removalPatch(_ path: String) -> CIImage? {
+        if let hit = lock.withLock({ patches[path] }) { return hit }
+        guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+              let cg = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
+        let patch = CIImage(cgImage: cg)
+        lock.withLock {
+            if patches.count > 32 { patches.removeAll() }
+            patches[path] = patch
+        }
+        return patch
     }
 
     /// Backdrop pictures, decoded once (upright, at most 4096 px) and kept for later renders.

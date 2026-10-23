@@ -64,6 +64,56 @@ nonisolated struct DownloadableModel: Identifiable, Sendable {
         install: { try Colorizer.install(from: $0) },
         isInstalled: { Colorizer.isInstalled }
     )
+
+    static let removal = DownloadableModel(
+        id: "remove-objects",
+        purpose: "object removal",
+        modelName: RemovalModel.displayName,
+        licenseName: "Apache 2.0",
+        licenseURL: URL(string: "https://github.com/advimman/lama/blob/main/LICENSE")!,
+        licenseRestrictsUse: false,
+        archives: [
+            Archive(file: "AOK-LaMa.zip", size: 189_909_991,
+                    sha256: "82cdcbb438e021327a5bafddf76cd5f03e5ea763ff00fa93337a13fe3d9267b2"),
+        ],
+        install: { try RemovalModel.install(from: $0) },
+        isInstalled: { RemovalModel.isInstalled }
+    )
+}
+
+/// A model installed as a single compiled Core ML model (.mlmodelc) in its own folder.
+nonisolated enum InstalledModel {
+    /// Installs `modelName`: the .mlmodelc itself or a folder holding it. It's copied next to the installed one
+    /// first and swapped in, so a failed copy leaves the old one (and choosing the installed one itself changes
+    /// nothing). `unload` lets go of a loaded copy first.
+    static func install(_ modelName: String, from source: URL, into directory: URL, unload: () -> Void) throws {
+        let model = (source.lastPathComponent == modelName ? source : source.appendingPathComponent(modelName)).standardizedFileURL
+        guard FileManager.default.fileExists(atPath: model.path) else { throw GenerativeModel.InstallError.notAModel }
+        let fm = FileManager.default
+        let dest = directory.appendingPathComponent(modelName).standardizedFileURL
+        guard model != dest else { return }
+        try fm.createDirectory(at: directory.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let staging = directory.deletingLastPathComponent().appendingPathComponent(".installing-\(UUID().uuidString)")
+        try fm.createDirectory(at: staging, withIntermediateDirectories: true)
+        do {
+            try fm.copyItem(at: model, to: staging.appendingPathComponent(modelName))
+            unload()
+            if fm.fileExists(atPath: directory.path) { try fm.removeItem(at: directory) }
+            try fm.moveItem(at: staging, to: directory)
+        } catch {
+            try? fm.removeItem(at: staging)
+            throw error
+        }
+    }
+
+    static func size(of directory: URL) -> Int64 {
+        guard let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: [.totalFileAllocatedSizeKey]) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in files {
+            total += Int64((try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]))?.totalFileAllocatedSize ?? 0)
+        }
+        return total
+    }
 }
 
 enum ModelDownloadError: LocalizedError {

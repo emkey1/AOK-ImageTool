@@ -132,6 +132,7 @@ struct ViewerPane: View {
                 switch tool {
                 case .crop: CropEditor()
                 case .selectObject: ObjectSelectEditor()
+                case .removeObjects: RemoveObjectsEditor()
                 }
             } else {
                 stateOverlay

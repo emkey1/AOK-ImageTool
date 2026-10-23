@@ -36,6 +36,7 @@ extension ViewerModel {
         ("Edit", [
             Shortcut(keys: "R  ·  ⇧R", action: "Rotate right / left"),
             Shortcut(keys: "C", action: "Crop & straighten"),
+            Shortcut(keys: "⇧⌘X", action: "Remove objects ([ ] brush size)"),
             Shortcut(keys: "\\", action: "Show original (before / after)"),
             Shortcut(keys: "⌘S  ·  ⇧⌘E", action: "Save / Export"),
             Shortcut(keys: "⌘V", action: "Paste a picture as a new image"),
@@ -103,6 +104,11 @@ extension ViewerModel {
             pasteImage()
             return true
         }
+        // In Remove Objects, ⌘Z and ⇧⌘Z step through its removals.
+        if mods == .command, activeTool == .removeObjects, event.charactersIgnoringModifiers?.lowercased() == "z" {
+            NotificationCenter.default.post(name: event.modifierFlags.contains(.shift) ? .toolRedo : .toolUndo, object: self)
+            return true
+        }
         if mods == .option, activeTool == nil {
             switch event.specialKey {
             case .leftArrow?, .upArrow?:
@@ -128,6 +134,11 @@ extension ViewerModel {
                 NotificationCenter.default.post(name: .toolCommit, object: self)
                 return true
             default:
+                // [ and ] size Remove Objects' brush.
+                if activeTool == .removeObjects, let ch = event.charactersIgnoringModifiers, ch == "[" || ch == "]" {
+                    NotificationCenter.default.post(name: .toolBrush, object: self, userInfo: ["larger": ch == "]"])
+                    return true
+                }
                 return false
             }
         }
@@ -232,4 +243,7 @@ extension ViewerModel {
 extension Notification.Name {
     static let toolCommit = Notification.Name("ImageViewer.toolCommit")
     static let toolCancel = Notification.Name("ImageViewer.toolCancel")
+    static let toolUndo = Notification.Name("ImageViewer.toolUndo")
+    static let toolRedo = Notification.Name("ImageViewer.toolRedo")
+    static let toolBrush = Notification.Name("ImageViewer.toolBrush")
 }

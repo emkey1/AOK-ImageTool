@@ -10,6 +10,8 @@ nonisolated enum PrefKey {
     static let showHiddenFiles = "showHiddenFiles"
     static let canvasBackground = "canvasBackground"
     static let extendMethod = "extendMethod"
+    static let removalMethod = "removalMethod"
+    static let removalBrush = "removalBrush"
     static let checkerboard = "checkerboardForTransparency"
     static let upscaleSmallImages = "upscaleSmallImages"
     static let aiEnhanceEnlarged = "aiEnhanceEnlarged"
@@ -70,7 +72,7 @@ nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {
 /// What makes a new picture: whether it saves it as a copy, stacked on the original (the default), or puts it
 /// in place of the image (Settings ▸ Editing ▸ Copies).
 nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
-    case upscale, colorize, blackAndWhite, extend
+    case upscale, colorize, blackAndWhite, extend, removeObjects
 
     var id: String { rawValue }
     var key: String { "makesCopy." + rawValue }
@@ -81,6 +83,7 @@ nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
         case .colorize: "Colorize"
         case .blackAndWhite: "Black & White"
         case .extend: "Extend"
+        case .removeObjects: "Remove Objects"
         }
     }
 }
@@ -136,6 +139,19 @@ nonisolated enum Prefs {
         let chosen = d.string(forKey: PrefKey.extendMethod).flatMap(ExtendMethod.init(rawValue:))
         let method = chosen ?? (GenerativeModel.isInstalled ? .generate : .match)
         return method == .generate && !GenerativeModel.isInstalled ? .match : method
+    }
+
+    /// How Remove Objects fills: the last one chosen, else Erase when its model is installed.
+    static var preferredRemovalMethod: RemovalMethod {
+        let chosen = d.string(forKey: PrefKey.removalMethod).flatMap(RemovalMethod.init(rawValue:))
+        let method = chosen ?? .erase
+        return method.isAvailable ? method : (RemovalMethod.erase.isAvailable ? .erase : .match)
+    }
+
+    /// Remove Objects' brush diameter, in points on screen.
+    static var removalBrush: Double {
+        let v = d.double(forKey: PrefKey.removalBrush)
+        return v > 0 ? v : 40
     }
 
     /// Saves a preference, except in debug-hook runs (screenshots, `-debugExtend`), which share the

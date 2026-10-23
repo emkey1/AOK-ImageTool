@@ -19,7 +19,7 @@ nonisolated enum ExtendError: LocalizedError {
 
 /// Swift face of the C engine in ContentAwareFill.c.
 nonisolated enum ContentAwareFill {
-    nonisolated private final class Reporter {
+    nonisolated fileprivate final class Reporter {
         let report: @Sendable (Double) -> Bool
         init(_ report: @escaping @Sendable (Double) -> Bool) { self.report = report }
     }
@@ -70,6 +70,22 @@ nonisolated enum ContentAwareFill {
             avoidMask = gray.map { $0 > 64 ? 1 : 0 }
         }
 
+        try fill(&rgba, known: known, avoid: avoidMask, width: width, height: height, seed: seed, progress: progress)
+
+        let made = rgba.withUnsafeMutableBytes { buf -> CGImage? in
+            CGContext(data: buf.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                      space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
+        }
+        guard let made else { throw ExtendError.failed }
+        return made
+    }
+}
+
+nonisolated extension ContentAwareFill {
+    /// Synthesizes the pixels of `rgba` (`width` × `height`, rows top-down, premultiplied) whose `known` byte
+    /// is 0 from the known ones, not copying from where `avoid` is nonzero. `progress` returns true to cancel.
+    static func fill(_ rgba: inout [UInt8], known: [UInt8], avoid: [UInt8]? = nil, width: Int, height: Int, seed: UInt64,
+                     progress: (@Sendable (Double) -> Bool)? = nil) throws {
         let reporter = progress.map(Reporter.init)
         let context = reporter.map { Unmanaged.passUnretained($0).toOpaque() }
         let callback: iv_fill_progress? = reporter == nil ? nil : { ctx, fraction in
@@ -78,8 +94,8 @@ nonisolated enum ContentAwareFill {
         }
         let status: Int32 = rgba.withUnsafeMutableBufferPointer { pixels in
             known.withUnsafeBufferPointer { k in
-                if let avoidMask {
-                    return avoidMask.withUnsafeBufferPointer { a in
+                if let avoid {
+                    return avoid.withUnsafeBufferPointer { a in
                         iv_content_aware_fill(pixels.baseAddress, k.baseAddress, a.baseAddress, Int32(width), Int32(height), seed, callback, context)
                     }
                 }
@@ -93,13 +109,6 @@ nonisolated enum ContentAwareFill {
         case IV_FILL_NO_SOURCE: throw ExtendError.nothingToCopy
         default: throw ExtendError.failed
         }
-
-        let made = rgba.withUnsafeMutableBytes { buf -> CGImage? in
-            CGContext(data: buf.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-                      space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)?.makeImage()
-        }
-        guard let made else { throw ExtendError.failed }
-        return made
     }
 }
 

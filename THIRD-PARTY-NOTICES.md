@@ -29,6 +29,16 @@ apply to them.
 - License: [Apache License 2.0](https://github.com/piddnad/DDColor/blob/master/LICENSE). The license comes with
   the download (LICENSE.txt and NOTICE.txt in the archive).
 
+### LaMa (Remove Objects › Erase)
+
+- Source: [advimman/lama](https://github.com/advimman/lama) (Suvorov et al., *Resolution-robust Large Mask
+  Inpainting with Fourier Convolutions*, WACV 2022), the Big LaMa weights in the TorchScript export
+  [IOPaint](https://github.com/Sanster/IOPaint) uses ([Sanster/models](https://github.com/Sanster/models/releases/tag/add_big_lama)),
+  converted to Core ML with [scripts/convert-removal-model.sh](scripts/convert-removal-model.sh), after
+  [mallman/CoreMLaMa](https://github.com/mallman/CoreMLaMa) (Apache License 2.0).
+- License: [Apache License 2.0](https://github.com/advimman/lama/blob/main/LICENSE). The license comes with the
+  download (LICENSE.txt and NOTICE.txt in the archive).
+
 ## Conversion scripts
 
 The scripts in [scripts/](scripts) download and run, in a throwaway Python environment, tools that aren't part
@@ -37,6 +47,7 @@ of this repository:
 - [apple/ml-stable-diffusion](https://github.com/apple/ml-stable-diffusion): MIT License, Copyright (c) 2024
   Apple Inc.
 - [piddnad/DDColor](https://github.com/piddnad/DDColor): Apache License 2.0.
+- Big LaMa's weights ([advimman/lama](https://github.com/advimman/lama)): Apache License 2.0.
 - PyTorch, Core ML Tools, Hugging Face libraries and their dependencies, under their own licenses.
 
 The Stable Diffusion inference in the app (CLIP tokenizer, DPM-Solver++ scheduler, the denoising loop) is this
