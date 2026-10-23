@@ -46,6 +46,12 @@ final class CanvasContainerView: NSView {
         controller?.containerDidLayout()
     }
 
+    // (Where the canvas sits in the window decides how much of it is under the toolbar.)
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        controller?.containerDidLayout()
+    }
+
     // Events that land on the Live Text overlay but aren't consumed bubble up here; route them to the scroll view.
     override func scrollWheel(with event: NSEvent) {
         controller?.scrollView.scrollWheel(with: event)
@@ -66,8 +72,13 @@ final class CenteringClipView: NSClipView {
         var rect = super.constrainBoundsRect(proposedBounds)
         guard let doc = documentView else { return rect }
         let frame = doc.frame
-        if rect.width > frame.width { rect.origin.x = frame.midX - rect.width / 2 }
-        if rect.height > frame.height { rect.origin.y = frame.midY - rect.height / 2 }
+        // Centered in what's in view: the bounds less the insets (the top one is at maxY; not flipped).
+        let i = contentInsets
+        let visibleWidth = rect.width - i.left - i.right, visibleHeight = rect.height - i.top - i.bottom
+        if visibleWidth > frame.width { rect.origin.x = frame.midX - i.left - visibleWidth / 2 }
+        if visibleHeight > frame.height {
+            rect.origin.y = isFlipped ? frame.midY - i.top - visibleHeight / 2 : frame.midY - i.bottom - visibleHeight / 2
+        }
         return rect
     }
 

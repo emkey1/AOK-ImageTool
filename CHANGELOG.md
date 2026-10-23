@@ -13,6 +13,7 @@
 - Features that use an optional model stay visible before it's installed (Generate a Background, Generative Extend and Colorize in the Intelligence panel, Extend's and Remove Objects' fills), and choosing one explains what it needs and offers the download.
 - **Straighten in Adjust:** an angle slider with 1° and 0.1° buttons and Auto, without opening the crop tool; the corners turned out of the frame are cropped away.
 - **Shot Quality and Best Shots include new copies:** in a folder you've analyzed, pictures added or changed later are analyzed by themselves (a stack shows its newest copy, which had no score, so the stack sank to the bottom of Best Shots). Shot Quality scores the shown picture on its own when the folder hasn't been analyzed.
+- A fitted picture is all in view: it no longer reaches under the filmstrip (the canvas left room for the toolbar it was already below, pushing the picture down).
 - Copies made by Upscale, Colorize and Black & White show in the filmstrip as soon as they're saved, instead of after the new file is read back.
 
 ## 1.0.0

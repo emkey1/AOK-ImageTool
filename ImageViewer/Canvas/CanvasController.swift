@@ -58,6 +58,9 @@ final class CanvasController: NSObject {
         scrollView.maxMagnification = 64
         scrollView.drawsBackground = false
         scrollView.borderType = .noBorder
+        // The insets are worked out here (see `updateInsets`): AppKit's own, in a SwiftUI window, leave room for
+        // the toolbar even when the canvas is already below it, pushing a fitted picture down under the filmstrip.
+        scrollView.automaticallyAdjustsContentInsets = false
         scrollView.controller = self
         documentView.controller = self
         container.controller = self
@@ -183,7 +186,9 @@ final class CanvasController: NSObject {
     func fit() {
         isFitMode = true
         guard let size = display?.logicalSize, size.width > 0, size.height > 0 else { return }
-        let available = scrollView.frame.size
+        let insets = scrollView.contentInsets
+        let available = CGSize(width: scrollView.frame.width - insets.left - insets.right,
+                               height: scrollView.frame.height - insets.top - insets.bottom)
         guard available.width > 0, available.height > 0 else { return }
         var mag = min(available.width / size.width, available.height / size.height)
         if !enlargeSmallImages { mag = min(mag, 1 / backingScale) }
@@ -259,7 +264,8 @@ final class CanvasController: NSObject {
 
     func containerDidLayout() {
         let size = container.bounds.size
-        guard size != lastContainerSize else { return }
+        let insetsChanged = updateInsets()
+        guard size != lastContainerSize || insetsChanged else { return }
         lastContainerSize = size
         if isFitMode {
             fit()
@@ -269,6 +275,20 @@ final class CanvasController: NSObject {
             scrollView.reflectScrolledClipView(clip)
             viewportChanged()
         }
+    }
+
+    /// Keeps the picture out from under the window's toolbar where the canvas reaches beneath it (and only
+    /// there), so a fitted picture is all in view. Returns whether the insets changed.
+    @discardableResult
+    func updateInsets() -> Bool {
+        var top: CGFloat = 0
+        if let window = container.window {
+            let inWindow = container.convert(container.bounds, to: nil)
+            top = max(0, inWindow.maxY - window.contentLayoutRect.maxY).rounded()
+        }
+        guard scrollView.contentInsets.top != top || scrollView.contentInsets.bottom != 0 else { return false }
+        scrollView.contentInsets = NSEdgeInsets(top: top, left: 0, bottom: 0, right: 0)
+        return true
     }
 
     private func viewportChanged() {
