@@ -21,6 +21,11 @@ extension ViewerModel {
             let delegate = PhotosPickerDelegate(done: open)
             picker.delegate = delegate
             PhotosPickerDelegate.current = delegate
+            // The picker doesn't size itself in a sheet (it shrinks to its toolbar): most of the window.
+            let bounds = host.view.bounds.size
+            let size = NSSize(width: max(760, bounds.width * 0.85), height: max(560, bounds.height * 0.85))
+            picker.preferredContentSize = size
+            picker.view.setFrameSize(size)
             host.presentAsSheet(picker)
         }
     }
