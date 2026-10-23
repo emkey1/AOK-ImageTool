@@ -21,7 +21,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   Auto, which levels the horizon). Nothing touches the file until you Save, every change can be undone, and unsaved
   edits survive quitting.
 - **Your Photos library too.** Open photos from Photos (Live Photos stay live), edit them here, and Save sends the edit
-  back as a Photos edit you can revert, synced by iCloud Photos. Or use Photos' Image ▸ Edit With.
+  back as a Photos edit you can revert, synced by iCloud Photos. Or use Photos' Image ▸ Edit With, or import photos
+  into a folder as ordinary files.
 - **Extend a photo** past its edges, to 16:9 or any frame: continue its own texture, or **Generate** new content with
   an image model that runs on your Mac.
 - **Fix blur:** take soft focus or camera shake out of a photo, and restore blurry faces, with models that run on

@@ -32,6 +32,7 @@ nonisolated enum PrefKey {
     static let recentFolders = "recentFolders"
     static let lastViewedFiles = "lastViewedFiles"
     static let stackFronts = "stackFronts"
+    static let lastImportFolder = "lastImportFolder"
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
     static let stackCopies = "stackCopies"
@@ -149,6 +150,14 @@ nonisolated enum Prefs {
         let chosen = d.string(forKey: PrefKey.removalMethod).flatMap(RemovalMethod.init(rawValue:))
         let method = chosen ?? .erase
         return method.isAvailable ? method : (RemovalMethod.erase.isAvailable ? .erase : .match)
+    }
+
+    /// The folder File ▸ Import from Photos… last copied into, if it's still there.
+    static var lastImportFolder: URL? {
+        guard let path = d.string(forKey: PrefKey.lastImportFolder) else { return nil }
+        var isFolder: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue else { return nil }
+        return URL(fileURLWithPath: path, isDirectory: true)
     }
 
     /// Remove Objects' brush diameter, in points on screen.

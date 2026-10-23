@@ -106,6 +106,38 @@ final class PhotosLibrary {
         return Opened(folder: session.standardizedFileURL, files: files, edits: edits)
     }
 
+    // MARK: Importing
+
+    /// Copies these photos out of the library into `folder` as ordinary files (File ▸ Import from Photos…):
+    /// each as it looks now (its edited version if it's been edited in Photos, else its original), with its own
+    /// name and its date taken as the file's date. A Live Photo comes as its still. Originals are downloaded
+    /// from iCloud if need be.
+    func importPhotos(_ assetIDs: [String], into folder: URL, progress: @escaping @Sendable (Int, Int) -> Void) async throws -> [URL] {
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: assetIDs, options: nil)
+        var byID: [String: PHAsset] = [:]
+        assets.enumerateObjects { asset, _, _ in byID[asset.localIdentifier] = asset }
+        var made: [URL] = []
+        for (i, id) in assetIDs.enumerated() {
+            progress(i, assetIDs.count)
+            guard let asset = byID[id] else { continue }
+            let resources = PHAssetResource.assetResources(for: asset)
+            guard let original = resources.first(where: { $0.type == .photo }) ?? resources.first(where: { $0.type != .pairedVideo }) else { continue }
+            let current = resources.first(where: { $0.type == .fullSizePhoto }) ?? original
+            let stem = (original.originalFilename as NSString).deletingPathExtension
+            var ext = (current.originalFilename as NSString).pathExtension
+            if ext.isEmpty { ext = UTType(current.uniformTypeIdentifier)?.preferredFilenameExtension ?? "heic" }
+            let dest = ImageWriter.uniqueURL(in: folder, baseName: stem.isEmpty ? "Photo" : stem, ext: ext)
+            let options = PHAssetResourceRequestOptions()
+            options.isNetworkAccessAllowed = true
+            try await PHAssetResourceManager.default().writeData(for: current, toFile: dest, options: options)
+            if let date = asset.creationDate {
+                try? FileManager.default.setAttributes([.creationDate: date, .modificationDate: date], ofItemAtPath: dest.path)
+            }
+            made.append(dest)
+        }
+        return made
+    }
+
     private static func editingInput(for asset: PHAsset) async throws -> PHContentEditingInput {
         let options = PHContentEditingInputRequestOptions()
         options.isNetworkAccessAllowed = true

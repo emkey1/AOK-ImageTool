@@ -6,7 +6,74 @@ extension ViewerModel {
 
     /// File ▸ Open from Photos…: picks photos in the library to browse and edit here (see `PhotosLibrary`).
     func openFromPhotos() {
-        let open: ([String]) -> Void = { [weak self] ids in self?.openLibraryPhotos(ids) }
+        presentPhotosPicker { [weak self] ids in self?.openLibraryPhotos(ids) }
+    }
+
+    /// File ▸ Import from Photos…: photos picked in the library are copied into a folder as ordinary files (the
+    /// one imported into last, or another), which then opens. Edits then belong to the files, not to Photos.
+    func importFromPhotos() {
+        presentPhotosPicker { [weak self] ids in self?.chooseImportFolder(for: ids) }
+    }
+
+    private func chooseImportFolder(for ids: [String]) {
+        guard !ids.isEmpty else { return }
+        let photos = ids.count == 1 ? "the photo" : "\(ids.count) photos"
+        guard let last = Prefs.lastImportFolder else { return chooseOtherImportFolder(for: ids) }
+        let alert = NSAlert()
+        alert.messageText = "Import \(photos) into “\(last.lastPathComponent)”?"
+        alert.informativeText = "They're copied there as ordinary files: \((last.path as NSString).abbreviatingWithTildeInPath). This is the folder you imported into last."
+        alert.addButton(withTitle: "Import")
+        alert.addButton(withTitle: "Choose Folder…")
+        alert.addButton(withTitle: "Cancel")
+        let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            switch response {
+            case .alertFirstButtonReturn: self?.importLibraryPhotos(ids, into: last)
+            case .alertSecondButtonReturn: self?.chooseOtherImportFolder(for: ids)
+            default: break
+            }
+        }
+        if let window { alert.beginSheetModal(for: window, completionHandler: handle) } else { handle(alert.runModal()) }
+    }
+
+    private func chooseOtherImportFolder(for ids: [String]) {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "Import Here"
+        panel.message = ids.count == 1 ? "Choose the folder to import the photo into." : "Choose the folder to import \(ids.count) photos into."
+        panel.directoryURL = Prefs.lastImportFolder ?? FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
+        let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .OK, let folder = panel.url else { return }
+            self?.importLibraryPhotos(ids, into: folder)
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: handle) } else { handle(panel.runModal()) }
+    }
+
+    private func importLibraryPhotos(_ ids: [String], into folder: URL) {
+        Prefs.set(folder.standardizedFileURL.path, PrefKey.lastImportFolder)
+        showToast(ids.count == 1 ? "Importing the photo from Photos…" : "Importing \(ids.count) photos from Photos…", systemImage: "square.and.arrow.down")
+        let report: @Sendable (Int, Int) -> Void = { [weak self] i, n in
+            let model = self
+            guard n > 1 else { return }
+            Task { @MainActor in model?.showToast("Importing photo \(i + 1) of \(n) from Photos…", systemImage: "square.and.arrow.down") }
+        }
+        Task {
+            do {
+                let made = try await PhotosLibrary.shared.importPhotos(ids, into: folder, progress: report)
+                guard let first = made.first else { return dismissToast() }
+                openFolder(folder.standardizedFileURL, selecting: first.standardizedFileURL)
+                showToast(made.count == 1 ? "Imported “\(first.lastPathComponent)” into “\(folder.lastPathComponent)”"
+                          : "Imported \(made.count) photos into “\(folder.lastPathComponent)”", systemImage: "square.and.arrow.down")
+            } catch {
+                dismissToast()
+                showError("Couldn't import from Photos", error)
+            }
+        }
+    }
+
+    /// Photos' picker in a sheet, after asking for access to the library; `done` gets the photos picked.
+    private func presentPhotosPicker(_ done: @escaping ([String]) -> Void) {
         Task {
             do {
                 try await PhotosLibrary.requestAccess()
@@ -18,7 +85,7 @@ extension ViewerModel {
             config.selectionLimit = 0
             config.filter = .any(of: [.images, .livePhotos])
             let picker = PHPickerViewController(configuration: config)
-            let delegate = PhotosPickerDelegate(done: open)
+            let delegate = PhotosPickerDelegate(done: done)
             picker.delegate = delegate
             PhotosPickerDelegate.current = delegate
             // The picker doesn't size itself in a sheet (it shrinks to its toolbar): most of the window.
