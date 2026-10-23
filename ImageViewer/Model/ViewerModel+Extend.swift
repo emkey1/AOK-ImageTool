@@ -25,6 +25,17 @@ extension ViewerModel {
         return !d.hasTransparentPixels || e.background?.isOpaque == true
     }
 
+    /// Background ▸ Generate on This Mac…: the sheet, once the generative fill model is installed (offered for
+    /// download first when it isn't).
+    func generateBackgroundOnThisMac() {
+        offerDownload(.generativeFill) { [weak self] in self?.showGenerateBackground = true }
+    }
+
+    /// Intelligence panel ▸ Generative Extend: Extend with Generate, offering its model first when it's missing.
+    func beginGenerativeExtend() {
+        offerDownload(.generativeFill) { [weak self] in self?.beginExtend(.generate) }
+    }
+
     /// Opens the Crop tool in Extend mode, with this fill (by default the one last chosen).
     func beginExtend(_ method: ExtendMethod? = nil) {
         guard canExtend else { return }

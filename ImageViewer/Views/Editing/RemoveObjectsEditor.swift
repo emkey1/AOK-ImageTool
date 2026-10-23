@@ -43,6 +43,7 @@ struct RemoveObjectsEditor: View {
     @State private var task: Task<Void, Never>?
     @State private var eraseInstalled = RemovalModel.isInstalled
     @State private var eraseWhenInstalled = false
+    @State private var generateWhenInstalled = false
     /// What Generate paints in place of what's marked.
     @State private var promptText = ""
 
@@ -94,6 +95,10 @@ struct RemoveObjectsEditor: View {
             if eraseInstalled && eraseWhenInstalled {
                 eraseWhenInstalled = false
                 setMethod(.erase)
+            }
+            if GenerativeModel.isInstalled && generateWhenInstalled {
+                generateWhenInstalled = false
+                setMethod(.generate)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toolCommit)) { note in
@@ -211,7 +216,6 @@ struct RemoveObjectsEditor: View {
                 Picker("Fill", selection: Binding(get: { method }, set: { setMethod($0) })) {
                     ForEach(RemovalMethod.allCases) { m in
                         Text(m.title).tag(m)
-                            .selectionDisabled(!m.isAvailable)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -269,7 +273,20 @@ struct RemoveObjectsEditor: View {
     // MARK: Actions
 
     private func setMethod(_ m: RemovalMethod) {
-        guard m.isAvailable else { return }
+        // A fill whose model isn't installed yet: offered for download, and chosen once it's in.
+        guard m.isAvailable else {
+            switch m {
+            case .erase:
+                eraseWhenInstalled = true
+                model.offerDownload(.removal) {}
+            case .generate:
+                generateWhenInstalled = true
+                model.offerDownload(.generativeFill) {}
+            case .match:
+                break
+            }
+            return
+        }
         method = m
         Prefs.set(m.rawValue, PrefKey.removalMethod)
     }

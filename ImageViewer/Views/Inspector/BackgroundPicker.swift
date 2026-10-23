@@ -51,20 +51,21 @@ struct BackgroundPicker: View {
                 Button { model.chooseBackgroundPicture() } label: {
                     Label("Picture…", systemImage: "photo")
                 }
-                if GenerativeModel.isInstalled, supportsImagePlayground {
+                if GenerativeModel.isSupported, supportsImagePlayground {
                     Menu {
-                        Button("On This Mac…") { model.showGenerateBackground = true }
+                        Button(GenerativeModel.isInstalled ? "On This Mac…" : "On This Mac (needs a download)…") { model.generateBackgroundOnThisMac() }
                         Button("With Image Playground…") { model.showBackgroundPlayground = true }
                     } label: {
                         Label("Generate…", systemImage: "sparkles")
                     }
                     .fixedSize()
                     .help("Describe a scene: made on this Mac around your subject, or by Image Playground")
-                } else if GenerativeModel.isInstalled {
-                    Button { model.showGenerateBackground = true } label: {
+                } else if GenerativeModel.isSupported {
+                    Button { model.generateBackgroundOnThisMac() } label: {
                         Label("Generate…", systemImage: "sparkles")
                     }
-                    .help("Describe a scene to paint around your subject, on this Mac")
+                    .help(GenerativeModel.isInstalled ? "Describe a scene to paint around your subject, on this Mac"
+                          : "Describe a scene to paint around your subject, on this Mac (needs the generative fill model, a one-time download)")
                 } else if supportsImagePlayground {
                     Button { model.showBackgroundPlayground = true } label: {
                         Label("Generate…", systemImage: "apple.image.playground")

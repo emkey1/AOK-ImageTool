@@ -249,14 +249,13 @@ struct IntelligencePanel: View {
                 ActionButton(model.currentEdits.perspective == nil ? "Fix Document" : "Undo Document Fix", systemImage: "doc.viewfinder") {
                     ai.fixPerspective()
                 }
-                if GenerativeModel.isInstalled {
+                // (Shown before their models are installed too: they offer the download.)
+                if GenerativeModel.isSupported {
                     ActionButton("Generative Extend", systemImage: "arrow.up.left.and.arrow.down.right") {
-                        model.beginExtend(.generate)
+                        model.beginGenerativeExtend()
                     }
                     .disabled(!model.canExtend)
-                }
-                if Colorizer.isInstalled {
-                    ActionButton("Colorize", systemImage: "paintpalette") { model.colorizeCurrent() }
+                    ActionButton(Colorizer.isInstalled ? "Colorize" : "Colorize…", systemImage: "paintpalette") { model.colorizeCurrent() }
                 }
                 if GenerativeModel.isSupported {
                     ActionButton("Fix Blur…", systemImage: "camera.metering.center.weighted") { model.beginFixBlur() }

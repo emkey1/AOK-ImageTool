@@ -249,11 +249,12 @@ struct ViewerCommands: Commands {
                     .disabled(!(viewer?.canBlurOriginalBackground ?? false))
                 Divider()
                 Button("Picture…") { viewer?.chooseBackgroundPicture() }
-                if GenerativeModel.isInstalled {
-                    Button(supportsImagePlayground ? "Generate on This Mac…" : "Generate…") { viewer?.showGenerateBackground = true }
+                if GenerativeModel.isSupported {
+                    // (Offers its model when it isn't installed yet.)
+                    Button(supportsImagePlayground ? "Generate on This Mac…" : "Generate…") { viewer?.generateBackgroundOnThisMac() }
                 }
                 if supportsImagePlayground {
-                    Button(GenerativeModel.isInstalled ? "Generate with Image Playground…" : "Generate…") { viewer?.showBackgroundPlayground = true }
+                    Button(GenerativeModel.isSupported ? "Generate with Image Playground…" : "Generate…") { viewer?.showBackgroundPlayground = true }
                 }
                 Divider()
                 Toggle("Match Lighting", isOn: Binding(

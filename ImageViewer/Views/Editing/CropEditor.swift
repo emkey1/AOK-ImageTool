@@ -329,7 +329,6 @@ struct CropEditor: View {
             }
             .pickerStyle(.segmented)
             .frame(width: 250)
-            .disabled(!modelInstalled && working.effectiveExtendMethod == .match)
             .help(modelInstalled
                   ? "Match Photo continues the photo's own texture; Generate draws new content with an on-device model"
                   : "Generate needs the generative fill model, a one-time download")
@@ -359,6 +358,12 @@ struct CropEditor: View {
     // MARK: Actions
 
     private func setMethod(_ method: ExtendMethod) {
+        // Generate before its model is installed: offered for download, and chosen once it's in.
+        if method == .generate && !modelInstalled {
+            generateWhenInstalled = true
+            model.offerDownload(.generativeFill) {}
+            return
+        }
         Prefs.set(method.rawValue, PrefKey.extendMethod)
         working.extendMethod = method == .match ? nil : method
         if method == .generate { commitPrompt(preview: false) }
