@@ -56,6 +56,24 @@ Extend a square photo to 16:9, with new content generated on this Mac:
   </picture>
 </p>
 
+Click a boat and it's gone, filled in from what was behind it; or change its color, or heal what's around it:
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Screenshots/remove-dark.jpg">
+    <img src="Screenshots/remove-light.jpg" width="760" alt="Remove Objects on a photo of a sailboat at sunset: the boat is outlined, ready to be removed.">
+  </picture>
+</p>
+
+Describe a picture, and it's painted on your Mac; keep the ones you like:
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="Screenshots/newimage-dark.jpg">
+    <img src="Screenshots/newimage-light.jpg" width="760" alt="The New Image sheet with four previews of a lighthouse on a rocky coast at sunset.">
+  </picture>
+</p>
+
 Describe a photo, ask about it, and fix it in one click:
 
 <p align="center">

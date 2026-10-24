@@ -65,6 +65,16 @@ enum DebugScenes {
         case "grid":
             model.gridThumbnailSize = 200
             model.viewMode = .grid
+        case "remove":
+            model.beginRemoveObjects()
+        case "change":
+            model.beginChangeObjects()
+        case "clone":
+            model.beginCloneHeal()
+        case "fixblur":
+            model.beginFixBlur()
+        case "blackwhite":
+            model.showBlackAndWhite = true
         case "newimage":
             model.newImageDescription = "a lighthouse on a rocky coast at sunset"
             model.showNewImage = true

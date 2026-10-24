@@ -154,6 +154,8 @@ struct RemoveObjectsEditor: View {
                             .gesture(paintGesture(in: shown))
                             .simultaneousGesture(pinchGesture)
                             .onContinuousHover(coordinateSpace: .local) { phase in
+                                // (The Guide's screenshots set where the pointer is themselves.)
+                                guard DebugHooks.scene == nil else { return }
                                 if case .active(let p) = phase { hover = p } else { hover = nil }
                             }
                     } else {
@@ -173,7 +175,10 @@ struct RemoveObjectsEditor: View {
         .onAppear {
             start = model.currentEdits
             if !method.isAvailable { method = .match }
-            Task { await render(initial: true) }
+            Task {
+                await render(initial: true)
+                if DebugHooks.scene != nil { await showSceneForGuide() }
+            }
             // Two-finger scrolling (or the wheel) moves around a zoomed picture; with ⌘, it zooms.
             scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: [.scrollWheel]) { event in
                 guard event.window === model.window, let point = hover else { return event }
@@ -790,6 +795,41 @@ struct RemoveObjectsEditor: View {
         model.activeTool = nil
     }
 
+    // MARK: The Guide's screenshots
+
+    /// The tool part way through, as someone would have it (`-debugScene remove|change|clone`, on the demo photos
+    /// Sailboat, Fruit Bowl and Desert Canyon).
+    private func showSceneForGuide() async {
+        guard let picture else { return }
+        let size = CGSize(width: picture.width, height: picture.height)
+        switch DebugHooks.scene {
+        case "remove":
+            // The boat, outlined as clicking it shows it.
+            let point = CGPoint(x: 0.68, y: 0.345)
+            var found: CIImage?
+            if #available(macOS 27, *) { found = try? await VisionServices.objectMask(for: picture, included: [point], excluded: []) }
+            if found == nil { found = try? await VisionServices.instanceMask(for: picture, at: point) }
+            if let found { outline = Self.highlight(Self.fitted(found, to: size), size: size) }
+        case "change":
+            // The apple selected, and what it should be typed in.
+            select(at: CGPoint(x: 0.383, y: 0.683), subtract: false)
+            changeText = "green"
+        case "clone":
+            // Painting the smooth red wall over the shrubs, part way through a stroke.
+            let to = CGPoint(x: 0.55, y: 0.84)
+            cloneSource = CGPoint(x: 0.2, y: 0.45)
+            cloneOffset = CGSize(width: -0.35, height: -0.39)
+            strokeWidth = 0.07
+            stroke = (0..<14).map { CGPoint(x: to.x + CGFloat($0) * 0.013, y: to.y - CGFloat($0) * 0.005) }
+            if let last = stroke.last, viewport.width > 0 {
+                let shown = shownRect(fitted: Self.fittedRect(picture, in: viewport))
+                hover = CGPoint(x: shown.minX + last.x * shown.width, y: shown.minY + last.y * shown.height)
+            }
+        default:
+            break
+        }
+    }
+
     // MARK: Clone & Heal
 
     /// The stroke painted with what's at `cloneOffset` from it: healed in, or copied as it is.
@@ -911,7 +951,9 @@ struct RemoveObjectsEditor: View {
         selection = selected
         reach = within
         selectionApplied = applied
-        selectionShown = Self.highlight(selected, size: selected.extent.size, edged: true)
+        // (The line around it is sized for the picture fitted in view.)
+        let perPoint = picture.map { viewport.width > 0 ? CGFloat($0.width) / Self.fittedRect($0, in: viewport).width : 1 } ?? 1
+        selectionShown = Self.highlight(selected, size: selected.extent.size, edged: true, pixelsPerPoint: perPoint)
     }
 
     private func clearSelection() {
@@ -1016,21 +1058,24 @@ struct RemoveObjectsEditor: View {
         return length > 6 * diameter && gap < max(1.5 * diameter, 0.12 * length) && abs(area) / 2 > length * diameter
     }
 
-    /// A clicked object's outline, tinted, for showing over it while it's removed; `edged`, with a line around
-    /// it, so a selection is clear on any color.
-    private static func highlight(_ mask: CIImage, size: CGSize, edged: Bool = false) -> CGImage? {
+    /// A clicked object's outline, tinted, for showing over it while it's removed. `edged` (Change Objects'
+    /// selection): tinted blue instead, with a line around it, white between dark edges and about 1.5 points
+    /// wide on screen at `pixelsPerPoint`, so it shows on any color.
+    private static func highlight(_ mask: CIImage, size: CGSize, edged: Bool = false, pixelsPerPoint: CGFloat = 1) -> CGImage? {
         let rect = CGRect(origin: .zero, size: size)
-        let tint = CIImage(color: CIColor(red: 1, green: 0.3, blue: 0.4, alpha: 0.5)).cropped(to: rect)
-        var shown = tint.applyingFilter("CIBlendWithMask", parameters: [
-            kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect),
-            kCIInputMaskImageKey: mask,
-        ])
-        if edged {
-            let edge = mask.applyingFilter("CIMorphologyGradient", parameters: [kCIInputRadiusKey: max(1.5, max(size.width, size.height) / 900)])
-            shown = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.9)).cropped(to: rect).applyingFilter("CIBlendWithMask", parameters: [
-                kCIInputBackgroundImageKey: shown,
-                kCIInputMaskImageKey: edge,
+        func paint(_ color: CIColor, over image: CIImage, where where_: CIImage) -> CIImage {
+            CIImage(color: color).cropped(to: rect).applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: image,
+                kCIInputMaskImageKey: where_,
             ])
+        }
+        let tint = edged ? CIColor(red: 0.2, green: 0.5, blue: 1, alpha: 0.4) : CIColor(red: 1, green: 0.3, blue: 0.4, alpha: 0.5)
+        var shown = paint(tint, over: CIImage(color: .clear).cropped(to: rect), where: mask)
+        if edged {
+            let outer = mask.applyingFilter("CIMorphologyGradient", parameters: [kCIInputRadiusKey: max(1.5, 1.6 * pixelsPerPoint)])
+            let inner = mask.applyingFilter("CIMorphologyGradient", parameters: [kCIInputRadiusKey: max(1, 0.8 * pixelsPerPoint)])
+            shown = paint(CIColor(red: 0, green: 0, blue: 0, alpha: 0.55), over: shown, where: outer)
+            shown = paint(CIColor(red: 1, green: 1, blue: 1, alpha: 0.95), over: shown, where: inner)
         }
         return ImageDecoder.ciContext.createCGImage(shown, from: rect)
     }
