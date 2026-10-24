@@ -200,7 +200,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Config/AOK-ImageTool.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = UYU5FM4LQ4;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -216,7 +216,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.oneopa.AOK-ImageTool";
 				PRODUCT_MODULE_NAME = ImageViewer;
 				PRODUCT_NAME = "AOK-ImageTool";
@@ -237,7 +237,7 @@
 				CODE_SIGN_ENTITLEMENTS = "Config/AOK-ImageTool.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = UYU5FM4LQ4;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
@@ -253,7 +253,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.0.0;
+				MARKETING_VERSION = 1.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.oneopa.AOK-ImageTool";
 				PRODUCT_MODULE_NAME = ImageViewer;
 				PRODUCT_NAME = "AOK-ImageTool";
