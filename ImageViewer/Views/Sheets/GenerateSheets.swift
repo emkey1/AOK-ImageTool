@@ -158,13 +158,19 @@ struct GenerateBackgroundSheet: View {
 }
 
 /// File ▸ New Image from Description: a picture painted from a description, on this Mac. Previews come one at a
-/// time; the one kept is finished at full size and saved as a new image. Image Playground makes it in its own
-/// styles instead, where the Mac has it.
+/// time; each one kept is finished at full size and saved as a new image, as many as you like, while the sheet
+/// stays open. Image Playground makes it in its own styles instead, where the Mac has it.
 struct NewImageSheet: View {
     private struct Preview: Identifiable {
         let id: Int
         let seed: UInt64
         var image: CGImage?
+        var saved = false
+    }
+
+    /// What there is to do, in order: paint a preview, or finish one that's kept (those go first).
+    private enum Work: Equatable {
+        case paint(Int), finish(Int)
     }
 
     @Environment(ViewerModel.self) private var model
@@ -175,14 +181,12 @@ struct NewImageSheet: View {
     /// What the previews show (the description and shape they were made for).
     @State private var made = ""
     @State private var madeShape = GenerativeImage.Shape.square
-    @State private var chosen: Int?
+    @State private var chosen: Set<Int> = []
+    @State private var queue: [Work] = []
+    @State private var current: Work?
     @State private var progress = SheetProgress()
-    /// The preview being painted, or (`finishing`) the one kept being finished.
-    @State private var painting: Int?
-    @State private var finishing = false
-    @State private var task: Task<Void, Never>?
-    /// Each job's number, so one that's stopped doesn't tidy away the one after it.
-    @State private var job = 0
+    @State private var worker: Task<Void, Never>?
+    @State private var saved = 0
     @State private var error: String?
     @State private var installed = GenerativeModel.isInstalled
 
@@ -192,13 +196,14 @@ struct NewImageSheet: View {
 
     private var shape: GenerativeImage.Shape { GenerativeImage.Shape(rawValue: shapeName) ?? .square }
     private var description: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var busy: Bool { painting != nil || finishing }
-    private var chosenImage: CGImage? { previews.first { $0.id == chosen }?.image }
+    private var busy: Bool { current != nil || !queue.isEmpty }
+    /// The chosen previews that can be kept (painted, not saved yet), in order.
+    private var keepable: [Int] { previews.filter { chosen.contains($0.id) && $0.image != nil && !$0.saved }.map(\.id) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("New Image", systemImage: "wand.and.stars").font(.title2.weight(.bold))
-            Text("Describe a picture and it's painted on this Mac. Pick the one you like: it's finished at full size and saved as a new image "
+            Text("Describe a picture and it's painted on this Mac. Keep the ones you like: each is finished at full size and saved as a new image "
                  + (model.folderURL == nil ? "in Pictures." : "in this folder."))
                 .foregroundStyle(.secondary)
             TextField("Describe the picture, e.g. “a lighthouse on a rocky coast at sunset”", text: $text, axis: .vertical)
@@ -225,12 +230,17 @@ struct NewImageSheet: View {
                 if busy {
                     ProgressView().controlSize(.small)
                     Text(status).monospacedDigit().foregroundStyle(.secondary)
-                    Button("Stop") { task?.cancel() }
+                    Button("Stop") { stop() }
                         .controlSize(.small)
                 }
             }
             if installed {
                 tiles
+                Text(previews.contains { $0.image != nil }
+                     ? "Click to choose one, ⌘-click (or its circle) to choose more, then Keep. Double-click keeps one right away."
+                     : " ")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             } else {
                 missingModel
             }
@@ -244,16 +254,16 @@ struct NewImageSheet: View {
                         .help("Make it in Image Playground instead, in one of its styles")
                 }
                 Spacer()
-                Button("Cancel") { close() }
+                Button(saved > 0 && !busy ? "Done" : "Cancel") { close() }
                     .keyboardShortcut(.cancelAction)
                 Button(previews.isEmpty ? "Generate" : "Generate Again", action: generate)
-                    .keyboardShortcut(chosenImage == nil ? .defaultAction : nil)
+                    .keyboardShortcut(keepable.isEmpty ? .defaultAction : nil)
                     .disabled(description.isEmpty || busy || !installed)
-                Button("Keep", action: keep)
+                Button(keepable.count > 1 ? "Keep \(keepable.count)" : "Keep", action: keep)
                     .prominentButtonStyle()
-                    .keyboardShortcut(chosenImage != nil ? .defaultAction : nil)
-                    .disabled(chosenImage == nil || finishing)
-                    .help("Finish this one at full size and save it as a new image")
+                    .keyboardShortcut(keepable.isEmpty ? nil : .defaultAction)
+                    .disabled(keepable.isEmpty)
+                    .help("Finish the chosen ones at full size and save each as a new image")
             }
         }
         .padding(20)
@@ -269,8 +279,15 @@ struct NewImageSheet: View {
 
     private var status: String {
         let percent = "\(Int((progress.value ?? 0) * 100))%"
-        if finishing { return "Finishing at full size… \(percent)" }
-        return "Painting \((painting ?? 0) + 1) of \(Self.count)… \(percent)"
+        switch current {
+        case .finish:
+            let left = queue.filter { if case .finish = $0 { true } else { false } }.count
+            return left > 0 ? "Finishing at full size (\(left) more after this)… \(percent)" : "Finishing at full size… \(percent)"
+        case .paint(let i):
+            return "Painting \(i + 1) of \(Self.count)… \(percent)"
+        case nil:
+            return "…"
+        }
     }
 
     /// The previews, two by two, as big as the room allows.
@@ -295,7 +312,8 @@ struct NewImageSheet: View {
 
     private func tile(_ index: Int) -> some View {
         let preview = previews.indices.contains(index) ? previews[index] : nil
-        let selected = preview != nil && chosen == preview?.id
+        let selected = chosen.contains(index)
+        let ready = preview?.image != nil && preview?.saved == false
         return ZStack {
             RoundedRectangle(cornerRadius: 8).fill(Color(white: 0.12))
             if let image = preview?.image {
@@ -304,7 +322,7 @@ struct NewImageSheet: View {
                     .scaledToFit()
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                     .padding(3)
-            } else if painting == index {
+            } else if current == .paint(index) {
                 ProgressView(value: progress.value ?? 0)
                     .progressViewStyle(.circular)
             } else {
@@ -312,15 +330,55 @@ struct NewImageSheet: View {
                     .font(.largeTitle)
                     .foregroundStyle(.tertiary)
             }
+            if current == .finish(index) {
+                VStack(spacing: 6) {
+                    ProgressView(value: progress.value ?? 0).progressViewStyle(.circular)
+                    Text("Finishing…").font(.caption.weight(.medium))
+                }
+                .padding(10)
+                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+            } else if queue.contains(.finish(index)) {
+                Label("Waiting to finish", systemImage: "clock")
+                    .font(.caption.weight(.medium))
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(.regularMaterial, in: Capsule())
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            // (A circle to choose it along with others.)
+            if ready {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(selected ? Color.white : Color.white.opacity(0.9), selected ? Color.accentColor : Color.black.opacity(0.35))
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .padding(8)
+                    .contentShape(Circle())
+                    .onTapGesture { toggle(index) }
+                    .help(selected ? "Don't keep this one" : "Keep this one too")
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if preview?.saved == true {
+                Label("Saved", systemImage: "checkmark.circle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(.green, in: Capsule())
+                    .padding(8)
+            }
         }
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 3))
         .contentShape(Rectangle())
         .onTapGesture(count: 2) {
-            guard preview?.image != nil else { return }
-            chosen = preview?.id
+            guard ready else { return }
+            chosen = [index]
             keep()
         }
-        .onTapGesture { if preview?.image != nil, !finishing { chosen = preview?.id } }
+        .onTapGesture {
+            guard ready else { return }
+            if NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift) { toggle(index) } else { chosen = [index] }
+        }
     }
 
     private var missingModel: some View {
@@ -342,81 +400,89 @@ struct NewImageSheet: View {
         return CGSize(width: min(max(680, height * 0.95), window.width * 0.9), height: height)
     }
 
+    private func toggle(_ index: Int) {
+        if chosen.remove(index) == nil { chosen.insert(index) }
+    }
+
     /// A new set of previews, painted one after another.
     private func generate() {
-        let description = self.description, shape = self.shape
+        let description = self.description
         guard !description.isEmpty, installed, !busy else { return }
         previews = (0..<Self.count).map { Preview(id: $0, seed: .random(in: 1...UInt64.max)) }
         made = description
         madeShape = shape
-        chosen = nil
+        chosen = []
         error = nil
-        let seeds = previews.map(\.seed)
-        job += 1
-        let mine = job, progress = self.progress, flag = CancelFlag()
-        task = Task {
+        queue = previews.map { .paint($0.id) }
+        work()
+    }
+
+    /// The chosen previews finished and saved, before any still to be painted.
+    private func keep() {
+        let ids = keepable
+        guard !ids.isEmpty else { return }
+        let finishes = ids.map { Work.finish($0) }
+        queue.removeAll(where: finishes.contains)
+        queue.insert(contentsOf: finishes, at: 0)
+        chosen = []
+        error = nil
+        work()
+    }
+
+    /// Does what's queued, one thing at a time (the model does one at a time).
+    private func work() {
+        guard worker == nil else { return }
+        let progress = self.progress
+        worker = Task {
             defer {
-                if job == mine {
-                    painting = nil
-                    progress.value = nil
-                    task = nil
-                }
+                current = nil
+                progress.value = nil
+                worker = nil
             }
-            for (i, seed) in seeds.enumerated() {
-                guard !Task.isCancelled else { return }
-                painting = i
+            while !Task.isCancelled, !queue.isEmpty {
+                let next = queue.removeFirst()
+                current = next
                 progress.value = 0
+                let flag = CancelFlag()
+                let report: @Sendable (Double) -> Bool = { fraction in
+                    Task { @MainActor in if progress.value != nil { progress.value = fraction } }
+                    return flag.isSet
+                }
                 do {
-                    let image = try await withTaskCancellationHandler {
-                        try await GenerativeImage.picture(description, shape: shape, seed: seed) { fraction in
-                            Task { @MainActor in if progress.value != nil { progress.value = fraction } }
-                            return flag.isSet
-                        }
-                    } onCancel: { flag.set() }
-                    guard !Task.isCancelled, job == mine else { return }
-                    previews[i].image = image
-                    if chosen == nil { chosen = i }
+                    switch next {
+                    case .paint(let i):
+                        let (description, shape, seed) = (made, madeShape, previews[i].seed)
+                        let image = try await withTaskCancellationHandler {
+                            try await GenerativeImage.picture(description, shape: shape, seed: seed, progress: report)
+                        } onCancel: { flag.set() }
+                        guard !Task.isCancelled else { return }
+                        previews[i].image = image
+                        // (The first one is chosen, ready to keep.)
+                        if chosen.isEmpty, !previews.contains(where: { $0.saved }) { chosen = [i] }
+                    case .finish(let i):
+                        guard let image = previews[i].image else { continue }
+                        let (description, seed) = (made, previews[i].seed)
+                        let result = try await withTaskCancellationHandler {
+                            try await GenerativeImage.finished(image, description: description, seed: seed, progress: report)
+                        } onCancel: { flag.set() }
+                        guard !Task.isCancelled else { return }
+                        model.saveNewImage(result, description: description)
+                        previews[i].saved = true
+                        saved += 1
+                    }
                 } catch {
                     if !Task.isCancelled, (error as? ExtendError) != .cancelled { self.error = error.localizedDescription }
+                    queue = []
                     return
                 }
             }
         }
     }
 
-    /// The chosen preview, finished at full size and saved; the rest aren't painted.
-    private func keep() {
-        guard let preview = previews.first(where: { $0.id == chosen }), let image = preview.image, !finishing else { return }
-        task?.cancel()
-        let description = made
-        job += 1
-        let mine = job, progress = self.progress, flag = CancelFlag()
-        painting = nil
-        finishing = true
-        error = nil
-        progress.value = 0
-        task = Task {
-            defer {
-                if job == mine {
-                    finishing = false
-                    progress.value = nil
-                    task = nil
-                }
-            }
-            do {
-                let result = try await withTaskCancellationHandler {
-                    try await GenerativeImage.finished(image, description: description, seed: preview.seed) { fraction in
-                        Task { @MainActor in if progress.value != nil { progress.value = fraction } }
-                        return flag.isSet
-                    }
-                } onCancel: { flag.set() }
-                guard !Task.isCancelled else { return }
-                model.saveNewImage(result, description: description)
-                dismiss()
-            } catch {
-                if !Task.isCancelled, (error as? ExtendError) != .cancelled { self.error = error.localizedDescription }
-            }
-        }
+    /// Stops what's being done and forgets the rest.
+    private func stop() {
+        queue = []
+        worker?.cancel()
     }
 
     /// The description handed to Image Playground, for its own styles.
@@ -427,7 +493,7 @@ struct NewImageSheet: View {
     }
 
     private func close() {
-        task?.cancel()
+        stop()
         dismiss()
     }
 }
