@@ -31,7 +31,8 @@ ImageViewer/
     Fill/        Extend: content-aware fill (C engine, ContentAwareFill.c), generative fill
                  (StableDiffusion.swift: Core ML inpainting; GenerativeExtend.swift: windows, cache, model install);
                  Removal.swift (Remove and Change Objects: LaMa, Match Photo, Generate, recolor; patches in
-                 RemovalStore); Change.swift (reading Change Objects' instructions); Recolor.c; Colorize.swift
+                 RemovalStore, and Clone & Heal); Change.swift (reading Change Objects' instructions); Recolor.c; Heal.c;
+                 Colorize.swift
   Canvas/        AppKit zoom/pan canvas (CALayer-backed, HDR), Live Text overlay
   Intelligence/  Vision services, Foundation Models describer/chat, folder index & search
   Views/         SwiftUI: window, toolbar, browser (grid/filmstrip/sidebar), inspector, tools, sheets
@@ -127,7 +128,16 @@ too, while skin, hair and gray ground don't. Anything else goes to Stable Diffus
 strength 0.8 from the selection itself, recolored first to the first color the description names
 (`ChangeRequest.tint`), since the model keeps the colors it starts from. Apple Intelligence was tried for reading
 instructions and dropped: it got colors wrong ("teal-ish green" → blue) and called plaid shirts plain red. A change's
-`Removal.opacity` is its strength. `-extendTest -change <image> <out.png> <x> <y> "<instruction>"` runs it headlessly
+`Removal.opacity` is its strength.
+
+**Clone & Heal** is the editor's `.clone` mode. A stroke (soft-edged) and the offset to where it copies from (set by the
+first stroke after an ⌥-click, then kept, as Photoshop's Aligned does) are mapped onto the decoded pixels
+(`ObjectRemover.sourcePoint` maps points as `sourceMask` maps masks), and `ObjectRemover.clone` makes the patch: Copy
+takes the moved pixels as they are; Heal (`iv_heal` in `Heal.c`) solves Laplace's equation for the difference
+between destination and source across the stroke, with the difference just outside it as the boundary (Gauss-Seidel
+with over-relaxation, coarse to fine over a pyramid), and adds it to the source, so the copied detail meets its
+surroundings without an edge. `-extendTest -clone <image> <out.png> <from x> <from y> <to x> <to y> <radius> [copy]`
+paints a dab headlessly. `-extendTest -change <image> <out.png> <x> <y> "<instruction>"` runs it headlessly
 (`MASK_OUT` saves the selection), and `-extendTest -interpret "<instruction>"…` shows how instructions are read.
 
 **Fix Blur** (`Imaging/Sharpen.swift`, `Views/Sheets/FixBlurSheet.swift`). Restormer (Out of Focus or Camera Shake)

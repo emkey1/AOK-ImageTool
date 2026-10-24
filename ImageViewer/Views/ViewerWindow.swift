@@ -135,6 +135,7 @@ struct ViewerPane: View {
                 case .selectObject: ObjectSelectEditor()
                 case .removeObjects: RemoveObjectsEditor()
                 case .changeObjects: RemoveObjectsEditor(mode: .change)
+                case .cloneHeal: RemoveObjectsEditor(mode: .clone)
                 }
             } else {
                 stateOverlay

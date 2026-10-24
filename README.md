@@ -29,10 +29,12 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   your Mac.
 - **Remove objects:** paint over a passer-by, a sign or a power line, click it or circle it, and it's filled in from
   what's around it, with LaMa (a model made for this) running on your Mac.
+- **Clone & heal:** ⌥-click clean skin, sky or grass and paint it over a blemish, a wire or a bare patch; Heal
+  blends it into the color and light where it goes.
 - **Change objects:** click a shirt and say “blue”, or “a red plaid flannel shirt”: colors change in place keeping
   their shading, anything more is painted in by the generative model, on your Mac.
 - **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Fix Blur, Upscale with AI (animated
-  GIFs too), Extend, Remove and Change Objects, and Reimagine save new copies, stacked with the original in the filmstrip so a
+  GIFs too), Extend, Remove and Change Objects, Clone & Heal, and Reimagine save new copies, stacked with the original in the filmstrip so a
   folder stays tidy. (Settings can have them change the image itself instead.)
 - **Paste a picture** (⌘V) from anywhere as a new image in the folder.
 - **Apple Intelligence** where your Mac has it: describe a photo (alt text, keywords, a file name), ask about it, search

@@ -107,6 +107,7 @@ private struct EditingSettings: View {
     @AppStorage(CopyOperation.extend.key) private var copyExtend = true
     @AppStorage(CopyOperation.removeObjects.key) private var copyRemoveObjects = true
     @AppStorage(CopyOperation.changeObjects.key) private var copyChangeObjects = true
+    @AppStorage(CopyOperation.cloneHeal.key) private var copyCloneHeal = true
 
     var body: some View {
         Form {
@@ -127,10 +128,11 @@ private struct EditingSettings: View {
                 Toggle("Extend makes a copy", isOn: $copyExtend)
                 Toggle("Remove Objects makes a copy", isOn: $copyRemoveObjects)
                 Toggle("Change Objects makes a copy", isOn: $copyChangeObjects)
+                Toggle("Clone & Heal makes a copy", isOn: $copyCloneHeal)
             } header: {
                 Text("Copies")
             } footer: {
-                Text("A copy is saved next to the original and stacked on it; the original stays as it was. Turned off, Upscale, Colorize, Black & White and Fix Blur replace the image when they're done (the original goes to the Trash as when saving), and Extend, Remove Objects and Change Objects become edits you save. Photos from your Photos library and animations always get copies.")
+                Text("A copy is saved next to the original and stacked on it; the original stays as it was. Turned off, Upscale, Colorize, Black & White and Fix Blur replace the image when they're done (the original goes to the Trash as when saving), and Extend, Remove Objects, Change Objects and Clone & Heal become edits you save. Photos from your Photos library and animations always get copies.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             ModelSettings(model: .generativeFill, title: "Generative Fill",

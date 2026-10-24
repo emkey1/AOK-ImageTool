@@ -83,6 +83,32 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -clone <image> <out.png> <from x> <from y> <to x> <to y> <radius> [copy]`: Clone & Heal paints a
+        // round dab (normalized, top-left origin; radius in fractions of the width) with what's at "from".
+        if let i = args.firstIndex(of: "-clone"), i + 7 < args.count {
+            let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])
+            let v = args[(i + 3)...(i + 7)].compactMap { Double($0) }
+            guard v.count == 5, let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false) else { exit(1) }
+            let W = d.pixelSize.width, H = d.pixelSize.height, r = v[4] * W
+            let to = CGPoint(x: v[2] * W, y: (1 - v[3]) * H)
+            let mask = CIImage(color: .white).cropped(to: CGRect(x: to.x - r, y: to.y - r, width: 2 * r, height: 2 * r))
+                .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: r * 0.15])
+                .composited(over: CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: d.pixelSize)))
+                .cropped(to: CGRect(origin: .zero, size: d.pixelSize))
+            let offset = CGVector(dx: (v[0] - v[2]) * W, dy: -(v[1] - v[3]) * H)
+            let t0 = Date()
+            do {
+                let patch = try await ObjectRemover.clone(d, after: [], mask: mask, offset: offset, heal: !args.dropFirst(i + 8).contains("copy"))
+                var e = EditState()
+                e.removals = [patch]
+                guard let made = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil)?.image else { exit(1) }
+                try ImageWriter.write(made, to: out, format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                print(String(format: "%d×%d in %.2f s", made.width, made.height, Date().timeIntervalSince(t0)))
+            } catch {
+                print("failed:", error.localizedDescription)
+            }
+            exit(0)
+        }
         // `-extendTest -interpret "<instruction>"...`: how Change Objects reads each instruction.
         if let i = args.firstIndex(of: "-interpret"), i + 1 < args.count {
             for text in args.dropFirst(i + 1) {

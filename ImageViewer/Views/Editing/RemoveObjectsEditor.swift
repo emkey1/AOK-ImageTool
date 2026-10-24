@@ -11,6 +11,13 @@ private struct RemovalMark: @unchecked Sendable {
     var shownReach: CIImage? = nil
     var reach: CIImage? = nil
     var change: ChangeRequest? = nil
+    /// A Clone & Heal stroke: what's painted is copied from this far away (image pixels, Core Image's y up).
+    var clone: CloneStep? = nil
+}
+
+private struct CloneStep {
+    let offset: CGVector
+    let heal: Bool
 }
 
 /// Progress of the removal being made, updated from the background.
@@ -26,8 +33,11 @@ private final class RemovalProgress {
 /// Change Objects is the same tool for changing things instead: click or paint what to change (a shirt), say
 /// what it should be (“blue”, “a red plaid shirt”), and a color is changed in place, keeping its shading, or
 /// anything else is painted there by the generative model.
+///
+/// Clone & Heal paints with the picture itself: ⌥-click where to copy from, then paint where it goes; Heal blends
+/// it into the color and light there.
 struct RemoveObjectsEditor: View {
-    enum Mode { case remove, change }
+    enum Mode { case remove, change, clone }
 
     @Environment(ViewerModel.self) private var model
     let mode: Mode
@@ -88,6 +98,14 @@ struct RemoveObjectsEditor: View {
     /// What the tool is busy with, when it's not a removal.
     @State private var activity: String?
 
+    // Clone & Heal
+    /// Where to copy from (⌥-click; normalized in the picture, top-left origin), and, from the first stroke after
+    /// it, how far that is from where it's painted (kept for the strokes after, as Photoshop's Aligned does).
+    @State private var cloneSource: CGPoint?
+    @State private var cloneOffset: CGSize?
+    @State private var pickingSource = false
+    @State private var heal = Prefs.cloneHeals
+
     init(mode: Mode = .remove) {
         self.mode = mode
     }
@@ -108,6 +126,9 @@ struct RemoveObjectsEditor: View {
                             .interpolation(zoom > 1.5 ? .medium : .high)
                             .frame(width: shown.width, height: shown.height)
                             .position(x: shown.midX, y: shown.midY)
+                        if mode == .clone, !showOriginal, let offset = cloneOffset, !stroke.isEmpty {
+                            clonePreview(image, offset: offset, in: shown)
+                        }
                         markOverlay(in: shown)
                         if mode == .change, !selectionApplied, !showOriginal, let selectionShown {
                             Image(decorative: selectionShown, scale: 1)
@@ -116,6 +137,9 @@ struct RemoveObjectsEditor: View {
                                 .position(x: shown.midX, y: shown.midY)
                                 .allowsHitTesting(false)
                                 .modifier(Pulsing(active: busy))
+                        }
+                        if mode == .clone, !busy, !showOriginal, let source = cloneMarker(in: shown) {
+                            CloneMarker().position(source).allowsHitTesting(false)
                         }
                         if let hover, !busy, !showOriginal, shown.contains(hover) {
                             Circle()
@@ -262,18 +286,48 @@ struct RemoveObjectsEditor: View {
             .onEnded { _ in zoomStart = nil }
     }
 
+    /// The stroke being painted, in the view.
+    private func strokePath(in fitted: CGRect) -> Path {
+        Path { path in
+            let points = stroke.map { CGPoint(x: fitted.minX + $0.x * fitted.width, y: fitted.minY + $0.y * fitted.height) }
+            if points.count == 1 {
+                path.move(to: points[0])
+                path.addLine(to: points[0])
+            } else {
+                path.addLines(points)
+            }
+        }
+    }
+
+    /// What Clone & Heal copies where it's being painted: the picture, moved by `offset`, seen through the stroke.
+    private func clonePreview(_ image: CGImage, offset: CGSize, in shown: CGRect) -> some View {
+        Image(decorative: image, scale: 1)
+            .resizable()
+            .interpolation(zoom > 1.5 ? .medium : .high)
+            .frame(width: shown.width, height: shown.height)
+            .position(x: shown.midX - offset.width * shown.width, y: shown.midY - offset.height * shown.height)
+            .mask {
+                strokePath(in: shown)
+                    .stroke(style: StrokeStyle(lineWidth: strokeWidth * shown.width, lineCap: .round, lineJoin: .round))
+                    .blur(radius: strokeWidth * shown.width * 0.08)
+            }
+            .clipShape(Rectangle().path(in: shown))
+            .allowsHitTesting(false)
+    }
+
+    /// Where Clone & Heal copies from, in the view: following the pointer once a stroke has set the offset.
+    private func cloneMarker(in shown: CGRect) -> CGPoint? {
+        if let offset = cloneOffset, let hover, shown.contains(hover) {
+            return CGPoint(x: hover.x + offset.width * shown.width, y: hover.y + offset.height * shown.height)
+        }
+        guard cloneOffset == nil, let source = cloneSource else { return nil }
+        return CGPoint(x: shown.minX + source.x * shown.width, y: shown.minY + source.y * shown.height)
+    }
+
     @ViewBuilder
     private func markOverlay(in fitted: CGRect) -> some View {
-        if !stroke.isEmpty {
-            Path { path in
-                let points = stroke.map { CGPoint(x: fitted.minX + $0.x * fitted.width, y: fitted.minY + $0.y * fitted.height) }
-                if points.count == 1 {
-                    path.move(to: points[0])
-                    path.addLine(to: points[0])
-                } else {
-                    path.addLines(points)
-                }
-            }
+        if !stroke.isEmpty, !(mode == .clone && cloneOffset != nil) {
+            strokePath(in: fitted)
             .stroke(Self.markColor.opacity(0.55), style: StrokeStyle(lineWidth: strokeWidth * fitted.width, lineCap: .round, lineJoin: .round))
             .allowsHitTesting(false)
             .modifier(Pulsing(active: busy))
@@ -293,15 +347,29 @@ struct RemoveObjectsEditor: View {
             .onChanged { value in
                 guard !busy, !showOriginal, picture != nil else { return }
                 hover = value.location
+                let p = CGPoint(x: (value.location.x - fitted.minX) / fitted.width, y: (value.location.y - fitted.minY) / fitted.height)
+                // Clone & Heal: ⌥-click (or drag) sets where to copy from.
+                if mode == .clone, pickingSource || (stroke.isEmpty && NSEvent.modifierFlags.contains(.option)) {
+                    pickingSource = true
+                    cloneSource = CGPoint(x: min(max(p.x, 0), 1), y: min(max(p.y, 0), 1))
+                    cloneOffset = nil
+                    message = nil
+                    return
+                }
                 if stroke.isEmpty {
                     outline = nil
                     message = nil
                     strokeWidth = brush / fitted.width
+                    if mode == .clone, cloneOffset == nil, let source = cloneSource {
+                        cloneOffset = CGSize(width: source.x - p.x, height: source.y - p.y)
+                    }
                 }
-                stroke.append(CGPoint(x: (value.location.x - fitted.minX) / fitted.width, y: (value.location.y - fitted.minY) / fitted.height))
+                stroke.append(p)
             }
             .onEnded { value in
+                if pickingSource { return pickingSource = false }
                 guard !busy, !stroke.isEmpty else { return }
+                if mode == .clone { return cloneStroke() }
                 let travel = hypot(value.location.x - value.startLocation.x, value.location.y - value.startLocation.y)
                 let option = NSEvent.modifierFlags.contains(.option)
                 if travel < 3, stroke.count < 4, let p = stroke.first {
@@ -318,6 +386,7 @@ struct RemoveObjectsEditor: View {
     private var hintText: String {
         if let message { return message }
         if mode == .change { return changeHint }
+        if mode == .clone { return cloneHint }
         if busy {
             if let p = progress.value, p > 0 {
                 return method == .generate ? "Generating on this Mac… \(Int(p * 100))%" : "Removing… \(Int(p * 100))%"
@@ -333,6 +402,16 @@ struct RemoveObjectsEditor: View {
                 + (eraseInstalled || !GenerativeModel.isSupported ? "" : " (Using Match Photo: for Erase, the best fill, click Get the Model for Erase… below.)")
         }
         return "Removed. Paint or click to remove more; Try Again fills it differently, ⌘Z takes it back."
+    }
+
+    private var cloneHint: String {
+        if busy { return heal ? "Healing…" : "Copying…" }
+        if showOriginal { return "The original. Turn off Original to keep going." }
+        guard cloneSource != nil else {
+            return "⌥-click where to copy from (clean skin, sky, grass), then paint where it should go. Pinch or ⌘-scroll to zoom in."
+        }
+        guard !removals.isEmpty else { return "Now paint where it should go: the + shows where it's copying from." }
+        return (heal ? "Healed" : "Copied") + ". Keep painting, or ⌥-click to copy from somewhere else. ⌘Z takes back a stroke."
     }
 
     private var changeHint: String {
@@ -372,7 +451,11 @@ struct RemoveObjectsEditor: View {
     private var controls: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                if mode == .change { changeControls } else { removeControls }
+                switch mode {
+                case .remove: removeControls
+                case .change: changeControls
+                case .clone: cloneControls
+                }
                 Spacer()
                 Button { setZoom(zoom / 1.5, about: nil) } label: { Image(systemName: "minus.magnifyingglass") }
                     .disabled(zoom <= 1)
@@ -409,7 +492,7 @@ struct RemoveObjectsEditor: View {
                         .frame(width: 110)
                         .disabled(busy || removals.isEmpty)
                         .help("How much of the last change shows")
-                } else {
+                } else if mode == .remove {
                     Button("Try Again") { tryAgain() }
                         .disabled(busy || removals.isEmpty)
                         .help("Remove the last one again, filled differently (with the Fill chosen now)")
@@ -417,7 +500,7 @@ struct RemoveObjectsEditor: View {
                 Toggle(isOn: $showOriginal) { Label("Original", systemImage: "eye") }
                     .toggleStyle(.button)
                     .disabled(busy || removals.isEmpty)
-                    .help(mode == .change ? "Compare with the picture before these changes" : "Compare with the picture before these removals")
+                    .help(mode == .remove ? "Compare with the picture before these removals" : "Compare with the picture before these changes")
                 if mode == .change {
                     Button("Deselect") { clearSelection() }
                         .disabled(busy || selection == nil)
@@ -467,6 +550,20 @@ struct RemoveObjectsEditor: View {
             .controlSize(.small)
             .help("Erase uses \(RemovalModel.displayName), which runs on this Mac (a one-time download of \(DownloadableModel.removal.formattedSize))")
         }
+    }
+
+    @ViewBuilder
+    private var cloneControls: some View {
+        Picker("Clone", selection: Binding(get: { heal }, set: { heal = $0; Prefs.setBool($0, PrefKey.cloneHeals) })) {
+            Text("Heal").tag(true)
+            Text("Copy").tag(false)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .frame(width: 140)
+        .help("Heal keeps the detail of what's copied but takes the color and light of where it goes, so it blends in; Copy copies it as it is")
+        Text("⌥-click sets where to copy from")
+            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder
@@ -617,15 +714,18 @@ struct RemoveObjectsEditor: View {
                     return flag.isSet
                 }
                 var removal = try await withTaskCancellationHandler {
+                    if let clone = mark.clone {
+                        return try await ObjectRemover.clone(d, after: earlier, mask: mark.mask, offset: clone.offset, heal: clone.heal)
+                    }
                     switch mark.change {
                     case let change? where change.color != nil:
-                        try await ObjectRemover.recolor(d, after: earlier, mask: mark.mask, reach: mark.reach, color: change.color!)
+                        return try await ObjectRemover.recolor(d, after: earlier, mask: mark.mask, reach: mark.reach, color: change.color!)
                     case let change?:
-                        try await ObjectRemover.remove(d, after: earlier, mask: mark.mask, grow: mark.grow, method: .generate, seed: seed,
-                                                       prompt: change.description, keepShape: true, tint: change.tint, progress: progress)
+                        return try await ObjectRemover.remove(d, after: earlier, mask: mark.mask, grow: mark.grow, method: .generate, seed: seed,
+                                                              prompt: change.description, keepShape: true, tint: change.tint, progress: progress)
                     case nil:
-                        try await ObjectRemover.remove(d, after: earlier, mask: mark.mask, grow: mark.grow, method: method, seed: seed,
-                                                       prompt: prompt, progress: progress)
+                        return try await ObjectRemover.remove(d, after: earlier, mask: mark.mask, grow: mark.grow, method: method, seed: seed,
+                                                              prompt: prompt, progress: progress)
                     }
                 } onCancel: {
                     flag.set()
@@ -680,9 +780,36 @@ struct RemoveObjectsEditor: View {
     private func finish() {
         task?.cancel()
         if let url = model.currentURL, let d = model.decoded, !removals.isEmpty {
-            model.finishRemovingObjects(removals, url: url, decoded: d, changed: mode == .change)
+            model.finishRemovingObjects(removals, url: url, decoded: d, operation: mode == .change ? .changeObjects : mode == .clone ? .cloneHeal : .removeObjects)
         }
         model.activeTool = nil
+    }
+
+    // MARK: Clone & Heal
+
+    /// The stroke painted with what's at `cloneOffset` from it: healed in, or copied as it is.
+    private func cloneStroke() {
+        guard let picture, let d = model.decoded, d.url == model.currentURL else { return stroke = [] }
+        guard let offset = cloneOffset, let first = stroke.first else {
+            stroke = []
+            return message = "⌥-click where to copy from first."
+        }
+        let w = CGFloat(picture.width), h = CGFloat(picture.height)
+        let points = stroke.map { CGPoint(x: $0.x * w, y: (1 - $0.y) * h) }   // CG pixels, y up
+        let diameter = strokeWidth * w
+        guard let painted = Self.strokeMask(points, diameter: diameter, closed: false, width: picture.width, height: picture.height) else {
+            return stroke = []
+        }
+        // A soft-edged brush.
+        let size = CGSize(width: w, height: h)
+        let soft = CIImage(cgImage: painted, options: [.colorSpace: NSNull()]).clampedToExtent()
+            .applyingGaussianBlur(sigma: max(1, diameter * 0.08)).cropped(to: CGRect(origin: .zero, size: size))
+        // How far away it's copied from, in the image's own pixels (turned and flipped as it's shown).
+        let to = CGPoint(x: first.x * w, y: (1 - first.y) * h)
+        let from = CGPoint(x: (first.x + offset.width) * w, y: (1 - first.y - offset.height) * h)
+        let a = ObjectRemover.sourcePoint(to, shownWith: start, shown: size, size: d.pixelSize)
+        let b = ObjectRemover.sourcePoint(from, shownWith: start, shown: size, size: d.pixelSize)
+        remove(RemovalMark(mask: sourceMask(soft), grow: 0, clone: CloneStep(offset: CGVector(dx: b.x - a.x, dy: b.y - a.y), heal: heal)))
     }
 
     // MARK: Change Objects
@@ -901,6 +1028,25 @@ struct RemoveObjectsEditor: View {
             ])
         }
         return ImageDecoder.ciContext.createCGImage(shown, from: rect)
+    }
+}
+
+/// Where Clone & Heal copies from: a ring with a cross.
+private struct CloneMarker: View {
+    var body: some View {
+        ZStack {
+            Circle().stroke(lineWidth: 1.5).frame(width: 18, height: 18)
+            Path { p in
+                p.move(to: CGPoint(x: 0, y: 13))
+                p.addLine(to: CGPoint(x: 26, y: 13))
+                p.move(to: CGPoint(x: 13, y: 0))
+                p.addLine(to: CGPoint(x: 13, y: 26))
+            }
+            .stroke(lineWidth: 1)
+        }
+        .frame(width: 26, height: 26)
+        .foregroundStyle(.white)
+        .shadow(color: .black.opacity(0.8), radius: 1)
     }
 }
 

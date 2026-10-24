@@ -56,6 +56,7 @@
   <a href="#extend">Extend and Generate</a>
   <a href="#remove">Removing objects</a>
   <a href="#change">Changing objects</a>
+  <a href="#clone">Clone &amp; Heal</a>
   <a href="#cutouts">Subjects and backgrounds</a>
   <a href="#intelligence">Apple Intelligence</a>
   <a href="#files">Saving, exporting and files</a>
@@ -122,14 +123,14 @@
   <source media="(prefers-color-scheme: dark)" srcset="guide-stacks-dark.heic">
   <img class="shot" src="guide-stacks-light.heic" alt="The filmstrip with a stack spread out: a black and white copy, an upscaled copy and the original photo side by side on a shared background.">
 </picture>
-<p>Black &amp; White, Colorize, Fix Blur, Upscale with AI, Extend (and the cropped picture it starts from, when there's a crop), Remove Objects, Change Objects, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
+<p>Black &amp; White, Colorize, Fix Blur, Upscale with AI, Extend (and the cropped picture it starts from, when there's a crop), Remove Objects, Change Objects, Clone &amp; Heal, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
 <ul>
   <li><b>A stack takes one place</b> in the filmstrip and the grid, showing the copy you viewed or made last (at first, the newest), also after you open the folder again. Lines above the thumbnail and a count in its corner mark it.</li>
   <li><b>Step through a stack</b> with <kbd>⌥←</kbd> and <kbd>⌥→</kbd> (or <b>Go › Newer Copy in Stack</b> and <b>Older Copy in Stack</b>): newest first, the original last. The window's title says where you are, such as “Stack 2/3”.</li>
   <li><b>Spread it out.</b> Click the count, or choose <b>Show All Copies in Stack</b> (Go menu, or right-click), to see every copy side by side; click the count again to stack them up. The stack then shows the copy you were on.</li>
   <li><b>Copies of copies</b> (a colorized photo, then upscaled) stay in the original's stack. Renaming the original keeps its copies with it.</li>
   <li><b>View › Stack Copies with Originals</b> turns stacking off, showing every file on its own.</li>
-  <li><b>Changing the image itself instead.</b> In <b>Settings › Editing › Copies</b>, turn off “makes a copy” for Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects or Change Objects, and its result replaces the image, as Save would: the original goes to the Trash (if Save does that), after asking first (if Save asks). Photos from your Photos library and animations always get a copy.</li>
+  <li><b>Changing the image itself instead.</b> In <b>Settings › Editing › Copies</b>, turn off “makes a copy” for Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects, Change Objects or Clone &amp; Heal, and its result replaces the image, as Save would: the original goes to the Trash (if Save does that), after asking first (if Save asks). Photos from your Photos library and animations always get a copy.</li>
 </ul>
 <p class="note">A copy remembers what it was made from in the file's extended attributes; copies with names like “Beach (Colorized)” or “Beach (2×)” stack even without that.</p>
 
@@ -221,6 +222,19 @@
 </ol>
 <p class="note">A described change is the model's picture of what you asked for, painted into the shape of what was there: check it closely, and use Try Again or say it differently if it isn't right. A color change also changes the old color where it shows between strands of hair over what you change; a described change paints only what's selected, so a little of the old color can show between them.</p>
 
+<h2 id="clone">Clone &amp; Heal</h2>
+<p><b>Image › Clone &amp; Heal…</b> <kbd>⇧⌘H</kbd> (or <b>Heal</b> in the Adjust panel) paints with the picture itself: copy clean skin over a blemish, sky over a power line, grass over a bare patch, bricks over a sign. It works like <a href="#remove">Remove Objects</a>, with the same zoom, brush and steps.</p>
+<ol>
+  <li><b><kbd>⌥</kbd>-click where to copy from</b>: somewhere that looks the way the spot you're fixing should.</li>
+  <li><b>Paint where it goes.</b> The <b>+</b> shows where it's copying from, moving with your brush, and you see what's copied as you paint. The distance between the two is kept for the strokes after, so you can carry on a pattern in several strokes; <kbd>⌥</kbd>-click again to copy from somewhere else.</li>
+  <li>Each stroke is one step: <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd> step back and forward, and <b>Original</b> compares. <b>Done</b> saves “<i>name</i> (Retouched)”, stacked on the original, or (with <b>Clone &amp; Heal makes a copy</b> off in <b>Settings › Editing</b>) keeps the strokes as an edit.</li>
+</ol>
+<ul>
+  <li><b>Heal</b> (the default) keeps the detail of what's copied, its texture, pores or grain, but takes the color and brightness of where it goes, so it blends in even when the two were lit differently.</li>
+  <li><b>Copy</b> copies it exactly, for repeating something as it is, like a window or a fence post.</li>
+</ul>
+<p>It works on any Mac, without a download. Healing next to something of a very different color (a shirt collar, a dark edge) can pull a little of that color in: stay a brush width away from it, or switch to Copy there.</p>
+
 <h2 id="cutouts">Subjects and backgrounds</h2>
 <ul>
   <li><b>Remove Background</b> (<kbd>⌥⌘B</kbd>, or in the Intelligence panel) keeps the subject: a person, pet, object or several. Choose it again to restore the background.</li>
@@ -272,7 +286,7 @@
   <li><b>Save</b> <kbd>⌘S</kbd> sends the edit to Photos.</li>
   <li><b>Live Photos stay live.</b> Light, color, filters, crop, rotation and straightening apply to every frame of the motion too. A removed background and Extend are for a single picture, so a Live Photo with those is saved as a still; you're asked first.</li>
   <li><b>Edit again later.</b> A photo you edited here opens with its settings, so you can carry on adjusting instead of starting over. Take every edit off (<b>File › Revert to Original</b>) and save, and it's back to its original in Photos too.</li>
-  <li><b>Copies</b> you make (Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects, Change Objects) are added to your Photos library as new photos.</li>
+  <li><b>Copies</b> you make (Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects, Change Objects, Clone &amp; Heal) are added to your Photos library as new photos.</li>
   <li>Edits not yet saved to Photos are lost when you quit (edits to files are kept). Rename, move or delete the photos themselves in Photos.</li>
   <li><b>File › Import from Photos…</b> copies the photos you pick out of the library into a folder, as ordinary files that are yours to keep and edit like any others (edits then stay in the files; the photos in Photos aren't changed). It offers the folder you imported into last, or <b>Choose Folder…</b> for another (the first time, it asks), then opens that folder. Each photo comes as it looks now in Photos, with its own name and its date taken as the file's date; a Live Photo comes as its still.</li>
   <li><b>Image › Edit With › AOK-ImageTool</b> in Photos works too, for one photo at a time: Save sends the edit back. Photos turns off a Live Photo's motion when it hands it to another app this way, so use Open from Photos for Live Photos.</li>
@@ -283,7 +297,7 @@
 <ul>
   <li><b>General:</b> what <kbd>↑</kbd> <kbd>↓</kbd> do (browse or zoom); whether <kbd>Space</kbd> shows the next image; wrapping around at the end of a folder; moving on after a pick or reject; including subfolders and hidden files; slideshow timing; <a href="#updates">checking for updates</a>; and the list of supported formats.</li>
   <li><b>Viewing:</b> the canvas background, the checkerboard behind transparency, enlarging small images, crisp pixels when zoomed in, HDR, and file names under thumbnails.</li>
-  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, whether Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects and Change Objects each make a <a href="#stacks">copy</a> or change the image itself, and the <a href="#model">image models</a> (generative fill, colorizing, blur fixing, faces, object removal): their status, <b>Download</b>, <b>Remove…</b>, and under <b>More</b>, installing one you converted yourself and the model's license.</li>
+  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, whether Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects, Change Objects and Clone &amp; Heal each make a <a href="#stacks">copy</a> or change the image itself, and the <a href="#model">image models</a> (generative fill, colorizing, blur fixing, faces, object removal): their status, <b>Download</b>, <b>Remove…</b>, and under <b>More</b>, installing one you converted yourself and the model's license.</li>
   <li><b>Intelligence:</b> whether Apple Intelligence is available, describing images automatically, Live Text, and <b>Clear Cached Analysis</b> (search analysis is made again when needed).</li>
 </ul>
 
@@ -305,6 +319,7 @@
   <tr><td><kbd>C</kbd> <kbd>⌘K</kbd> <kbd>⇧⌘K</kbd></td><td>Crop &amp; straighten, Extend</td></tr>
   <tr><td><kbd>⇧⌘X</kbd></td><td><a href="#remove">Remove objects</a>; in it, <kbd>[</kbd> <kbd>]</kbd> size the brush, <kbd>⌘+</kbd> <kbd>⌘−</kbd> <kbd>⌘0</kbd> zoom, and <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd> step through its removals</td></tr>
   <tr><td><kbd>⇧⌘J</kbd></td><td><a href="#change">Change objects</a>, with the same keys; <kbd>⌥</kbd>-click or <kbd>⌥</kbd>-paint takes away from the selection</td></tr>
+  <tr><td><kbd>⇧⌘H</kbd></td><td><a href="#clone">Clone &amp; heal</a>, with the same keys; <kbd>⌥</kbd>-click sets where to copy from</td></tr>
   <tr><td><kbd>\</kbd></td><td>Show the original</td></tr>
   <tr><td><kbd>⌥⌘E</kbd> <kbd>⌥⌘C</kbd></td><td>Auto enhance, adjust color</td></tr>
   <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
@@ -331,6 +346,7 @@
   <tr><td>Colorize</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">colorizing model</a> is installed</td></tr>
   <tr><td>Fix Blur</td><td colspan="4">Any version, on Apple silicon, once its <a href="#model">models</a> are installed</td></tr>
   <tr><td>Remove Objects › Erase</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">object removal model</a> is installed (Match Photo works everywhere). Clicking an object takes the one under the click on macOS 15 and 26; on 27, any object.</td></tr>
+  <tr><td>Clone &amp; Heal</td><td colspan="4">Any version, on any Mac</td></tr>
   <tr><td>Change Objects</td><td colspan="4">Colors on any version. Anything more needs Apple silicon and the <a href="#model">generative fill model</a>.</td></tr>
 </table>
 <p>¹ On a Mac with Apple Intelligence, turned on in System Settings.</p>

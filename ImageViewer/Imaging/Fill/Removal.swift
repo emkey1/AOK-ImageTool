@@ -315,6 +315,69 @@ nonisolated enum ObjectRemover {
         return CGRect(x: x, y: y, width: w, height: h).integral.intersection(CGRect(origin: .zero, size: size))
     }
 
+    /// Clone & Heal: what `mask` covers (soft-edged) painted with what's `offset` from it (image pixels, Core
+    /// Image's y up), as a patch over `decoded` as the `earlier` changes left it. `heal` keeps only its detail, in
+    /// the color and light around where it goes (`iv_heal`); otherwise it's copied as it is.
+    @concurrent
+    static func clone(_ decoded: DecodedImage, after earlier: [Removal], mask: CIImage, offset: CGVector, heal: Bool) async throws -> Removal {
+        let renderer = EditRenderer.shared
+        var e = EditState()
+        e.removals = earlier.isEmpty ? nil : earlier
+        let source = renderer.makeImage(decoded, edits: e, maxDimension: nil, stage: .source)
+        let full = source.extent
+        guard let marked = VisionServices.maskBounds(mask, imageSize: full.size) else { throw RemovalError.nothingMarked }
+        // (Room around it, for the color it's healed into; the bounds are measured roughly.)
+        let margin = max(8, 0.004 * max(full.width, full.height)).rounded()
+        let rect = marked.insetBy(dx: -margin, dy: -margin).intersection(full).integral
+        let w = Int(rect.width), h = Int(rect.height)
+        guard w > 2, h > 2 else { throw RemovalError.nothingMarked }
+        let space = CGColorSpaceCreateCopyWithStandardRange(renderer.outputColorSpace(for: decoded))
+        var here = [UInt8](repeating: 0, count: w * h * 4), there = here
+        renderer.context.render(source, toBitmap: &here, rowBytes: w * 4, bounds: rect, format: .RGBA8, colorSpace: space)
+        // (Copying from past the edge takes the edge.)
+        let moved = source.clampedToExtent().transformed(by: CGAffineTransform(translationX: -offset.dx, y: -offset.dy))
+        renderer.context.render(moved, toBitmap: &there, rowBytes: w * 4, bounds: rect, format: .RGBA8, colorSpace: space)
+        var cover = [UInt8](repeating: 0, count: w * h)
+        renderer.context.render(mask, toBitmap: &cover, rowBytes: w, bounds: rect, format: .L8, colorSpace: nil)
+        let painted = heal && iv_heal(&here, there, cover, Int32(w), Int32(h)) != 0 ? here : there
+        guard let picture = image(painted, width: w, height: h, space: space) else { throw RemovalError.failed }
+        let patch = CIImage(cgImage: picture).transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
+            .applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect),
+                kCIInputMaskImageKey: mask,
+            ])
+            .cropped(to: rect)
+        guard let made = renderer.context.createCGImage(patch, from: rect, format: .RGBA8, colorSpace: space) else {
+            throw RemovalError.failed
+        }
+        let path = try RemovalStore.save(made)
+        return Removal(path: path, rect: CGRect(x: rect.minX / full.width, y: 1 - rect.maxY / full.height,
+                                                width: rect.width / full.width, height: rect.height / full.height))
+    }
+
+    /// A point on the image as `e` turns and flips it (`p` in pixels of a picture `shown` big, Core Image's y up),
+    /// in the image's own pixel space (`size`), as `sourceMask` maps masks.
+    static func sourcePoint(_ p: CGPoint, shownWith e: EditState, shown: CGSize, size: CGSize) -> CGPoint {
+        var frame = CGRect(origin: .zero, size: shown), q = p
+        func orient(_ o: CGImagePropertyOrientation) {
+            let t = CIImage(color: .black).cropped(to: frame).orientationTransform(for: o)
+            let moved = frame.applying(t)
+            q = q.applying(t)
+            q = CGPoint(x: q.x - moved.minX, y: q.y - moved.minY)
+            frame = CGRect(origin: .zero, size: moved.size)
+        }
+        switch ((e.quarterTurns % 4) + 4) % 4 {
+        case 1: orient(.left)
+        case 2: orient(.down)
+        case 3: orient(.right)
+        default: break
+        }
+        if e.flipVertical { orient(.downMirrored) }
+        if e.flipHorizontal { orient(.upMirrored) }
+        guard frame.width > 0, frame.height > 0 else { return q }
+        return CGPoint(x: q.x * size.width / frame.width, y: q.y * size.height / frame.height)
+    }
+
     /// A mask drawn over the image as `e` turns and flips it, in the image's own pixel space (`size`): the turn
     /// undone, then the flips (the pipeline flips first, then turns).
     static func sourceMask(_ mask: CIImage, shownWith e: EditState, size: CGSize) -> CIImage {

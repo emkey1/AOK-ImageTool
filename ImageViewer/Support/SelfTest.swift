@@ -302,7 +302,7 @@ enum SelfTest {
         model.openFolder(folder, selecting: file)
         for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
         if let d = model.decoded, let change = try? await ObjectRemover.recolor(d, after: [], mask: mask, color: blue) {
-            model.finishRemovingObjects([change], url: file.standardizedFileURL, decoded: d, changed: true)
+            model.finishRemovingObjects([change], url: file.standardizedFileURL, decoded: d, operation: .changeObjects)
             let copy = folder.appendingPathComponent("Boat (Changed).heic")
             for _ in 0..<300 where !fm.fileExists(atPath: copy.path) { try? await Task.sleep(for: .milliseconds(100)) }
             check(fm.fileExists(atPath: copy.path) && ImageStacks.source(of: copy) == "Boat.heic" && model.edits[file.standardizedFileURL] == nil,
@@ -311,11 +311,101 @@ enum SelfTest {
             Prefs.setBool(false, CopyOperation.changeObjects.key)
             model.select(file.standardizedFileURL)
             for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
-            model.finishRemovingObjects([change], url: file.standardizedFileURL, decoded: d, changed: true)
+            model.finishRemovingObjects([change], url: file.standardizedFileURL, decoded: d, operation: .changeObjects)
             check(model.edits[file.standardizedFileURL]?.removals == [change] && Prefs.makesCopy(.removeObjects),
                   "with Change Objects' copies off, the change is an edit of the image (Remove Objects' setting is its own)")
         } else {
             check(false, "a change for Done")
+        }
+    }
+
+    /// Clone & Heal: a point marked on the image as shown lands where masks do; Copy copies; Heal keeps what's
+    /// copied's detail in the color around where it goes. (`AOK_SELFTEST_ONLY=clone` runs just these.)
+    private static func cloneHealChecks(out: URL) async {
+        // Points map as masks do, however the image is turned and flipped.
+        let size = CGSize(width: 400, height: 300)
+        var mapped = true
+        for turns in 0..<4 {
+            for (flipH, flipV) in [(false, false), (true, false), (false, true)] {
+                var e = EditState()
+                e.quarterTurns = turns
+                e.flipHorizontal = flipH
+                e.flipVertical = flipV
+                let shown = turns % 2 == 1 ? CGSize(width: 300, height: 400) : size
+                let p = CGPoint(x: shown.width * 0.3, y: shown.height * 0.8)
+                let spot = CIImage(color: .white).cropped(to: CGRect(x: p.x - 3, y: p.y - 3, width: 6, height: 6))
+                    .composited(over: CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: shown)))
+                let q = ObjectRemover.sourcePoint(p, shownWith: e, shown: shown, size: size)
+                guard let b = VisionServices.maskBounds(ObjectRemover.sourceMask(spot, shownWith: e, size: size), imageSize: size),
+                      hypot(b.midX - q.x, b.midY - q.y) < 3 else { mapped = false; continue }
+            }
+        }
+        check(mapped, "where to copy from maps onto the image however it's turned and flipped")
+
+        // A picture: textured orange on the left, smooth blue on the right.
+        let w = 400, h = 300
+        var px = [UInt8](repeating: 255, count: w * h * 4)
+        var seed: UInt32 = 12345
+        for y in 0..<h {
+            for x in 0..<w {
+                let i = (y * w + x) * 4
+                if x < 200 {
+                    seed = seed &* 1664525 &+ 1013904223
+                    let n = Int(seed >> 24) / 4 - 32   // ±32
+                    px[i] = UInt8(clamping: 230 + n); px[i + 1] = UInt8(clamping: 130 + n); px[i + 2] = UInt8(clamping: 40 + n / 2)
+                } else {
+                    px[i] = 30; px[i + 1] = UInt8(60 + y / 10); px[i + 2] = 140
+                }
+            }
+        }
+        guard let provider = CGDataProvider(data: Data(px) as CFData),
+              let made = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                 space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                 provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else {
+            return check(false, "a picture for Clone & Heal")
+        }
+        let picture = DecodedImage(url: out.appendingPathComponent("clone.png"), cgImage: made, isHDR: false, isAnimated: false,
+                                   pageCount: 1, pageIndex: 0, typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+        let frame = CGRect(x: 0, y: 0, width: w, height: h)
+        // A dab on the blue (Core Image coordinates), copied from the orange 200 px to its left.
+        let mask = CIImage(color: .white).cropped(to: CGRect(x: 270, y: 120, width: 60, height: 60)).applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 3])
+            .composited(over: CIImage(color: .black).cropped(to: frame)).cropped(to: frame)
+        func stats(_ image: CGImage, _ r: CGRect) -> (mean: [Double], spread: Double) {
+            var p = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            let ctx = CGContext(data: &p, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            var sums = [0.0, 0.0, 0.0], greens = [Double]()
+            for y in Int(r.minY)..<Int(r.maxY) {
+                for x in Int(r.minX)..<Int(r.maxX) {
+                    let i = ((image.height - 1 - y) * image.width + x) * 4   // (rows top-down; `r` is y-up)
+                    for c in 0..<3 { sums[c] += Double(p[i + c]) }
+                    greens.append(Double(p[i]))
+                }
+            }
+            let n = Double(greens.count), m = greens.reduce(0, +) / n
+            return (sums.map { $0 / n }, (greens.map { ($0 - m) * ($0 - m) }.reduce(0, +) / n).squareRoot())
+        }
+        func render(_ removal: Removal) -> CGImage? {
+            var e = EditState()
+            e.removals = [removal]
+            return EditRenderer.shared.renderSync(picture, edits: e, maxDimension: nil)?.image
+        }
+        let inside = CGRect(x: 285, y: 135, width: 30, height: 30), around = CGRect(x: 250, y: 100, width: 100, height: 12)
+        do {
+            guard let copied = try await render(ObjectRemover.clone(picture, after: [], mask: mask, offset: CGVector(dx: -200, dy: 0), heal: false)),
+                  let healed = try await render(ObjectRemover.clone(picture, after: [], mask: mask, offset: CGVector(dx: -200, dy: 0), heal: true)),
+                  let plain = EditRenderer.shared.renderSync(picture, edits: EditState(), maxDimension: nil)?.image else { throw RemovalError.failed }
+            writeJPEG(healed, to: out.appendingPathComponent("healed.jpg"))
+            let c = stats(copied, inside), hl = stats(healed, inside), ring = stats(plain, around), orange = stats(plain, CGRect(x: 85, y: 135, width: 30, height: 30))
+            func distance(_ a: [Double], _ b: [Double]) -> Double { zip(a, b).map { abs($0 - $1) }.max() ?? 0 }
+            check(distance(c.mean, orange.mean) < 6 && c.spread > 10,
+                  String(format: "Copy copies what's there (%.0f from the orange it copied, texture %.0f)", distance(c.mean, orange.mean), c.spread))
+            check(distance(hl.mean, ring.mean) < 16 && hl.spread > 8 && stats(healed, CGRect(x: 0, y: 0, width: 40, height: 40)).mean == stats(plain, CGRect(x: 0, y: 0, width: 40, height: 40)).mean,
+                  String(format: "Heal keeps its texture (%.0f) in the color around it (%.0f from the blue around; copied, %.0f); the rest untouched",
+                         hl.spread, distance(hl.mean, ring.mean), distance(c.mean, ring.mean)))
+        } catch {
+            check(false, "Clone & Heal: \(error.localizedDescription)")
         }
     }
 
@@ -464,7 +554,7 @@ enum SelfTest {
         // put them back afterwards.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
-                           CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, PrefKey.confirmOverwrite,
+                           CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, CopyOperation.cloneHeal.key, PrefKey.cloneHeals, PrefKey.confirmOverwrite,
                            PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
                            PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key, PrefKey.stackFronts]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
@@ -519,6 +609,16 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "blur", let harbor = decodedByName["Harbor Village.heic"] {
             print("\n[Fix Blur]")
             await fixBlurChecks(harbor, out: out)
+            for (key, value) in savedPrefs {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "clone" {
+            print("\n[Clone & Heal]")
+            await cloneHealChecks(out: out)
             for (key, value) in savedPrefs {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
@@ -1423,6 +1523,8 @@ enum SelfTest {
         if let boat = decodedByName["Sailboat.heic"] { await removeObjectsChecks(boat, out: out) }
         print("\n[Change Objects]")
         if let boat = decodedByName["Sailboat.heic"] { await changeObjectsChecks(boat, out: out) }
+        print("\n[Clone & Heal]")
+        await cloneHealChecks(out: out)
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")

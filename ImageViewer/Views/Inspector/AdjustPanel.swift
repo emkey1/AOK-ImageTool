@@ -129,6 +129,15 @@ struct AdjustPanel: View {
                 }
                 .glassButtonStyle()
                 .help("Crop & straighten (C)")
+
+                Button {
+                    model.beginCloneHeal()
+                } label: {
+                    Label("Heal", systemImage: "bandage").frame(maxWidth: .infinity)
+                }
+                .glassButtonStyle()
+                .disabled(!model.canRemoveObjects)
+                .help("Clone & heal: paint with what's copied from elsewhere in the picture (⇧⌘H)")
             }
             HStack(spacing: 6) {
                 iconButton("rotate.left", help: "Rotate left") { model.rotate(clockwise: false) }

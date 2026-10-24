@@ -12,6 +12,7 @@ nonisolated enum PrefKey {
     static let extendMethod = "extendMethod"
     static let removalMethod = "removalMethod"
     static let removalBrush = "removalBrush"
+    static let cloneHeals = "cloneHeals"
     static let checkerboard = "checkerboardForTransparency"
     static let upscaleSmallImages = "upscaleSmallImages"
     static let aiEnhanceEnlarged = "aiEnhanceEnlarged"
@@ -75,7 +76,7 @@ nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {
 /// What makes a new picture: whether it saves it as a copy, stacked on the original (the default), or puts it
 /// in place of the image (Settings ▸ Editing ▸ Copies).
 nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
-    case upscale, colorize, blackAndWhite, fixBlur, extend, removeObjects, changeObjects
+    case upscale, colorize, blackAndWhite, fixBlur, extend, removeObjects, changeObjects, cloneHeal
 
     var id: String { rawValue }
     var key: String { "makesCopy." + rawValue }
@@ -89,6 +90,7 @@ nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
         case .extend: "Extend"
         case .removeObjects: "Remove Objects"
         case .changeObjects: "Change Objects"
+        case .cloneHeal: "Clone & Heal"
         }
     }
 }
@@ -160,6 +162,9 @@ nonisolated enum Prefs {
         guard FileManager.default.fileExists(atPath: path, isDirectory: &isFolder), isFolder.boolValue else { return nil }
         return URL(fileURLWithPath: path, isDirectory: true)
     }
+
+    /// Clone & Heal blends what it copies into where it goes (Heal), rather than copying it as it is.
+    static var cloneHeals: Bool { bool(PrefKey.cloneHeals, true) }
 
     /// Remove Objects' brush diameter, in points on screen.
     static var removalBrush: Double {

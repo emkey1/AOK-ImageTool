@@ -25,20 +25,30 @@ extension ViewerModel {
         activeTool = .changeObjects
     }
 
-    /// Done in Remove Objects (or, `changed`, Change Objects) with `removals` made: saved as "<name> (Retouched)"
-    /// ("(Changed)"), stacked on the original (which stays as it was), or, with copies turned off, kept as an
-    /// edit of the image to save.
-    func finishRemovingObjects(_ removals: [Removal], url: URL, decoded d: DecodedImage, changed: Bool = false) {
+    /// Image ▸ Clone & Heal…: opens Remove Objects' tool for painting with what's copied from elsewhere in the
+    /// picture instead.
+    func beginCloneHeal() {
+        guard canRemoveObjects else { return }
+        viewMode = .viewer
+        activeTool = .cloneHeal
+    }
+
+    /// Done in Remove Objects (or Change Objects, or Clone & Heal: `operation`) with `removals` made: saved as
+    /// "<name> (Retouched)" ("(Changed)"), stacked on the original (which stays as it was), or, with its copies
+    /// turned off, kept as an edit of the image to save.
+    func finishRemovingObjects(_ removals: [Removal], url: URL, decoded d: DecodedImage, operation: CopyOperation = .removeObjects) {
+        let changed = operation == .changeObjects
         guard !removals.isEmpty, d.url == url else { return }
         let previous = edits[url] ?? .identity
         var result = previous
         result.removals = (previous.removals ?? []) + removals
-        if Prefs.makesCopy(changed ? .changeObjects : .removeObjects) {
+        if Prefs.makesCopy(operation) {
             let kind = changed ? "changed" : "retouched"
             let failure = "Couldn't save a \(kind) copy of “\(url.lastPathComponent)”"
             let save: (EditState) -> Void = { [weak self] e in
                 self?.saveCopy(of: url, decoded: d, edits: e, label: changed ? "Changed" : "Retouched", defaultFormat: .heic,
-                               working: "Saving the \(kind) copy…", systemImage: changed ? "paintbrush" : "eraser", failure: failure) { $0 }
+                               working: "Saving the \(kind) copy…", systemImage: changed ? "paintbrush" : operation == .cloneHeal ? "bandage" : "eraser",
+                               failure: failure) { $0 }
             }
             guard result.needsExtendFill else { return save(result) }
             // An extended photo: its extension continues the retouched picture, so it's made again first.
@@ -55,7 +65,11 @@ extension ViewerModel {
                 }
             }
         } else {
-            let undoName = changed ? (removals.count == 1 ? "Change Object" : "Change Objects") : (removals.count == 1 ? "Remove Object" : "Remove Objects")
+            let undoName = switch operation {
+            case .changeObjects: removals.count == 1 ? "Change Object" : "Change Objects"
+            case .cloneHeal: "Clone & Heal"
+            default: removals.count == 1 ? "Remove Object" : "Remove Objects"
+            }
             applyEdits(result, to: url, undoName: undoName, previous: previous)
         }
     }

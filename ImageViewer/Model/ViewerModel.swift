@@ -34,9 +34,11 @@ enum ActiveTool: Equatable {
     case selectObject
     case removeObjects
     case changeObjects
+    case cloneHeal
 
-    /// Remove and Change Objects: the tools that paint over the picture, with their own undo, zoom and brush.
-    var paintsObjects: Bool { self == .removeObjects || self == .changeObjects }
+    /// Remove and Change Objects, and Clone & Heal: the tools that paint over the picture, with their own undo,
+    /// zoom and brush.
+    var paintsObjects: Bool { self == .removeObjects || self == .changeObjects || self == .cloneHeal }
 }
 
 /// What the canvas should draw right now.

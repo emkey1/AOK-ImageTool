@@ -183,6 +183,10 @@ struct ViewerCommands: Commands {
             Button("Crop & Straighten…") { viewer?.viewMode = .viewer; viewer?.activeTool = .crop }
                 .keyboardShortcut("k")
                 .disabled(!canEdit)
+            Button("Clone & Heal…") { viewer?.beginCloneHeal() }
+                .keyboardShortcut("h", modifiers: [.command, .shift])
+                .disabled(!(viewer?.canRemoveObjects ?? false))
+                .help("Paint with what's copied from elsewhere in the picture, blended in")
             Button("Auto Enhance") { viewer?.toggleAutoEnhance() }
                 .keyboardShortcut("e", modifiers: [.command, .option])
                 .disabled(!canEdit)
