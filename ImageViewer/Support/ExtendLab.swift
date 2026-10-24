@@ -109,6 +109,91 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -pickWhiteBalance <image> <x> <y> <out.jpg>`: White Balance's eyedropper at (x, y) (normalized,
+        // top-left origin); saves the photo before and after, side by side.
+        // (CAST="<warmth>,<tint>": with that cast put in first.)
+        if let i = args.firstIndex(of: "-pickWhiteBalance"), i + 4 < args.count,
+           var d = try? ImageDecoder.decode(url: URL(fileURLWithPath: args[i + 1]), page: 0, allowHDR: false),
+           let x = Double(args[i + 2]), let y = Double(args[i + 3]) {
+            if let cast = ProcessInfo.processInfo.environment["CAST"]?.split(separator: ",").compactMap({ Double($0) }), cast.count == 2 {
+                var c = EditState()
+                c.temperature = cast[0]
+                c.tint = cast[1]
+                if let made = EditRenderer.shared.renderSync(d, edits: c, maxDimension: nil)?.image {
+                    d = DecodedImage(url: d.url.appendingPathExtension("cast"), cgImage: made, isHDR: false, isAnimated: false, pageCount: 1,
+                                     pageIndex: 0, typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+                }
+            }
+            guard let pick = await WhiteBalance.neutral(d, edits: EditState(), at: CGPoint(x: x, y: 1 - y)) else {
+                print("no pick")
+                exit(0)
+            }
+            print(String(format: "Warmth %+.2f, Tint %+.2f, ", pick.temperature, pick.tint) + "\(pick.target)" + (pick.colorful ? ", colorful" : ""))
+            var f = EditState()
+            f.temperature = pick.temperature
+            f.tint = pick.tint
+            if let a = EditRenderer.shared.renderSync(d, edits: EditState(), maxDimension: 600)?.image,
+               let b = EditRenderer.shared.renderSync(d, edits: f, maxDimension: 600)?.image,
+               let ctx = CGContext(data: nil, width: a.width * 2 + 8, height: a.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                   space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                ctx.draw(a, in: CGRect(x: 0, y: 0, width: a.width, height: a.height))
+                ctx.draw(b, in: CGRect(x: a.width + 8, y: 0, width: b.width, height: b.height))
+                if let both = ctx.makeImage() {
+                    try? ImageWriter.write(both, to: URL(fileURLWithPath: args[i + 4]), format: .jpeg, quality: 0.85, sourceProperties: [:], metadata: .removeAll)
+                }
+            }
+            exit(0)
+        }
+        // `-extendTest -whiteBalance <image>...`: Auto white balance on each image as it is, and with a warm or cool
+        // cast put in (its average color before and after, as log ratios to green).
+        if let i = args.firstIndex(of: "-whiteBalance"), i + 1 < args.count {
+            func ratios(_ image: CGImage) -> String {
+                let ci = CIImage(cgImage: image)
+                let avg = ci.applyingFilter("CIAreaAverage", parameters: [kCIInputExtentKey: CIVector(cgRect: ci.extent)])
+                var px = [Float](repeating: 0, count: 4)
+                EditRenderer.shared.context.render(avg, toBitmap: &px, rowBytes: 16, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf, colorSpace: nil)
+                return String(format: "r/g %+.2f b/g %+.2f", log(px[0] / px[1]), log(px[2] / px[1]))
+            }
+            for path in args.dropFirst(i + 1) {
+                guard let d = try? ImageDecoder.decode(url: URL(fileURLWithPath: path), page: 0, allowHDR: false) else { continue }
+                let plain = await WhiteBalance.auto(d, edits: EditState())
+                // (WB_OUT: also save each image before and after Auto, side by side.)
+                if let folder = ProcessInfo.processInfo.environment["WB_OUT"], let plain {
+                    var f = EditState()
+                    f.temperature = plain.temperature
+                    f.tint = plain.tint
+                    if let a = EditRenderer.shared.renderSync(d, edits: EditState(), maxDimension: 600)?.image,
+                       let b = EditRenderer.shared.renderSync(d, edits: f, maxDimension: 600)?.image,
+                       let ctx = CGContext(data: nil, width: a.width * 2 + 8, height: a.height, bitsPerComponent: 8, bytesPerRow: 0,
+                                           space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                        ctx.draw(a, in: CGRect(x: 0, y: 0, width: a.width, height: a.height))
+                        ctx.draw(b, in: CGRect(x: a.width + 8, y: 0, width: b.width, height: b.height))
+                        if let both = ctx.makeImage() {
+                            try? ImageWriter.write(both, to: URL(fileURLWithPath: folder).appendingPathComponent(URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent + ".jpg"),
+                                                   format: .jpeg, quality: 0.85, sourceProperties: [:], metadata: .removeAll)
+                        }
+                    }
+                }
+                var line = URL(fileURLWithPath: path).lastPathComponent + ": as is → " + (plain.map { String(format: "%+.2f %+.2f", $0.temperature, $0.tint) } ?? "nil")
+                for cast in [0.6, -0.5] {
+                    var e = EditState()
+                    e.temperature = cast
+                    guard let castImage = EditRenderer.shared.renderSync(d, edits: e, maxDimension: 1024)?.image,
+                          let original = EditRenderer.shared.renderSync(d, edits: EditState(), maxDimension: 1024)?.image else { continue }
+                    let cd = DecodedImage(url: d.url.appendingPathExtension("cast\(cast)"), cgImage: castImage, isHDR: false, isAnimated: false, pageCount: 1, pageIndex: 0,
+                                          typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+                    let fix = await WhiteBalance.auto(cd, edits: EditState())
+                    var f = EditState()
+                    f.temperature = fix?.temperature ?? 0
+                    f.tint = fix?.tint ?? 0
+                    let fixed = EditRenderer.shared.renderSync(cd, edits: f, maxDimension: 1024)?.image
+                    line += String(format: " | cast %+.1f → ", cast) + (fix.map { String(format: "%+.2f %+.2f", $0.temperature, $0.tint) } ?? "nil")
+                        + " [orig " + ratios(original) + ", cast " + ratios(castImage) + ", fixed " + (fixed.map(ratios) ?? "-") + "]"
+                }
+                print(line)
+            }
+            exit(0)
+        }
         // `-extendTest -interpret "<instruction>"...`: how Change Objects reads each instruction.
         if let i = args.firstIndex(of: "-interpret"), i + 1 < args.count {
             for text in args.dropFirst(i + 1) {

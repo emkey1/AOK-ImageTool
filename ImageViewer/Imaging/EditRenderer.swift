@@ -219,6 +219,16 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         return vignetted(img, e.vignette)
     }
 
+    /// The picture as white balance sees it: turned and straightened, with Auto enhance, before light and color
+    /// (and uncropped, so a spot is found by where it is before the crop). For the eyedropper and Auto.
+    func whiteBalanceInput(_ decoded: DecodedImage, edits e: EditState, maxDimension: CGFloat?) -> CIImage {
+        var img = makeImage(decoded, edits: e, maxDimension: maxDimension, stage: .geometry)
+        if e.autoEnhance {
+            for (name, params) in autoRecipe(for: decoded) { img = img.applyingFilter(name, parameters: params) }
+        }
+        return img
+    }
+
     /// The edits that hold for every frame of a Live Photo (perspective, turns, straightening, light and
     /// color, filters, crop, vignette) on one frame, upright. `still` is the photo they were made on (Auto's
     /// recipe comes from it); `renderScale` is the frame's size relative to it. A cutout, a background and
@@ -575,12 +585,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         if e.exposure != 0 {
             img = img.applyingFilter("CIExposureAdjust", parameters: [kCIInputEVKey: e.exposure])
         }
-        if e.temperature != 0 || e.tint != 0 {
-            img = img.applyingFilter("CITemperatureAndTint", parameters: [
-                "inputNeutral": CIVector(x: 6500 + e.temperature * (e.temperature > 0 ? 4000 : 2500), y: e.tint * 60),
-                "inputTargetNeutral": CIVector(x: 6500, y: 0),
-            ])
-        }
+        img = WhiteBalance.apply(img, temperature: e.temperature, tint: e.tint)
         if e.brightness != 0 || e.highlights > 0 {
             let b = e.brightness * 0.12
             let h = max(0, e.highlights) * 0.1

@@ -113,8 +113,16 @@ final class ViewerModel {
     var showOriginal = false {
         didSet { if oldValue != showOriginal { refreshDisplay() } }
     }
+    /// White Balance's eyedropper is out: the next click on the picture sets Warmth and Tint from what's there.
+    var pickingWhiteBalance = false {
+        didSet { if oldValue != pickingWhiteBalance { whiteBalancePickerChanged() } }
+    }
+    @ObservationIgnored var whiteBalanceMonitor: Any?
     var activeTool: ActiveTool? {
-        didSet { toolImage = activeTool == nil ? nil : currentURL }
+        didSet {
+            toolImage = activeTool == nil ? nil : currentURL
+            if activeTool != nil { pickingWhiteBalance = false }
+        }
     }
     /// The image the open tool was opened on.
     @ObservationIgnored private var toolImage: URL?

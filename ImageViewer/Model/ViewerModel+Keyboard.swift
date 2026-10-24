@@ -99,6 +99,11 @@ extension ViewerModel {
             return true
         }
         guard let window, event.window === window, window.attachedSheet == nil else { return false }
+        // Esc puts White Balance's eyedropper away.
+        if pickingWhiteBalance, event.keyCode == 53 {
+            pickingWhiteBalance = false
+            return true
+        }
         if isTextEditing {
             // Esc in an empty text field hands focus back to the image.
             if event.keyCode == 53, (window.firstResponder as? NSTextView)?.string.isEmpty == true {

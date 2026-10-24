@@ -409,6 +409,103 @@ enum SelfTest {
         }
     }
 
+    /// White balance: the eyedropper makes what's clicked neutral (on a cropped photo too); Auto takes a cast out
+    /// of a photo with something neutral in it, and leaves one with nothing neutral alone; presets go the right
+    /// way. (`AOK_SELFTEST_ONLY=wb` runs just these.)
+    private static func whiteBalanceChecks(out: URL) async {
+        /// A picture whose top-down rows are filled by `color(x, y)` (sRGB bytes).
+        func picture(_ name: String, width w: Int = 300, height h: Int = 200, _ color: (Int, Int) -> (Int, Int, Int)) -> DecodedImage? {
+            var px = [UInt8](repeating: 255, count: w * h * 4)
+            for y in 0..<h {
+                for x in 0..<w {
+                    let c = color(x, y), i = (y * w + x) * 4
+                    px[i] = UInt8(clamping: c.0); px[i + 1] = UInt8(clamping: c.1); px[i + 2] = UInt8(clamping: c.2)
+                }
+            }
+            guard let provider = CGDataProvider(data: Data(px) as CFData),
+                  let image = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                      provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { return nil }
+            return DecodedImage(url: out.appendingPathComponent(name), cgImage: image, isHDR: false, isAnimated: false, pageCount: 1, pageIndex: 0,
+                                typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+        }
+        /// The rendered color (sRGB) at `p` (normalized, top-left origin) of `d` with `e`.
+        func color(_ d: DecodedImage, _ e: EditState, at p: CGPoint) -> [Int] {
+            guard let image = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil)?.image else { return [] }
+            var px = [UInt8](repeating: 0, count: 4)
+            let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(image, in: CGRect(x: -p.x * CGFloat(image.width) + 0.5, y: -(1 - p.y) * CGFloat(image.height) + 0.5,
+                                       width: CGFloat(image.width), height: CGFloat(image.height)))
+            return px.prefix(3).map(Int.init)
+        }
+        func spread(_ c: [Int]) -> Int { (c.max() ?? 0) - (c.min() ?? 0) }
+        func balanced(_ e: EditState, _ b: (temperature: Double, tint: Double)?) -> EditState {
+            var e = e
+            e.temperature = b?.temperature ?? 0
+            e.tint = b?.tint ?? 0
+            return e
+        }
+        // The eyedropper: warm gray on the left, red on the right.
+        if let d = picture("wb-pick.png", { x, _ in x < 150 ? (205, 180, 140) : (200, 30, 30) }) {
+            let pick = await WhiteBalance.neutral(d, edits: EditState(), at: CGPoint(x: 0.25, y: 0.5))
+            let after = color(d, balanced(EditState(), pick.map { ($0.temperature, $0.tint) }), at: CGPoint(x: 0.25, y: 0.5))
+            check(spread(after) <= 4, "the eyedropper makes what's clicked neutral: warm gray \(color(d, EditState(), at: CGPoint(x: 0.25, y: 0.5))) → \(after)")
+        }
+        // On a cropped photo, where it's clicked: warm gray on top, cool gray below, cropped to the bottom half.
+        if let d = picture("wb-crop.png", { _, y in y < 100 ? (205, 180, 140) : (160, 172, 196) }) {
+            var e = EditState()
+            e.crop = CGRect(x: 0, y: 0.5, width: 1, height: 0.5)
+            let pick = await WhiteBalance.neutral(d, edits: e, at: CGPoint(x: 0.5, y: 0.5))
+            let after = color(d, balanced(e, pick.map { ($0.temperature, $0.tint) }), at: CGPoint(x: 0.5, y: 0.5))
+            check(spread(after) <= 4 && (pick?.temperature ?? 0) > 0, "on a cropped photo, the eyedropper goes by what's clicked (cool gray → \(after))")
+        }
+        // Auto: a scene with a warm cast (a gray wall, a red chair, a green plant, texture) and one with nothing neutral.
+        var seed: UInt32 = 7
+        func noise() -> Int {
+            seed = seed &* 1664525 &+ 1013904223
+            return Int(seed >> 27) - 16
+        }
+        if let d = picture("wb-auto.png", { x, y in
+            let n = noise()
+            if x < 90 && y > 120 { return (190 + n, 40 + n, 30 + n) }   // the chair
+            if x > 220 && y < 80 { return (60 + n, 150 + n, 40 + n) }   // the plant
+            return (210 + n, 185 + n, 145 + n)                        // the wall, warm
+        }) {
+            let b = await WhiteBalance.auto(d, edits: EditState())
+            let wall = color(d, balanced(EditState(), b), at: CGPoint(x: 0.5, y: 0.5))
+            check(spread(wall) <= 12 && (b?.temperature ?? 0) < 0,
+                  "Auto takes a warm cast out (\(b.map { String(format: "Warmth %+.2f, Tint %+.2f", $0.temperature, $0.tint) } ?? "nothing")): the wall \(wall)")
+        }
+        if let d = picture("wb-colorful.png", { x, _ in x < 100 ? (220, 40, 30) : x < 200 ? (30, 180, 40) : (30, 60, 220) }) {
+            let b = await WhiteBalance.auto(d, edits: EditState())
+            check(b == nil, "Auto leaves a photo with nothing neutral in it alone")
+        }
+        // Skin: natural skin is left alone; skin with a cast is brought back.
+        func skin(_ r: Int, _ g: Int, _ b: Int) -> CIImage {
+            CIImage(color: CIColor(red: CGFloat(r) / 255, green: CGFloat(g) / 255, blue: CGFloat(b) / 255, alpha: 1,
+                                   colorSpace: CGColorSpace(name: CGColorSpace.sRGB)!)!).cropped(to: CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        func hue(_ img: CIImage) -> Double {
+            var px = [Float](repeating: 0, count: 4)
+            EditRenderer.shared.context.render(img, toBitmap: &px, rowBytes: 16, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBAf, colorSpace: nil)
+            return Double(atan2(log(px[2] / px[1]), log(px[0] / px[1]))) * 180 / .pi
+        }
+        let natural = WhiteBalance.solve(skin(194, 150, 130), target: .skin)   // the ColorChecker's light skin
+        let ghostly = skin(170, 165, 160)
+        if let fixed = WhiteBalance.solve(ghostly, target: .skin) {
+            let after = hue(WhiteBalance.apply(ghostly, temperature: fixed.temperature, tint: fixed.tint))
+            check(natural.map { $0.temperature == 0 && $0.tint == 0 } == true && fixed.temperature > 0.2 && (-40 ... -12).contains(after),
+                  String(format: "on a face, natural skin is left alone, and grayish skin is warmed to a natural hue (%.0f° → %.0f°)", hue(ghostly), after))
+        } else {
+            check(false, "on a face, skin is balanced")
+        }
+
+        let lamps = WhiteBalance.Light.lamps.setting, shade = WhiteBalance.Light.shade.setting, fluorescent = WhiteBalance.Light.fluorescent.setting
+        check(lamps.temperature < 0 && shade.temperature > 0 && fluorescent.tint > 0,
+              "presets: Indoor Lamps cools, Shade warms, Fluorescent takes green out")
+    }
+
     /// Shot Quality and Best Shots in a folder with stacks: a picture is scored on its own before the folder is
     /// analyzed, every shown picture (stacks' top copies too) after, and a copy made later is scored by itself.
     /// (`AOK_SELFTEST_ONLY=quality` runs just these.)
@@ -616,9 +713,14 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "clone" {
-            print("\n[Clone & Heal]")
-            await cloneHealChecks(out: out)
+        if ["clone", "wb"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "clone" {
+                print("\n[Clone & Heal]")
+                await cloneHealChecks(out: out)
+            } else {
+                print("\n[White Balance]")
+                await whiteBalanceChecks(out: out)
+            }
             for (key, value) in savedPrefs {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
@@ -1525,6 +1627,8 @@ enum SelfTest {
         if let boat = decodedByName["Sailboat.heic"] { await changeObjectsChecks(boat, out: out) }
         print("\n[Clone & Heal]")
         await cloneHealChecks(out: out)
+        print("\n[White Balance]")
+        await whiteBalanceChecks(out: out)
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")

@@ -14,6 +14,8 @@ struct AdjustPanel: View {
 
                 straightenSection(e)
 
+                whiteBalanceSection(e)
+
                 PanelSection(title: "Light", systemImage: "sun.max") {
                     slider("Exposure", \.exposure, -2...2, format: { String(format: "%+.2f EV", $0) })
                     slider("Brightness", \.brightness, -1...1)
@@ -25,8 +27,6 @@ struct AdjustPanel: View {
                 PanelSection(title: "Color", systemImage: "paintpalette") {
                     slider("Saturation", \.saturation, -1...1)
                     slider("Vibrance", \.vibrance, -1...1)
-                    slider("Warmth", \.temperature, -1...1)
-                    slider("Tint", \.tint, -1...1)
                 }
 
                 PanelSection(title: "Detail", systemImage: "camera.filters") {
@@ -172,6 +172,34 @@ struct AdjustPanel: View {
                 nudge("+1°", by: 1, e)
             }
             .controlSize(.small)
+        }
+    }
+
+    /// White balance: the eyedropper, Auto, the light it was taken in, and Warmth and Tint.
+    private func whiteBalanceSection(_ e: EditState) -> some View {
+        PanelSection(title: "White Balance", systemImage: "thermometer.sun") {
+            HStack(spacing: 6) {
+                Toggle(isOn: Binding(get: { model.pickingWhiteBalance }, set: { model.pickingWhiteBalance = $0 })) {
+                    Label("Pick", systemImage: "eyedropper")
+                }
+                .toggleStyle(.button)
+                .help("Click something in the photo that should be white or gray, and the color cast is taken out (Esc puts it away)")
+                Button("Auto") { model.autoWhiteBalance() }
+                    .help("Take out the color cast, going by what in the photo looks like it should be neutral")
+                Menu("Lit By") {
+                    Button("As Shot") { model.setWhiteBalance(nil) }
+                    Divider()
+                    ForEach(WhiteBalance.Light.allCases) { light in
+                        Button(light.title) { model.setWhiteBalance(light) }
+                    }
+                }
+                .fixedSize()
+                .help("Correct for the light the photo was taken in")
+                Spacer()
+            }
+            .controlSize(.small)
+            slider("Warmth", \.temperature, -1...1)
+            slider("Tint", \.tint, -1...1)
         }
     }
 

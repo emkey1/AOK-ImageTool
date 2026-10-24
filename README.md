@@ -29,6 +29,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   your Mac.
 - **Remove objects:** paint over a passer-by, a sign or a power line, click it or circle it, and it's filled in from
   what's around it, with LaMa (a model made for this) running on your Mac.
+- **White balance:** click something that should be white or gray and the color cast is gone; or Auto, or correct
+  for the light (indoor lamps, shade, fluorescent).
 - **Clone & heal:** ⌥-click clean skin, sky or grass and paint it over a blemish, a wire or a bare patch; Heal
   blends it into the color and light where it goes.
 - **Change objects:** click a shirt and say “blue”, or “a red plaid flannel shirt”: colors change in place keeping

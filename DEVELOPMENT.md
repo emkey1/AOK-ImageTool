@@ -130,6 +130,19 @@ strength 0.8 from the selection itself, recolored first to the first color the d
 instructions and dropped: it got colors wrong ("teal-ish green" → blue) and called plaid shirts plain red. A change's
 `Removal.opacity` is its strength.
 
+**White balance** (`Imaging/WhiteBalance.swift`) is Warmth and Tint, applied by `CITemperatureAndTint` right after
+Auto enhance. The filter is a 3 × 3 matrix in linear light, so both helpers search it rather than model it. The
+eyedropper averages a small spot of the picture as white balance sees it (`EditRenderer.whiteBalanceInput`: turned,
+straightened and auto-enhanced, uncropped; the click is mapped through the crop) and finds, coarse to fine, the
+setting that makes it gray. On a face (Vision's face boxes) it aims for natural skin instead: in log red/green and
+blue/green, typical skin is 0.70 from gray at −25° (the ColorChecker's light and dark skin, cheeks in real photos), and
+skin within an ellipse around it (0.22 along, 0.17 across) is left alone; skin outside is brought inside it, further in
+the further off it was (a cast is likelier than skin at the very edge of natural). Auto scores settings on a grid by how much of a 112 px copy they make nearly gray
+(brighter pixels counting more), times a prior for changing less (σ 0.55 for Warmth, 0.35 for Tint), and gives up
+when the best makes less than 3% gray. Starting from the photo's average color (gray world) was tried and dropped:
+it took the color out of sunsets and autumn scenes. `-extendTest -whiteBalance <image>…` prints what Auto does to
+each image as it is and with a warm or cool cast put in (`WB_OUT` saves before/after pictures).
+
 **Clone & Heal** is the editor's `.clone` mode. A stroke (soft-edged) and the offset to where it copies from (set by the
 first stroke after an ⌥-click, then kept, as Photoshop's Aligned does) are mapped onto the decoded pixels
 (`ObjectRemover.sourcePoint` maps points as `sourceMask` maps masks), and `ObjectRemover.clone` makes the patch: Copy

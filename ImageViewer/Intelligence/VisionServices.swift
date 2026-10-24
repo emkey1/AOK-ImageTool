@@ -160,6 +160,13 @@ nonisolated enum VisionServices {
 
     // MARK: - Understanding
 
+    /// The faces in `image`: their boxes, normalized, Core Image's y up.
+    @concurrent
+    static func faceBoxes(_ image: CGImage) async -> [CGRect] {
+        ((try? await DetectFaceRectanglesRequest().perform(on: image, orientation: nil)) ?? [])
+            .map { $0.boundingBox.toImageCoordinates(CGSize(width: 1, height: 1), origin: .lowerLeft) }
+    }
+
     @concurrent
     static func hasFaces(_ image: CGImage) async -> Bool {
         !((try? await DetectFaceRectanglesRequest().perform(on: image, orientation: nil)) ?? []).isEmpty
