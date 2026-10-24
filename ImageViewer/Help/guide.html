@@ -91,13 +91,13 @@
 <h2 id="viewing">Viewing</h2>
 <ul>
   <li><b>Formats.</b> Everything macOS can read: JPEG, PNG, HEIC, AVIF, JPEG XL, WebP, TIFF, GIF, BMP, PSD, OpenEXR and 30+ camera RAW formats, plus PDF and SVG. <b>Settings › General</b> lists them all.</li>
-  <li><b>Zoom.</b> <kbd>Z</kbd> or a double-click toggles between fitting the window and actual size; <kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>0</kbd> fits, <kbd>1</kbd> is 100%. Pinch, or hold <kbd>⌘</kbd> or <kbd>⌥</kbd> and scroll, to zoom at the pointer. Drag to pan.</li>
+  <li><b>Zoom.</b> <kbd>Z</kbd> toggles between fitting the window and actual size. A double-click goes to full resolution at the spot clicked, and another goes back to the zoom you had, fitted or not; <kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>0</kbd> fits, <kbd>1</kbd> is 100%. Pinch, or hold <kbd>⌘</kbd> or <kbd>⌥</kbd> and scroll, to zoom at the pointer. Drag to pan.</li>
   <li><b>Lock Zoom</b> (<kbd>L</kbd>) keeps the same zoom and position as you move between images: the quickest way to compare focus across a burst of shots.</li>
   <li><b>Small images.</b> <b>View › Enlarge Small Images to Fit Window</b> <kbd>⌥⌘9</kbd> scales them up. <b>Sharpen Enlarged Images with AI</b> shows them through Apple's on-device upscaler instead of plain smoothing.</li>
   <li><b>HDR.</b> HDR photos, like those from iPhone, show their full brightness on displays that can show it. A small HDR badge says so.</li>
   <li><b>Animations and pages.</b> Animated GIF, PNG, WebP and HEIC play. Multi-page TIFFs and PDFs have page buttons; <kbd>Page Up</kbd> and <kbd>Page Down</kbd> turn pages.</li>
   <li><b>Live Text.</b> Select and copy text right on the image, and click the Look Up button for plants, pets, landmarks and more.</li>
-  <li><b>Grid</b> (<kbd>G</kbd>, or <kbd>⌘2</kbd>) shows the folder as thumbnails; the slider in the toolbar sets their size. <kbd>Return</kbd> or a double-click opens the selected image. <kbd>⌘1</kbd> goes back to the viewer.</li>
+  <li><b>Grid</b> (<kbd>G</kbd>, or <kbd>⌘2</kbd>) shows the folder as thumbnails; the slider in the toolbar sets their size. <kbd>Return</kbd> or a double-click opens the selected image (a double-click on a closed stack spreads it out instead). <kbd>⌘1</kbd> goes back to the viewer.</li>
   <li><b>Filmstrip</b> (<kbd>T</kbd>), <b>full screen</b> (<kbd>F</kbd>) and <b>slideshow</b> (<kbd>S</kbd>; <kbd>Space</kbd> pauses it, <kbd>Esc</kbd> stops it). The time per slide is in <a href="#settings">Settings</a>.</li>
   <li><b>Info</b> (<kbd>I</kbd>) shows a histogram, the camera and lens, exposure, dates, size and color details, a map for photos that know where they were taken, and every bit of metadata under <b>All Metadata</b>. At the bottom, the folder's totals: how many images, picks and rejects.</li>
   <li><b>Canvas background.</b> <b>View › Background</b> chooses black, dark gray, gray, light gray, white or the window color. Transparent images show over a checkerboard.</li>
@@ -127,7 +127,7 @@
 <ul>
   <li><b>A stack takes one place</b> in the filmstrip and the grid, showing the copy you viewed or made last (at first, the newest), also after you open the folder again. Lines above the thumbnail and a count in its corner mark it.</li>
   <li><b>Step through a stack</b> with <kbd>⌥←</kbd> and <kbd>⌥→</kbd> (or <b>Go › Newer Copy in Stack</b> and <b>Older Copy in Stack</b>): newest first, the original last. The window's title says where you are, such as “Stack 2/3”.</li>
-  <li><b>Spread it out.</b> Click the count, or choose <b>Show All Copies in Stack</b> (Go menu, or right-click), to see every copy side by side; click the count again to stack them up. The stack then shows the copy you were on.</li>
+  <li><b>Spread it out.</b> Double-click it, click the count, or choose <b>Show All Copies in Stack</b> (Go menu, or right-click), to see every copy side by side, and click one to view it; click the count (or double-click in the filmstrip) again to stack them up. The stack then shows the copy you were on.</li>
   <li><b>Copies of copies</b> (a colorized photo, then upscaled) stay in the original's stack. Renaming the original keeps its copies with it.</li>
   <li><b>View › Stack Copies with Originals</b> turns stacking off, showing every file on its own.</li>
   <li><b>Changing the image itself instead.</b> In <b>Settings › Editing › Copies</b>, turn off “makes a copy” for Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects, Change Objects or Clone &amp; Heal, and its result replaces the image, as Save would: the original goes to the Trash (if Save does that), after asking first (if Save asks). Photos from your Photos library and animations always get a copy.</li>
@@ -146,7 +146,7 @@
 <h2 id="editing">Editing</h2>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="guide-adjust-dark.heic">
-  <img class="shot" src="guide-adjust-light.heic" alt="The Adjust panel beside an edited photo: Light and Color sliders, and filter previews.">
+  <img class="shot" src="guide-adjust-light.heic" alt="The Adjust panel beside an edited photo: Auto, Crop and Heal buttons, Straighten, White Balance, Light and Color.">
 </picture>
 <p>Edits never touch the file until you <a href="#files">Save</a>. Every change can be undone (<kbd>⌘Z</kbd>), and unsaved edits are still there after you quit and reopen the app.</p>
 <ul>
@@ -281,7 +281,7 @@
 <ul>
   <li><b>Save</b> <kbd>⌘S</kbd> writes your edits into the file, in the same format, keeping its metadata. Before it does, it asks (you can turn that off), and the original goes to the Trash, so you can always get it back. If the format can't be written (RAW, PDF, or JPEG with see-through areas), use Export.</li>
   <li><b>Export…</b> <kbd>⇧⌘E</kbd> saves a copy as JPEG, HEIC, AVIF (on macOS 26 and later), PNG, TIFF, GIF, BMP or JPEG 2000, with a quality setting and an optional size limit. <b>Metadata</b>: keep everything, <b>remove the location</b> (good for posting online), or remove it all. With several images selected in the grid, they're all exported at once.</li>
-  <li><b>Unsaved edits</b> survive quitting. The app tells you how many are waiting when you quit, and the image shows an “Edited” badge.</li>
+  <li><b>Unsaved edits</b> survive quitting, and come back when you open their folder; the image shows an “Edited” badge. To see them all, choose <b>View › Show › Edited Images</b> (or the same in the toolbar's Sort &amp; Filter menu); save each with <kbd>⌘S</kbd>, or take them all off with <b>File › Revert All Edited Images…</b> (<kbd>⌘Z</kbd> puts them back). Quitting with unsaved edits names the images and offers <b>Show Them</b>; for edits that are kept anyway, the reminder can be turned off there, or in <b>Settings › Editing</b>.</li>
   <li><b>File menu:</b> Rename… (<kbd>⌥⌘R</kbd>), Move To…, Copy To…, Show in Finder (<kbd>⇧⌘R</kbd>), Set as Desktop Picture, Print… (<kbd>⌘P</kbd>) and Move to Trash (<kbd>⌘⌫</kbd>, undoable).</li>
   <li><b>Edit menu:</b> Copy Image (with your edits), Copy Subject, Copy File Path. <b>Share</b> is in the toolbar.</li>
   <li><b>Paste a picture</b> with <kbd>⌘V</kbd> (or <b>Edit › Paste as New Image</b>) while the image or grid has the focus: a screenshot, a picture copied from a web page or another app becomes a new file in the folder, named like “Pasted Image 2026-10-23 at 09.41.12”. A copied JPEG or HEIC is kept exactly as it was; anything else is saved as PNG, so transparency is kept. Image files copied in Finder are copied in under their own names. With no folder open, or a photo from Photos showing, pasted pictures go to your Pictures folder and open there.</li>

@@ -49,26 +49,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ModelDownloads.removeLeftovers()
         PhotosLibrary.removeOldWorkingFiles()
         Updater.removeLeftovers()
-        BackdropStore.prune(keeping: PendingEdits.shared.backdropPaths)
-        ExtendFillStore.prune(keeping: PendingEdits.shared.extendFillPaths)
-        RemovalStore.prune(keeping: PendingEdits.shared.removalPaths)
+        // (Also what edits saved to Photos refer to.)
+        let photos = PhotosLibrary.keptFiles
+        BackdropStore.prune(keeping: PendingEdits.shared.backdropPaths.union(photos))
+        ExtendFillStore.prune(keeping: PendingEdits.shared.extendFillPaths.union(photos))
+        RemovalStore.prune(keeping: PendingEdits.shared.removalPaths.union(photos))
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        let unsaved = ViewerRegistry.shared.all.flatMap(\.unsavedURLs)
+        let viewers = ViewerRegistry.shared.all
+        let unsaved = viewers.flatMap(\.unsavedURLs)
         let count = unsaved.count
         guard count > 0, !Updater.isRelaunchingForUpdate else { return .terminateNow }
         let fromPhotos = unsaved.filter { PhotosLibrary.shared.photo(for: $0) != nil }.count
+        // Edits to files are kept for next time, so the reminder can be turned off; edits to photos from Photos are
+        // lost, so they're always asked about.
+        if fromPhotos == 0, !Prefs.remindOfKeptEdits { return .terminateNow }
         let alert = NSAlert()
         alert.messageText = "You have unsaved edits to \(count) image\(count == 1 ? "" : "s")."
-        alert.informativeText = fromPhotos == 0
+        let names = unsaved.prefix(4).map { "“\($0.lastPathComponent)”" }.joined(separator: ", ") + (count > 4 ? ", and \(count - 4) more" : "")
+        let what = fromPhotos == 0
             ? "They're kept, and come back the next time you open their folder."
             : fromPhotos == count
                 ? "They're edits to photos from Photos, which are lost when you quit. Save them first (⌘S) to keep them in Photos."
                 : "Edits to files come back the next time you open their folder; edits to photos from Photos are lost unless you save them first."
+        alert.informativeText = names + ".\n\n" + what + " Show Them lists them, to save them (⌘S), or revert them (File ▸ Revert All Edited Images)."
         alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Show Them")
         alert.addButton(withTitle: "Cancel")
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        if fromPhotos == 0 {
+            alert.showsSuppressionButton = true
+            alert.suppressionButton?.title = "Don't remind me (Settings ▸ Editing turns it back on)"
+        }
+        let response = alert.runModal()
+        if alert.suppressionButton?.state == .on { Prefs.setBool(false, PrefKey.remindOfKeptEdits) }
+        switch response {
+        case .alertFirstButtonReturn:
+            return .terminateNow
+        case .alertSecondButtonReturn:
+            // The window with the most of them, showing just its edited images.
+            if let viewer = viewers.max(by: { $0.unsavedURLs.count < $1.unsavedURLs.count }) {
+                viewer.flagFilter = .edited
+                viewer.viewMode = .grid
+                viewer.window?.makeKeyAndOrderFront(nil)
+            }
+            return .terminateCancel
+        default:
+            return .terminateCancel
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

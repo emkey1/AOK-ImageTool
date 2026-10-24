@@ -90,20 +90,22 @@ void iv_recolor(uint8_t *rgba, const uint8_t *weight, const uint8_t *core, int w
     long n = (long)width * height;
     if (!core) core = weight;
 
-    // The area's average lightness and color (a*, b*), weighted, from what's surely in it.
-    double sum = 0, sa = 0, sb = 0, total = 0;
+    // The area's average lightness (L*) and color (linear RGB), weighted, from what's surely in it.
+    double sum = 0, sl[3] = { 0, 0, 0 }, total = 0;
     for (long i = 0; i < n; i++) {
         if (core[i] < 128) continue;
         const uint8_t *p = rgba + i * 4;
         double lin[3] = { table[p[0]], table[p[1]], table[p[2]] }, lab[3];
         to_lab(lin, lab);
         sum += lab[0] * core[i];
-        sa += lab[1] * core[i];
-        sb += lab[2] * core[i];
+        for (int c = 0; c < 3; c++) sl[c] += lin[c] * core[i];
         total += core[i];
     }
     if (total <= 0) return;
-    double mean = sum / total, ma = sa / total, mb = sb / total, mc = hypot(ma, mb);
+    double mean = sum / total, s[3] = { sl[0] / total, sl[1] / total, sl[2] / total };
+    // For how much a pixel is a mix of that color and something neutral (gray, white, black: hair, the ground):
+    // the least-squares fit of pixel = a * color + b * (1, 1, 1).
+    double ss = s[0] * s[0] + s[1] * s[1] + s[2] * s[2], s1 = s[0] + s[1] + s[2], det = 3 * ss - s1 * s1;
 
     double tlin[3] = { table[red], table[green], table[blue] }, target[3];
     to_lab(tlin, target);
@@ -116,13 +118,24 @@ void iv_recolor(uint8_t *rgba, const uint8_t *weight, const uint8_t *core, int w
         uint8_t *p = rgba + i * 4;
         double lin[3] = { table[p[0]], table[p[1]], table[p[2]] }, lab[3];
         to_lab(lin, lab);
-        // Outside `core` (around its edge, between strands of hair over it): only as much as the pixel is the
-        // area's color, a mix of it with something else changing partly, something else entirely not at all;
-        // across `core`'s soft edge, from that to all.
+        // Outside `core` (around its edge, between strands of hair over it): only as much as the pixel is a mix
+        // of the area's color and something neutral; anything else (skin beside a brown jacket: "more than all
+        // jacket"; beside a red shirt: a poor fit) not at all. Across `core`'s soft edge, from that to all.
         double share = 1, in = core[i] / 255.0;
         if (in < 1) {
-            double mix = mc > 8 ? (lab[1] * ma + lab[2] * mb) / (mc * mc) : 0;
-            mix = mix < 0 ? 0 : mix > 1 ? 1 : mix;
+            double mix = 0;
+            if (det > 1e-9) {
+                double sp = s[0] * lin[0] + s[1] * lin[1] + s[2] * lin[2], p1 = lin[0] + lin[1] + lin[2];
+                double a = (3 * sp - s1 * p1) / det, b = (ss * p1 - s1 * sp) / det;
+                if (a > 0 && a <= 1.15 && b >= -0.02) {
+                    double r0 = lin[0] - a * s[0] - b, r1 = lin[1] - a * s[1] - b, r2 = lin[2] - a * s[2] - b;
+                    double size = sqrt(lin[0] * lin[0] + lin[1] * lin[1] + lin[2] * lin[2]);
+                    double off = sqrt(r0 * r0 + r1 * r1 + r2 * r2) / (size > 1e-4 ? size : 1e-4);
+                    double fit = 1 - (off - 0.04) / 0.06;
+                    fit = fit < 0 ? 0 : fit > 1 ? 1 : fit;
+                    mix = (a < 1 ? a : 1) * fit;
+                }
+            }
             share = in + (1 - in) * mix;
             if (share <= 0) continue;
         }

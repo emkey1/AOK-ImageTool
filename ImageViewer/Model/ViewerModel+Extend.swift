@@ -57,7 +57,9 @@ extension ViewerModel {
         saveCopy(of: url, decoded: d, edits: e, label: "Cropped", defaultFormat: .heic, working: "Saving the crop…", systemImage: "crop",
                  failure: "Couldn't save the crop of “\(url.lastPathComponent)”", operation: .extend,
                  replaced: "Saved the crop in “\(url.lastPathComponent)”", then: { [weak self] made in
-            self?.whenShown(made) { self?.beginExtend(method) }
+            // (Unless the user has moved on to another picture meanwhile.)
+            guard let self, [url.standardizedFileURL, made.standardizedFileURL].contains(self.currentURL) else { return }
+            self.whenShown(made) { self.beginExtend(method) }
         }) { $0 }
     }
 
@@ -67,6 +69,8 @@ extension ViewerModel {
         if currentURL != url {
             activeTool = nil
             select(url)
+            // (Not shown, such as when it's filtered out: nothing waits for it, to go off when it's viewed later.)
+            guard currentURL == url else { return }
         }
         if decoded?.url.standardizedFileURL == url, !isLoading { return action() }
         whenLoaded = (url, action)

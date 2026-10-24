@@ -34,6 +34,8 @@ nonisolated enum PrefKey {
     static let lastViewedFiles = "lastViewedFiles"
     static let stackFronts = "stackFronts"
     static let lastImportFolder = "lastImportFolder"
+    static let photosEditFiles = "photosEditFiles"
+    static let remindOfKeptEdits = "remindOfKeptEdits"
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
     static let stackCopies = "stackCopies"
@@ -116,6 +118,8 @@ nonisolated enum Prefs {
     static var advanceAfterFlag: Bool { bool(PrefKey.advanceAfterFlag, true) }
     static var trashOriginalOnSave: Bool { bool(PrefKey.trashOriginalOnSave, true) }
     static var confirmOverwrite: Bool { bool(PrefKey.confirmOverwrite, true) }
+    /// Quitting with unsaved edits to files (kept for next time) asks first.
+    static var remindOfKeptEdits: Bool { bool(PrefKey.remindOfKeptEdits, true) }
     static var showFilmstrip: Bool { bool(PrefKey.showFilmstrip, true) }
     static var autoDescribe: Bool { bool(PrefKey.autoDescribe, false) }
     static var stackCopies: Bool { bool(PrefKey.stackCopies, true) }
@@ -203,7 +207,8 @@ enum RecentFolders {
 }
 
 /// Which copy each stack in a folder shows (the one last viewed or made), so it still does when the folder is
-/// opened again. Kept by path relative to the folder, for the folders used most recently.
+/// opened again. Kept by path relative to the folder, for up to `maxFolders` folders (past that, another folder's
+/// are dropped).
 enum StackFronts {
     static let maxFolders = 100
 

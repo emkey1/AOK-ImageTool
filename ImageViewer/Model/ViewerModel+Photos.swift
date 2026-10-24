@@ -85,9 +85,12 @@ extension ViewerModel {
             config.selectionLimit = 0
             config.filter = .any(of: [.images, .livePhotos])
             let picker = PHPickerViewController(configuration: config)
-            let delegate = PhotosPickerDelegate(done: done)
+            let delegate = PhotosPickerDelegate { [weak self] ids in
+                self?.photosPickerDelegate = nil
+                done(ids)
+            }
             picker.delegate = delegate
-            PhotosPickerDelegate.current = delegate
+            photosPickerDelegate = delegate
             // The picker doesn't size itself in a sheet (it shrinks to its toolbar): most of the window.
             let bounds = host.view.bounds.size
             let size = NSSize(width: max(760, bounds.width * 0.85), height: max(560, bounds.height * 0.85))
@@ -143,6 +146,14 @@ extension ViewerModel {
     func saveToPhotos(url: URL, decoded d: DecodedImage, edits e: EditState) {
         guard let photo = PhotosLibrary.shared.photo(for: url) else { return }
         guard isUnsaved(url) else { return showToast("No changes to save", systemImage: "checkmark.circle") }
+        // What a Photos edit can't hold, as Save can't write it over a file either.
+        if !e.isIdentity, d.isAnimated || d.isReduced || e.hasTransparency {
+            let why = d.isAnimated ? "Photos would keep only the animation's first frame."
+                : d.isReduced ? "This photo is too large to edit at full size here, so the edit would make it smaller."
+                : "Photos can't keep a see-through background: add a background first, or keep it see-through in a copy."
+            alert = AlertInfo(title: "This edit can't be saved back to Photos", message: why + " Export a copy instead, and add it to Photos.")
+            return
+        }
         if photo.isLive && PhotosLibrary.stillOnly(e) {
             let alert = NSAlert()
             alert.messageText = "Save the Live Photo as a still photo?"
@@ -190,8 +201,6 @@ extension ViewerModel {
 
 /// Hands the photos chosen in Photos' picker on, and closes it.
 final class PhotosPickerDelegate: NSObject, PHPickerViewControllerDelegate {
-    /// The one in use (the picker doesn't keep its delegate).
-    static var current: PhotosPickerDelegate?
     private let done: ([String]) -> Void
 
     init(done: @escaping ([String]) -> Void) {
@@ -200,7 +209,6 @@ final class PhotosPickerDelegate: NSObject, PHPickerViewControllerDelegate {
 
     func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
         picker.presentingViewController?.dismiss(picker)
-        Self.current = nil
         done(results.compactMap(\.assetIdentifier))
     }
 }

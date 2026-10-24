@@ -210,6 +210,19 @@ final class PhotosLibrary {
             PHAssetChangeRequest(for: asset).contentEditingOutput = output
         }
         photos[url.standardizedFileURL]?.savedEdits = edits
+        Self.keepFiles(of: edits)
+    }
+
+    /// Files in Application Support (backgrounds, Extend fills, removal patches) that edits saved to Photos refer
+    /// to: kept when those stores are cleaned up at launch, so the edits open with their settings again.
+    nonisolated static var keptFiles: Set<String> { Set(UserDefaults.standard.stringArray(forKey: PrefKey.photosEditFiles) ?? []) }
+
+    nonisolated static func keepFiles(of e: EditState) {
+        var paths = e.removals?.map(\.path) ?? []
+        if let path = e.extendFill?.path { paths.append(path) }
+        if case .image(let path) = e.background { paths.append(path) }
+        guard !paths.isEmpty else { return }
+        Prefs.set(keptFiles.union(paths).sorted(), PrefKey.photosEditFiles)
     }
 
     /// Takes this app's edit off the photo in Photos (all of its edits were removed here).

@@ -212,8 +212,7 @@ enum SelfTest {
             .composited(over: shadedRed).composited(over: CIImage(color: CIColor(red: 0.15, green: 0.55, blue: 0.2)).cropped(to: all))
         let everything = CIImage(color: .white).cropped(to: all)
         func coverage(_ mask: CIImage, in rect: CGRect) -> Double {
-            var px = [UInt8](repeating: 0, count: Int(rect.width * rect.height))
-            ImageDecoder.ciContext.render(mask, toBitmap: &px, rowBytes: Int(rect.width), bounds: rect, format: .L8, colorSpace: nil)
+            let px = ImageDecoder.ciContext.renderGray(mask, bounds: rect)
             return Double(px.filter { $0 > 127 }.count) / Double(max(px.count, 1))
         }
         do {
@@ -289,6 +288,42 @@ enum SelfTest {
             } catch {
                 check(false, "changing the sky's color: \(error.localizedDescription)")
             }
+        }
+
+        // Around a recolored thing: skin beside a brown jacket stays skin; a strand-like mix of the jacket and gray changes.
+        do {
+            let w = 120, h = 60
+            var px = [UInt8](repeating: 255, count: w * h * 4)
+            for y in 0..<h {
+                for x in 0..<w {
+                    let i = (y * w + x) * 4
+                    let c: (UInt8, UInt8, UInt8) = x < 60 ? (110, 70, 45) : x < 64 ? (150, 130, 120) : (225, 180, 150)   // jacket, a mix, skin
+                    px[i] = c.0; px[i + 1] = c.1; px[i + 2] = c.2
+                }
+            }
+            guard let provider = CGDataProvider(data: Data(px) as CFData),
+                  let made = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4,
+                                     space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                     provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent) else { throw RemovalError.failed }
+            let scene = DecodedImage(url: out.appendingPathComponent("jacket.png"), cgImage: made, isHDR: false, isAnimated: false, pageCount: 1,
+                                     pageIndex: 0, typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+            let all = CGRect(x: 0, y: 0, width: w, height: h)
+            let jacket = CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: 60, height: h)).composited(over: CIImage(color: .black).cropped(to: all))
+            let person = CIImage(color: .white).cropped(to: all)
+            let change = try await ObjectRemover.recolor(scene, after: [], mask: jacket, reach: person, color: blue)
+            var e = EditState()
+            e.removals = [change]
+            guard let after = EditRenderer.shared.renderSync(scene, edits: e, maxDimension: nil)?.image else { throw RemovalError.failed }
+            var out = [UInt8](repeating: 0, count: w * h * 4)
+            let ctx = CGContext(data: &out, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(after, in: all)
+            func at(_ x: Int) -> [Int] { let i = (30 * w + x) * 4; return [Int(out[i]), Int(out[i + 1]), Int(out[i + 2])] }
+            let skin = at(100), mix = at(62), coat = at(20)
+            check(abs(skin[0] - 225) + abs(skin[1] - 180) + abs(skin[2] - 150) <= 6 && mix[2] > mix[0] && coat[2] > coat[0] + 40,
+                  "recoloring a jacket blue leaves skin beside it alone (\(skin)) and changes a mix of it and gray (\(mix))")
+        } catch {
+            check(false, "recoloring beside skin: \(error.localizedDescription)")
         }
 
         // Done: “(Changed)”, stacked on the original, or (copies off) an edit.
@@ -741,6 +776,18 @@ enum SelfTest {
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
+        }
+        // Edits that can't show don't count as edits (an image isn't "edited" with nothing to see or undo).
+        do {
+            var faint = EditState()
+            faint.temperature = 0.003
+            faint.straighten = 0.02
+            faint.removals = []
+            faint.crop = CGRect(x: 0, y: 0, width: 1, height: 1)
+            faint.extendPrompt = "a beach"
+            var real = faint
+            real.exposure = 0.2
+            check(faint.isIdentity && !real.isIdentity, "edits that don't show (a slider a hair off zero, an empty list, a whole-picture crop) aren't edits")
         }
         if let rot = decodedByName["rotated-exif6.jpg"] {
             check(rot.pixelSize == CGSize(width: 600, height: 900), "EXIF orientation 6 displays as 600×900 portrait")

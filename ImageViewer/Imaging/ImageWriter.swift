@@ -156,7 +156,8 @@ nonisolated enum ImageWriter {
     }
 
     /// Writes over `original` where it is, the same file, for one another app is watching (Photos' Edit With
-    /// session). It's written in full elsewhere first, so a failure leaves the original as it was.
+    /// session). It's made in full elsewhere first, so failing to make it leaves the original as it was; only
+    /// failing to write the finished file (a full disk) could leave the original part rewritten.
     static func overwrite(original: URL, with image: CGImage, format: ExportFormat, quality: Double,
                           sourceProperties: [String: Any]) throws {
         let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension(original.pathExtension)
@@ -165,8 +166,8 @@ nonisolated enum ImageWriter {
         let data = try Data(contentsOf: temp)
         let handle = try FileHandle(forWritingTo: original)
         defer { try? handle.close() }
-        try handle.truncate(atOffset: 0)
         try handle.write(contentsOf: data)
+        try handle.truncate(atOffset: UInt64(data.count))
     }
 
     static func sanitized(_ props: [String: Any], removeLocation: Bool) -> [CFString: Any] {

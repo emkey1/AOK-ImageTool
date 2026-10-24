@@ -85,7 +85,7 @@ int iv_heal(uint8_t *dst, const uint8_t *src, const uint8_t *mask, int width, in
     double mean[3] = { 0, 0, 0 };
     long knownCount = 0;
     for (long i = 0; i < n; i++) {
-        if (mask[i]) continue;
+        if (mask[i] > 2) continue;   // (a soft brush's faintest edge counts as outside)
         top->known[i] = 1;
         for (int c = 0; c < 3; c++) {
             float v = (float)dst[i * 4 + c] - (float)src[i * 4 + c];
@@ -121,7 +121,7 @@ int iv_heal(uint8_t *dst, const uint8_t *src, const uint8_t *mask, int width, in
             relax(f, k == 0 ? 40 : 60, 1.8f);
         }
         for (long i = 0; i < n; i++) {
-            if (!mask[i]) continue;
+            if (mask[i] <= 2) continue;
             for (int c = 0; c < 3; c++) {
                 float v = (float)src[i * 4 + c] + top->d[i * 3 + c];
                 dst[i * 4 + c] = (uint8_t)(v < 0 ? 0 : v > 255 ? 255 : v + 0.5f);

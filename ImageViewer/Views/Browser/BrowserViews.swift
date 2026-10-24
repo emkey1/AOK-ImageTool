@@ -114,6 +114,10 @@ struct FilmstripView: View {
                       isEdited: model.edits[item.url] != nil,
                       stack: model.stackBadge(for: item.url))
             .onTapGesture { model.select(item.url) }
+            // Double-clicking a stack spreads it out, or closes it.
+            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                if model.stackOf[item.url] != nil { model.toggleStack(item.url) }
+            })
             .contextMenu { ItemContextMenu(item: item) }
             .onDrag { NSItemProvider(object: item.url as NSURL) }
     }
@@ -295,8 +299,13 @@ struct GridCell: View {
         .contentShape(Rectangle())
         .onTapGesture { model.gridClick(item.url, modifiers: NSEvent.modifierFlags) }
         .simultaneousGesture(TapGesture(count: 2).onEnded {
-            model.select(item.url)
-            model.viewMode = .viewer
+            // A closed stack spreads out, to pick one of its copies; an image opens.
+            if model.stackOf[item.url] != nil, !model.isStackExpanded(item.url) {
+                model.toggleStack(item.url)
+            } else {
+                model.select(item.url)
+                model.viewMode = .viewer
+            }
         })
         .contextMenu { ItemContextMenu(item: item) }
         .onDrag { NSItemProvider(object: item.url as NSURL) }

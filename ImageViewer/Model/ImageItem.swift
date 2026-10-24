@@ -57,7 +57,7 @@ nonisolated enum SortKey: String, CaseIterable, Identifiable, Sendable {
 }
 
 nonisolated enum FlagFilter: String, CaseIterable, Identifiable, Sendable {
-    case all, picks, rejects, unflagged
+    case all, picks, rejects, unflagged, edited
 
     var id: String { rawValue }
 
@@ -67,6 +67,7 @@ nonisolated enum FlagFilter: String, CaseIterable, Identifiable, Sendable {
         case .picks: "Picks"
         case .rejects: "Rejects"
         case .unflagged: "Unflagged"
+        case .edited: "Edited Images"
         }
     }
 
@@ -76,6 +77,7 @@ nonisolated enum FlagFilter: String, CaseIterable, Identifiable, Sendable {
         case .picks: flag == .pick
         case .rejects: flag == .reject
         case .unflagged: flag == .none
+        case .edited: true   // (by its edits: ViewerModel filters those)
         }
     }
 }

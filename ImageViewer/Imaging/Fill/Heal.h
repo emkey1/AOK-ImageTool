@@ -3,9 +3,9 @@
 
 #include <stdint.h>
 
-/// The healing brush: where `mask` covers (nonzero), `dst` gets `src`'s detail in its own color and light. The
-/// difference between the two just outside the mask is carried smoothly across it (a membrane: Laplace's
-/// equation, solved coarse to fine) and added to `src`, so the result meets `dst` without an edge. Pixels
+/// The healing brush: where `mask` covers (more than 2/255), `dst` gets `src`'s detail in its own color and
+/// light. The difference between the two just outside the mask is carried smoothly across it (a membrane:
+/// Laplace's equation, solved coarse to fine) and added to `src`, so the result meets `dst` without an edge. Pixels
 /// outside the mask, and alpha, are left alone; blending by `mask` is left to the caller.
 ///
 /// - dst, src: width * height * 4 bytes, rows top to bottom; `src` is what to copy, already lined up with `dst`.

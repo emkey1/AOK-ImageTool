@@ -49,6 +49,8 @@ struct ViewerCommands: Commands {
                 .disabled(!hasImage)
             Button("Revert to Original") { viewer?.revertEdits() }
                 .disabled(!hasEdits)
+            Button("Revert All Edited Images…") { viewer?.revertAllEdits() }
+                .disabled(!(viewer?.hasUnsavedEdits ?? false))
             Divider()
             Button("Rename…") { viewer?.beginRename() }
                 .keyboardShortcut("r", modifiers: [.command, .option])

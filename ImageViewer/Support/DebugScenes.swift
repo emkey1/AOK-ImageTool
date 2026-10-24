@@ -56,6 +56,11 @@ enum DebugScenes {
     static func apply(to model: ViewerModel) {
         guard let scene = DebugHooks.scene, !applied else { return }
         applied = true
+        // The picture has the keyboard, as when the app is used (not the search field, which the window would
+        // otherwise give it when the shot brings it forward).
+        for delay in [0.5, 2.0] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { model.focusCanvas() }
+        }
         switch scene {
         case "grid":
             model.gridThumbnailSize = 200

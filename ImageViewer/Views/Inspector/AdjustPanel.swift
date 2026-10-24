@@ -81,7 +81,8 @@ struct AdjustPanel: View {
             }
             .padding(14)
         }
-        .disabled(model.decoded == nil || model.activeTool != nil)
+        // (Also while the image is being saved over: an edit then would be lost when it's replaced.)
+        .disabled(!model.canEdit)
         .task(id: previewKey) {
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled, let d = model.decoded else { return }

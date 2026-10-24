@@ -8,7 +8,7 @@
 /// (narrowed toward black or white, so it doesn't run off the end), and
 /// the target's hue and saturation follow the lightness (fading toward black and white at the ends). The area is
 /// what `core` covers more than half (NULL: `weight`); pixels `weight` covers outside it, around its edges, change
-/// only as much as they're the area's color. Pixels outside are left alone; blending by `weight` is left to the
+/// only as much as they're a mix of the area's color and something neutral. Pixels outside are left alone; blending by `weight` is left to the
 /// caller.
 ///
 /// - rgba:   width * height * 4 bytes, sRGB, rows top to bottom (alpha untouched).

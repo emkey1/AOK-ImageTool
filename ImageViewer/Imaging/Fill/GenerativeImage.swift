@@ -53,12 +53,7 @@ nonisolated enum GenerativeImage {
         let fitted = image
             .transformed(by: CGAffineTransform(translationX: -e.minX, y: -e.minY))
             .transformed(by: CGAffineTransform(scaleX: CGFloat(width) / e.width, y: CGFloat(height) / e.height))
-        var gray = [UInt8](repeating: 0, count: width * height)
-        gray.withUnsafeMutableBytes { buf in
-            ImageDecoder.ciContext.render(fitted, toBitmap: buf.baseAddress!, rowBytes: width,
-                                          bounds: CGRect(x: 0, y: 0, width: width, height: height), format: .L8, colorSpace: nil)
-        }
-        return gray.map { $0 > 127 ? 1 : 0 }
+        return ImageDecoder.ciContext.renderGray(fitted, bounds: CGRect(x: 0, y: 0, width: width, height: height)).map { $0 > 127 ? 1 : 0 }
     }
 
     private static func eroded(_ mask: [UInt8], width w: Int, height h: Int, radius r: Int) -> [UInt8] {

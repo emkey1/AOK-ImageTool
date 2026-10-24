@@ -95,6 +95,8 @@ extension ViewerModel {
                 model?.showToast(text, systemImage: "arrow.up.left.and.arrow.down.right")
             }
         }
+        // (Set once the file at `dest` is this run's: another upscale to the same name may have made it first.)
+        let made = CancelFlag()
         Task {
             do {
                 try await Task.detached(priority: .userInitiated) {
@@ -116,11 +118,12 @@ extension ViewerModel {
                     })
                     report(count + 1)
                     try writer.finish()
+                    made.set()
                     Self.copyWritten(dest, picture: first, from: url)
                 }.value
                 try await finishCopy(dest, from: url)
             } catch {
-                try? FileManager.default.removeItem(at: dest)
+                if made.isSet { try? FileManager.default.removeItem(at: dest) }
                 dismissToast()
                 showError("Couldn't upscale “\(url.lastPathComponent)”", error)
             }

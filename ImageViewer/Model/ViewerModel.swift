@@ -111,13 +111,19 @@ final class ViewerModel {
     }
     var lockZoom = false
     var showOriginal = false {
-        didSet { if oldValue != showOriginal { refreshDisplay() } }
+        didSet {
+            if oldValue != showOriginal { refreshDisplay() }
+            // (The eyedropper goes by the edited picture.)
+            if showOriginal { pickingWhiteBalance = false }
+        }
     }
     /// White Balance's eyedropper is out: the next click on the picture sets Warmth and Tint from what's there.
     var pickingWhiteBalance = false {
         didSet { if oldValue != pickingWhiteBalance { whiteBalancePickerChanged() } }
     }
     @ObservationIgnored var whiteBalanceMonitor: Any?
+    /// The Photos picker's delegate while it's open in this window (the picker doesn't keep its delegate).
+    @ObservationIgnored var photosPickerDelegate: NSObject?
     var activeTool: ActiveTool? {
         didSet {
             toolImage = activeTool == nil ? nil : currentURL
@@ -329,6 +335,7 @@ final class ViewerModel {
     }
 
     private func windowWillClose() {
+        pickingWhiteBalance = false
         removeKeyMonitor()
         stopSlideshow()
         watcher.stop()
@@ -419,7 +426,10 @@ final class ViewerModel {
 
         // Unsaved edits from an earlier session, for files that haven't changed since.
         let restored = PendingEdits.shared.restore(in: folder, recursive: includeSubfolders, restrictedTo: restrictedTo)
-        for (url, e) in restored where edits[url] == nil { edits[url] = e }
+        for (url, e) in restored where edits[url] == nil {
+            // (Kept by an earlier version, edits that don't show are forgotten.)
+            if e.isIdentity { PendingEdits.shared.set(nil, for: url, modificationDate: nil) } else { edits[url] = e }
+        }
         window?.isDocumentEdited = hasUnsavedEdits
 
         // Show the requested file right away while the (possibly large) folder scan runs.
@@ -506,7 +516,7 @@ final class ViewerModel {
                 .sorted { distances[$0.url]! < distances[$1.url]! }
                 .prefix(60))
         }
-        var filtered = sorted.filter { flagFilter.includes($0.flag) }
+        var filtered = flagFilter == .edited ? sorted.filter { isUnsaved($0.url) } : sorted.filter { flagFilter.includes($0.flag) }
         let query = trimmedSearch
         if !query.isEmpty {
             let terms = intelligence.searchTerms(for: query)
@@ -1056,7 +1066,11 @@ final class ViewerModel {
 
     // Internal setter for edit bookkeeping in other files. Also keeps the copy that survives a relaunch current.
     func setEditsDictionary(_ url: URL, _ state: EditState?) {
+        let state = state.flatMap { $0.isIdentity ? nil : $0 }
+        let wasEdited = edits[url] != nil
         edits[url] = state
+        // (Showing only edited images: one that's reverted, or newly edited, comes or goes.)
+        if flagFilter == .edited, wasEdited != (state != nil) { applySortAndFilter(selecting: currentURL) }
         // (Not for a photo opened from Photos: its working file is gone after a relaunch.)
         guard !PhotosLibrary.isWorkingFile(url) else { return }
         PendingEdits.shared.set(state, for: url, modificationDate: allItems.first { $0.url == url }?.modificationDate)

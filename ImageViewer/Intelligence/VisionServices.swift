@@ -85,7 +85,7 @@ nonisolated enum VisionServices {
     /// Mask of the subject instance under `point` (normalized, lower-left origin). Fallback for click-to-select.
     @concurrent
     static func instanceMask(for image: CGImage, at point: CGPoint) async throws -> CIImage {
-        let handler = ImageRequestHandler(image)
+        let handler = ImageRequestHandler(plainCopySync(image))
         guard let observation = try await handler.perform(GenerateForegroundInstanceMaskRequest()) else {
             throw VisionError.noSelection
         }
@@ -135,13 +135,13 @@ nonisolated enum VisionServices {
         let ext = mask.extent
         guard ext.width > 0, ext.height > 0 else { return nil }
         let scale = min(1, sample / max(ext.width, ext.height))
-        let small = mask.transformed(by: CGAffineTransform(translationX: -ext.minX, y: -ext.minY))
+        // (Widened first by about a sample's size, so a thin mark on a big image isn't missed between samples.)
+        let widened = scale < 0.5 ? mask.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: (0.5 / scale).rounded(.up)]) : mask
+        let small = widened.transformed(by: CGAffineTransform(translationX: -ext.minX, y: -ext.minY))
             .transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let w = Int(ceil(ext.width * scale))
         let h = Int(ceil(ext.height * scale))
-        var buffer = [UInt8](repeating: 0, count: w * h)
-        ImageDecoder.ciContext.render(small, toBitmap: &buffer, rowBytes: w, bounds: CGRect(x: 0, y: 0, width: w, height: h),
-                                      format: .L8, colorSpace: nil)
+        let buffer = ImageDecoder.ciContext.renderGray(small, bounds: CGRect(x: 0, y: 0, width: w, height: h))
         var minX = w, minY = h, maxX = -1, maxY = -1
         for y in 0..<h {
             for x in 0..<w where buffer[y * w + x] > 25 {

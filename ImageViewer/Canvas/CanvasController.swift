@@ -11,6 +11,8 @@ final class CanvasController: NSObject {
 
     private(set) var display: DisplayImage?
     private(set) var isFitMode = true
+    /// The zoom before a double-click went to full resolution (`toggledTo`), to go back to.
+    private var zoomBeforeToggle: (fit: Bool, scale: CGFloat, center: CGPoint?, toggledTo: CGFloat)?
     private var analysisTask: Task<Void, Never>?
     private var analyzedContentKey: Int?
     private var animation: AnimationHandle?
@@ -143,6 +145,7 @@ final class CanvasController: NSObject {
                 scroll(toRelativeCenter: relativeCenter)
                 viewportChanged()
             } else {
+                zoomBeforeToggle = nil
                 fit()
             }
         }
@@ -229,12 +232,20 @@ final class CanvasController: NSObject {
         zoom(toPixelScale: 1)
     }
 
+    /// Double-click: full resolution (100%) at `point`, and back to the zoom there was before, fitted or not,
+    /// where it was. (A picture that already fits at about 100% goes to 200% instead.)
     func toggleZoom(at point: NSPoint?) {
-        if isFitMode || pixelScale < 0.99 {
-            zoom(toPixelScale: isFitMode && abs(pixelScale - 1) < 0.01 ? 2 : 1, at: point)
-        } else {
-            fit()
+        if let before = zoomBeforeToggle, !isFitMode, abs(pixelScale - before.toggledTo) < 0.01 {
+            zoomBeforeToggle = nil
+            if before.fit { return fit() }
+            zoom(toPixelScale: before.scale)
+            if let center = before.center { scroll(toRelativeCenter: center) }
+            return
         }
+        let target: CGFloat = abs(pixelScale - 1) < 0.01 ? (isFitMode ? 2 : 0) : 1
+        guard target > 0 else { return fit() }   // (at 100% by other means: to fit)
+        zoomBeforeToggle = (isFitMode, pixelScale, currentRelativeCenter(), target)
+        zoom(toPixelScale: target, at: point)
     }
 
     func userDidZoom() {

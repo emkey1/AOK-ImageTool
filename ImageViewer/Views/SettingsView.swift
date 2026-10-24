@@ -100,6 +100,7 @@ private struct ViewingSettings: View {
 private struct EditingSettings: View {
     @AppStorage(PrefKey.trashOriginalOnSave) private var trashOriginal = true
     @AppStorage(PrefKey.confirmOverwrite) private var confirmOverwrite = true
+    @AppStorage(PrefKey.remindOfKeptEdits) private var remindOfKeptEdits = true
     @AppStorage(CopyOperation.upscale.key) private var copyUpscale = true
     @AppStorage(CopyOperation.colorize.key) private var copyColorize = true
     @AppStorage(CopyOperation.blackAndWhite.key) private var copyBlackAndWhite = true
@@ -114,6 +115,7 @@ private struct EditingSettings: View {
             Section {
                 Toggle("Move the original to the Trash when saving", isOn: $trashOriginal)
                 Toggle("Ask before saving over the original", isOn: $confirmOverwrite)
+                Toggle("Remind me of unsaved edits when quitting", isOn: $remindOfKeptEdits)
             } header: {
                 Text("Saving")
             } footer: {

@@ -116,6 +116,12 @@ nonisolated enum BlurFixer {
             if progress?(blurShare) == true { throw Failure.cancelled }
             result = try await restoreFaces(result, size: size, space: space, strength: options.faceStrength)
         }
+        // (The models make every pixel opaque: a see-through picture keeps its own transparency.)
+        if ![.none, .noneSkipFirst, .noneSkipLast].contains(picture.alphaInfo) {
+            result = result.applyingFilter("CIBlendWithAlphaMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect), kCIInputMaskImageKey: original,
+            ])
+        }
         let deep = picture.bitsPerComponent > 8
         guard let made = EditRenderer.shared.context.createCGImage(result.cropped(to: rect), from: rect, format: deep ? .RGBAh : .RGBA8,
                                                                    colorSpace: pictureSpace)

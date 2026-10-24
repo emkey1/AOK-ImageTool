@@ -62,11 +62,7 @@ nonisolated enum ContentAwareFill {
                 .transformed(by: CGAffineTransform(translationX: -avoid.extent.minX, y: -avoid.extent.minY))
                 .transformed(by: CGAffineTransform(scaleX: imageRect.width / avoid.extent.width, y: imageRect.height / avoid.extent.height))
                 .transformed(by: CGAffineTransform(translationX: imageRect.minX, y: imageRect.minY))
-            var gray = [UInt8](repeating: 0, count: width * height)
-            gray.withUnsafeMutableBytes { buf in
-                ImageDecoder.ciContext.render(placed, toBitmap: buf.baseAddress!, rowBytes: width,
-                                              bounds: CGRect(x: 0, y: 0, width: width, height: height), format: .L8, colorSpace: nil)
-            }
+            let gray = ImageDecoder.ciContext.renderGray(placed, bounds: CGRect(x: 0, y: 0, width: width, height: height))
             avoidMask = gray.map { $0 > 64 ? 1 : 0 }
         }
 

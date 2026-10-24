@@ -26,7 +26,7 @@ extension ViewerModel {
 
     /// Live update for continuous controls (sliders). Pair with `commitEdits(from:actionName:)`.
     func previewEdits(_ change: (inout EditState) -> Void) {
-        guard let url = currentURL else { return }
+        guard let url = currentURL, !savingURLs.contains(url) else { return }
         var state = edits[url] ?? .identity
         change(&state)
         setEditsDictionary(url, state.isIdentity ? nil : state)
@@ -83,6 +83,34 @@ extension ViewerModel {
 
     func toggleAutoEnhance() {
         updateEdits("Auto Enhance") { $0.autoEnhance.toggle() }
+    }
+
+    /// File ▸ Revert All Edited Images…: every image in the folder with unsaved edits back to how it was (a photo
+    /// from Photos, to what's saved there), after asking, as one step to undo.
+    func revertAllEdits() {
+        let urls = unsavedURLs.filter { !savingURLs.contains($0) }
+        guard !urls.isEmpty else { return showToast("No unsaved edits", systemImage: "checkmark.circle") }
+        let alert = NSAlert()
+        alert.messageText = "Revert \(urls.count) image\(urls.count == 1 ? "" : "s") to how \(urls.count == 1 ? "it was" : "they were")?"
+        alert.informativeText = "Their unsaved edits are taken off. Edit ▸ Undo puts them back."
+        alert.addButton(withTitle: "Revert")
+        alert.addButton(withTitle: "Cancel")
+        let revert: () -> Void = { [weak self] in
+            guard let self else { return }
+            let name = "Revert All Edited Images"
+            undoManager?.beginUndoGrouping()
+            for url in urls {
+                applyEdits(PhotosLibrary.shared.photo(for: url)?.savedEdits ?? .identity, to: url, undoName: name, previous: edits[url] ?? .identity)
+            }
+            undoManager?.endUndoGrouping()
+            undoManager?.setActionName(name)
+            showToast("Reverted \(urls.count) image\(urls.count == 1 ? "" : "s")", systemImage: "arrow.uturn.backward")
+        }
+        if let window {
+            alert.beginSheetModal(for: window) { if $0 == .alertFirstButtonReturn { revert() } }
+        } else if alert.runModal() == .alertFirstButtonReturn {
+            revert()
+        }
     }
 
     func revertEdits() {

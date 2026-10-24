@@ -257,7 +257,31 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
 
     static let identity = EditState()
 
-    var isIdentity: Bool { self == .identity }
+    /// No edits that show: also when what's left can't change the picture (a slider within a hair of zero, an
+    /// empty list of removals, a crop of the whole picture, Extend's settings with nothing extended, a filter's
+    /// strength with no filter), so an image isn't "edited" with nothing to see or undo.
+    var isIdentity: Bool { shown == .identity }
+
+    /// These edits without what can't show (see `isIdentity`).
+    var shown: EditState {
+        var e = self
+        for key in [\EditState.exposure, \.brightness, \.contrast, \.highlights, \.shadows, \.saturation, \.vibrance,
+                    \.temperature, \.tint, \.sharpness, \.noiseReduction, \.vignette] where abs(e[keyPath: key]) < 0.005 {
+            e[keyPath: key] = 0
+        }
+        if abs(e.straighten) < 0.05 { e.straighten = 0 }
+        e.quarterTurns = ((e.quarterTurns % 4) + 4) % 4
+        if let c = e.crop, abs(c.minX) < 0.0005, abs(c.minY) < 0.0005, abs(c.width - 1) < 0.0005, abs(c.height - 1) < 0.0005 { e.crop = nil }
+        if e.removals?.isEmpty == true { e.removals = nil }
+        if !e.cropExtendsBeyondImage {
+            e.extendFill = nil
+            e.extendSeed = nil
+            e.extendMethod = nil
+            e.extendPrompt = nil
+        }
+        if e.filter == .none { e.filterIntensity = 1 }
+        return e
+    }
 
     /// True when the result has see-through areas that the edits introduced.
     var hasTransparency: Bool {

@@ -374,6 +374,8 @@ struct RemoveObjectsEditor: View {
                 let option = NSEvent.modifierFlags.contains(.option)
                 if travel < 3, stroke.count < 4, let p = stroke.first {
                     stroke = []
+                    // (A click beside the picture, in the margin around it, isn't on anything.)
+                    guard (0...1).contains(p.x), (0...1).contains(p.y) else { return }
                     mode == .change ? select(at: p, subtract: option) : removeObject(at: p)
                 } else {
                     mode == .change ? selectStroke(subtract: option) : removeStroke()
@@ -675,7 +677,8 @@ struct RemoveObjectsEditor: View {
                     throw VisionError.noSelection
                 }
                 // Objects' outlines are tight: grow them past their edges (and a little shadow).
-                let scale = d.pixelSize.width / size.width
+                // (The picture is turned as shown: compare long sides.)
+                let scale = max(d.pixelSize.width, d.pixelSize.height) / max(size.width, size.height)
                 let grow = 0.02 * max(bounds.width, bounds.height) * scale + 0.003 * max(d.pixelSize.width, d.pixelSize.height)
                 busy = false
                 remove(RemovalMark(mask: sourceMask(found), grow: grow))
@@ -764,6 +767,8 @@ struct RemoveObjectsEditor: View {
         // A change taken back leaves what it changed selected, to change some other way.
         if let selected = mark.selection { show(selected, reach: mark.shownReach, applied: false) }
         strength = removals.last?.opacity ?? 1
+        // (With nothing left to compare, Original turns off: it can't be turned off once disabled.)
+        if removals.isEmpty { showOriginal = false }
         Task { await render() }
     }
 
