@@ -75,7 +75,7 @@ nonisolated enum CanvasBackground: String, CaseIterable, Identifiable {
 /// What makes a new picture: whether it saves it as a copy, stacked on the original (the default), or puts it
 /// in place of the image (Settings ▸ Editing ▸ Copies).
 nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
-    case upscale, colorize, blackAndWhite, fixBlur, extend, removeObjects
+    case upscale, colorize, blackAndWhite, fixBlur, extend, removeObjects, changeObjects
 
     var id: String { rawValue }
     var key: String { "makesCopy." + rawValue }
@@ -88,6 +88,7 @@ nonisolated enum CopyOperation: String, CaseIterable, Identifiable, Sendable {
         case .fixBlur: "Fix Blur"
         case .extend: "Extend"
         case .removeObjects: "Remove Objects"
+        case .changeObjects: "Change Objects"
         }
     }
 }

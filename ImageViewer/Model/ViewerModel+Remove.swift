@@ -17,18 +17,28 @@ extension ViewerModel {
         activeTool = .removeObjects
     }
 
-    /// Done in Remove Objects with `removals` made: saved as "<name> (Retouched)", stacked on the original
-    /// (which stays as it was), or, with copies turned off, kept as an edit of the image to save.
-    func finishRemovingObjects(_ removals: [Removal], url: URL, decoded d: DecodedImage) {
+    /// Image ▸ Change Objects…: opens Remove Objects' tool for changing what's marked (another color, or
+    /// something else) instead.
+    func beginChangeObjects() {
+        guard canRemoveObjects else { return }
+        viewMode = .viewer
+        activeTool = .changeObjects
+    }
+
+    /// Done in Remove Objects (or, `changed`, Change Objects) with `removals` made: saved as "<name> (Retouched)"
+    /// ("(Changed)"), stacked on the original (which stays as it was), or, with copies turned off, kept as an
+    /// edit of the image to save.
+    func finishRemovingObjects(_ removals: [Removal], url: URL, decoded d: DecodedImage, changed: Bool = false) {
         guard !removals.isEmpty, d.url == url else { return }
         let previous = edits[url] ?? .identity
         var result = previous
         result.removals = (previous.removals ?? []) + removals
-        if Prefs.makesCopy(.removeObjects) {
-            let failure = "Couldn't save a retouched copy of “\(url.lastPathComponent)”"
+        if Prefs.makesCopy(changed ? .changeObjects : .removeObjects) {
+            let kind = changed ? "changed" : "retouched"
+            let failure = "Couldn't save a \(kind) copy of “\(url.lastPathComponent)”"
             let save: (EditState) -> Void = { [weak self] e in
-                self?.saveCopy(of: url, decoded: d, edits: e, label: "Retouched", defaultFormat: .heic,
-                               working: "Saving the retouched copy…", systemImage: "eraser", failure: failure) { $0 }
+                self?.saveCopy(of: url, decoded: d, edits: e, label: changed ? "Changed" : "Retouched", defaultFormat: .heic,
+                               working: "Saving the \(kind) copy…", systemImage: changed ? "paintbrush" : "eraser", failure: failure) { $0 }
             }
             guard result.needsExtendFill else { return save(result) }
             // An extended photo: its extension continues the retouched picture, so it's made again first.
@@ -45,7 +55,8 @@ extension ViewerModel {
                 }
             }
         } else {
-            applyEdits(result, to: url, undoName: removals.count == 1 ? "Remove Object" : "Remove Objects", previous: previous)
+            let undoName = changed ? (removals.count == 1 ? "Change Object" : "Change Objects") : (removals.count == 1 ? "Remove Object" : "Remove Objects")
+            applyEdits(result, to: url, undoName: undoName, previous: previous)
         }
     }
 }

@@ -30,7 +30,8 @@ ImageViewer/
                  Sharpen.swift (Fix Blur: Restormer in tiles, GFPGAN on aligned faces)
     Fill/        Extend: content-aware fill (C engine, ContentAwareFill.c), generative fill
                  (StableDiffusion.swift: Core ML inpainting; GenerativeExtend.swift: windows, cache, model install);
-                 Removal.swift (Remove Objects: LaMa, Match Photo, Generate; patches in RemovalStore); Colorize.swift
+                 Removal.swift (Remove and Change Objects: LaMa, Match Photo, Generate, recolor; patches in
+                 RemovalStore); Change.swift (reading Change Objects' instructions); Recolor.c; Colorize.swift
   Canvas/        AppKit zoom/pan canvas (CALayer-backed, HDR), Live Text overlay
   Intelligence/  Vision services, Foundation Models describer/chat, folder index & search
   Views/         SwiftUI: window, toolbar, browser (grid/filmstrip/sidebar), inspector, tools, sheets
@@ -109,6 +110,25 @@ decoded pixels, grown a little, and the area around it (at least 800 px, square 
 800 × 800 with the rest of its square mirrored, by the C engine, or by Stable Diffusion painting a description. Only
 what changed is kept, as a PNG patch with a soft edge (`RemovalStore`, an `EditState.removals` entry with its rect),
 drawn first in the pipeline, so later crops, turns, Extend and adjustments keep it.
+
+**Change Objects** is the same editor in `.change` mode, making the same patches. A click's object mask (Vision) or a
+stroke is narrowed to the pixels near the clicked color (`ObjectRemover.selectByColor`, `iv_select_color` in
+`Recolor.c`), on the picture as shown. The distance is in L\*a\*b\*: hue difference (scaled by chroma, as in CIE94)
+and saturation (C\*/L\*, which shading hardly changes, and which keeps grays such as hair out of a colored shirt) count
+most, lightness little; a contrast curve then makes clear matches fully in, since a soft selection leaves some old color.
+The selection's masks are made with no color space (Core Image would otherwise linearize them as gray levels). The
+instruction is read by `ChangeRequest.parse` (`Imaging/Fill/Change.swift`): ending on a known color name with no
+pattern or material word next to it, it's a color, recolored by `iv_recolor`: the area's mean L\* moved to the
+target's, each pixel keeping its offset (narrowed toward black or white, so dark targets don't crush shadows), with
+the target's a\*b\* faded toward the ends. Outside the selection but in the object it was found in (`reach`, the whole
+person clicked), and a few pixels past its edge, a pixel changes by how much it is the selection's color (its a\*b\*
+projected onto the area's mean), so the old color showing between strands of hair, or blended into the edge, changes
+too, while skin, hair and gray ground don't. Anything else goes to Stable Diffusion with `keepShape`: img2img at
+strength 0.8 from the selection itself, recolored first to the first color the description names
+(`ChangeRequest.tint`), since the model keeps the colors it starts from. Apple Intelligence was tried for reading
+instructions and dropped: it got colors wrong ("teal-ish green" → blue) and called plaid shirts plain red. A change's
+`Removal.opacity` is its strength. `-extendTest -change <image> <out.png> <x> <y> "<instruction>"` runs it headlessly
+(`MASK_OUT` saves the selection), and `-extendTest -interpret "<instruction>"…` shows how instructions are read.
 
 **Fix Blur** (`Imaging/Sharpen.swift`, `Views/Sheets/FixBlurSheet.swift`). Restormer (Out of Focus or Camera Shake)
 runs over the whole picture in 384 × 384 tiles that overlap by 48 px and fade into each other; a tile that comes back

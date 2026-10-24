@@ -226,6 +226,10 @@ struct IntelligencePanel: View {
                     model.beginRemoveObjects()
                 }
                 .disabled(!model.canRemoveObjects)
+                ActionButton("Change Objects…", systemImage: "paintbrush") {
+                    model.beginChangeObjects()
+                }
+                .disabled(!model.canRemoveObjects)
                 ActionButton("Copy Subject", systemImage: "doc.on.clipboard") {
                     ai.copySubject()
                 }

@@ -83,6 +83,8 @@ nonisolated struct Removal: Codable, Equatable, Hashable, Sendable {
     var path: String
     /// Where it goes: normalized, top-left origin, in the image as decoded (upright, before other edits).
     var rect: CGRect
+    /// How much of it shows (Change Objects' strength); nil is all of it.
+    var opacity: Double?
 }
 
 /// How Extend fills the new area.

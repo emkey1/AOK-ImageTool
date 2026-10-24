@@ -83,6 +83,64 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -interpret "<instruction>"...`: how Change Objects reads each instruction.
+        if let i = args.firstIndex(of: "-interpret"), i + 1 < args.count {
+            for text in args.dropFirst(i + 1) {
+                let r = ChangeRequest.parse(text)
+                print("\(text): " + (r.color.map { "color \($0.red),\($0.green),\($0.blue)" } ?? "generate “\(r.description)”"))
+            }
+            exit(0)
+        }
+        // `-extendTest -change <image> <out.png> <x> <y> "<instruction>"`: Change Objects on what Vision finds at
+        // (x, y) (normalized, top-left origin; macOS 27), as the tool does it.
+        if let i = args.firstIndex(of: "-change"), i + 5 < args.count, #available(macOS 27, *) {
+            let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])
+            guard let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false),
+                  let x = Double(args[i + 3]), let y = Double(args[i + 4]) else { exit(1) }
+            let instruction = args[i + 5]
+            let t0 = Date()
+            do {
+                // As the tool shows it (up to 4096 px), selected there, then mapped onto the photo.
+                guard let picture = await EditRenderer.shared.render(d, edits: EditState(), maxDimension: 4096, stage: .full)?.image else { exit(1) }
+                let size = CGSize(width: picture.width, height: picture.height)
+                // (More points after the instruction: "x,y" to include, "-x,y" to leave out.)
+                var included = [CGPoint(x: x, y: 1 - y)], excluded: [CGPoint] = []
+                for arg in args.dropFirst(i + 6) {
+                    let parts = arg.split(separator: ",").compactMap { Double($0) }
+                    guard parts.count == 2 else { continue }
+                    if parts[0] < 0 { excluded.append(CGPoint(x: -parts[0], y: 1 - parts[1])) } else { included.append(CGPoint(x: parts[0], y: 1 - parts[1])) }
+                }
+                var mask = try await VisionServices.objectMask(for: picture, included: included, excluded: excluded)
+                mask = mask.transformed(by: CGAffineTransform(translationX: -mask.extent.minX, y: -mask.extent.minY))
+                    .transformed(by: CGAffineTransform(scaleX: size.width / mask.extent.width, y: size.height / mask.extent.height))
+                let reach = ObjectRemover.sourceMask(mask, shownWith: EditState(), size: d.pixelSize)
+                mask = try ObjectRemover.selectByColor(in: CIImage(cgImage: picture), mask: mask, seed: CGPoint(x: x, y: y))
+                mask = ObjectRemover.sourceMask(mask, shownWith: EditState(), size: d.pixelSize)
+                if let path = ProcessInfo.processInfo.environment["MASK_OUT"],
+                   let cg = ImageDecoder.ciContext.createCGImage(mask, from: CGRect(origin: .zero, size: d.pixelSize), format: .L8,
+                                                                 colorSpace: CGColorSpaceCreateDeviceGray()) {
+                    try? ImageWriter.write(cg, to: URL(fileURLWithPath: path), format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                }
+                let request = ChangeRequest.parse(instruction)
+                print("request:", request.color.map { "color \($0.red),\($0.green),\($0.blue)" } ?? "generate “\(request.description)”")
+                let change: Removal
+                if let color = request.color {
+                    change = try await ObjectRemover.recolor(d, after: [], mask: mask, reach: reach, color: color)
+                } else {
+                    change = try await ObjectRemover.remove(d, after: [], mask: mask, grow: 4, method: .generate, seed: 7,
+                                                            prompt: request.description, keepShape: true, tint: request.tint)
+                }
+                print("patch:", change.path, EditRenderer.pixelRect(change.rect, in: CGRect(origin: .zero, size: d.pixelSize)))
+                var e = EditState()
+                e.removals = [change]
+                guard let made = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil)?.image else { exit(1) }
+                try ImageWriter.write(made, to: out, format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                print(String(format: "%d×%d in %.1f s", made.width, made.height, Date().timeIntervalSince(t0)))
+            } catch {
+                print("failed:", error.localizedDescription)
+            }
+            exit(0)
+        }
         // `-extendTest -download <generative-fill|colorize>`: downloads and installs a model (AOK_MODELS_URL and
         // AOK_MODELS_DIR point it at another server and folder).
         if let i = args.firstIndex(of: "-download"), i + 1 < args.count,

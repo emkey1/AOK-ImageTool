@@ -97,14 +97,14 @@ nonisolated enum VisionServices {
         return CIImage(cvPixelBuffer: buffer)
     }
 
-    /// Click-to-select segmentation (macOS 27): include/exclude points refine the selection.
+    /// Click-to-select segmentation (macOS 27): include/exclude points refine the selection. The request is
+    /// iterative: it's run on the first point, then again after each point added (adding them all before the
+    /// first run fails).
     @available(macOS 27, *)
     @concurrent
     static func objectMask(for image: CGImage, included: [CGPoint], excluded: [CGPoint]) async throws -> CIImage {
         guard let first = included.first else { throw VisionError.noSelection }
         let request = GenerateIterativeSegmentationRequest(seedPoint: NormalizedPoint(x: first.x, y: first.y))
-        for p in included.dropFirst() { try request.addIncludedPoint(NormalizedPoint(x: p.x, y: p.y)) }
-        for p in excluded { try request.addExcludedPoint(NormalizedPoint(x: p.x, y: p.y)) }
         request.qualityLevel = .accurate
         switch await request.assetStatus {
         case .ready:
@@ -115,9 +115,17 @@ nonisolated enum VisionServices {
             let progress = ProgressManager(totalCount: 1)
             try await request.downloadAssets(progress: progress.subprogress(assigningCount: 1))
         }
-        guard let observation = try await ImageRequestHandler(image).perform(request) else {
-            throw VisionError.noSelection
+        let handler = ImageRequestHandler(plainCopySync(image))
+        var observation = try await handler.perform(request)
+        for p in included.dropFirst() {
+            try request.addIncludedPoint(NormalizedPoint(x: p.x, y: p.y))
+            observation = try await handler.perform(request)
         }
+        for p in excluded {
+            try request.addExcludedPoint(NormalizedPoint(x: p.x, y: p.y))
+            observation = try await handler.perform(request)
+        }
+        guard let observation else { throw VisionError.noSelection }
         return CIImage(cgImage: try observation.cgImage)
     }
 

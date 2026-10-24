@@ -33,6 +33,10 @@ enum ActiveTool: Equatable {
     case crop
     case selectObject
     case removeObjects
+    case changeObjects
+
+    /// Remove and Change Objects: the tools that paint over the picture, with their own undo, zoom and brush.
+    var paintsObjects: Bool { self == .removeObjects || self == .changeObjects }
 }
 
 /// What the canvas should draw right now.

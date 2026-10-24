@@ -31,7 +31,7 @@ nonisolated enum ImageStacks {
 
     /// "Beach (Colorized)" or "Beach (2×) 2" → "Beach": the names this app gives its copies.
     static func sourceStem(fromName stem: String) -> String? {
-        (try? #/(.+) \((?:Colorized|Black & White|Sharpened|Cropped|Extended|Retouched|Playground|\d+×)\)(?: \d+)?/#.wholeMatch(in: stem)).map { String($0.1) }
+        (try? #/(.+) \((?:Colorized|Black & White|Sharpened|Cropped|Extended|Retouched|Changed|Playground|\d+×)\)(?: \d+)?/#.wholeMatch(in: stem)).map { String($0.1) }
     }
 
     /// What each copy among `items` was made from (when that's among them too).

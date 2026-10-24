@@ -271,6 +271,9 @@ struct ViewerCommands: Commands {
             Button("Remove Objects…") { viewer?.beginRemoveObjects() }
                 .keyboardShortcut("x", modifiers: [.command, .shift])
                 .disabled(!(viewer?.canRemoveObjects ?? false))
+            Button("Change Objects…") { viewer?.beginChangeObjects() }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
+                .disabled(!(viewer?.canRemoveObjects ?? false))
             Divider()
             // Extend opens with the fill used last (Generate, once its model is installed).
             Button("Extend…") { viewer?.beginExtend() }

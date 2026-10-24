@@ -134,6 +134,7 @@ struct ViewerPane: View {
                 case .crop: CropEditor()
                 case .selectObject: ObjectSelectEditor()
                 case .removeObjects: RemoveObjectsEditor()
+                case .changeObjects: RemoveObjectsEditor(mode: .change)
                 }
             } else {
                 stateOverlay

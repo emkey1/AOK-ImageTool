@@ -2,10 +2,15 @@ import CoreImage
 import SwiftUI
 
 /// What one removal takes away: a mask in the image's own pixel space (white = remove), and how far past it
-/// to fill.
+/// to fill. A change (Change Objects) also keeps what was selected and the objects it was selected in, as shown
+/// (`selection`, `shownReach`) and in the image's pixels (`reach`), and what it was changed to.
 private struct RemovalMark: @unchecked Sendable {
     let mask: CIImage
     let grow: CGFloat
+    var selection: CIImage? = nil
+    var shownReach: CIImage? = nil
+    var reach: CIImage? = nil
+    var change: ChangeRequest? = nil
 }
 
 /// Progress of the removal being made, updated from the background.
@@ -17,8 +22,15 @@ private final class RemovalProgress {
 /// Remove Objects: paint over something, click it or circle it, and it's removed, filled in from what's around
 /// it. Each removal is a step of its own (⌘Z takes it back, Try Again fills it differently); Done saves the
 /// result as a copy, or as an edit.
+///
+/// Change Objects is the same tool for changing things instead: click or paint what to change (a shirt), say
+/// what it should be (“blue”, “a red plaid shirt”), and a color is changed in place, keeping its shading, or
+/// anything else is painted there by the generative model.
 struct RemoveObjectsEditor: View {
+    enum Mode { case remove, change }
+
     @Environment(ViewerModel.self) private var model
+    let mode: Mode
     /// The edits the image had when the tool opened; this session's removals go on top.
     @State private var start = EditState()
     @State private var removals: [Removal] = []
@@ -52,6 +64,33 @@ struct RemoveObjectsEditor: View {
     @State private var zoomStart: CGFloat?
     @State private var viewport: CGSize = .zero
     @State private var scrollMonitor: Any?
+    @State private var renderGeneration = 0
+    /// A render is under way for the strength slider; `renderAgain`: it moved since, so one more follows.
+    @State private var rendering = false
+    @State private var renderAgain = false
+
+    // Change Objects
+    /// What's selected to change (white), the picture's size, and how it's shown: tinted, until it's changed.
+    @State private var selection: CIImage?
+    @State private var selectionShown: CGImage?
+    /// The objects the selection was made in (all of a person clicked, the area painted): a color change also
+    /// changes its color where it shows through, as between strands of hair.
+    @State private var reach: CIImage?
+    /// The last change was made from `selection`: changing again makes it over, clicking starts a new selection.
+    @State private var selectionApplied = false
+    @State private var changeText = ""
+    @State private var appliedText = ""
+    /// Clicks and strokes select only what's the color there (a shirt, not the person wearing it).
+    @State private var onlyThatColor = true
+    /// How much the last change shows.
+    @State private var strength: Double = 1
+    @State private var generateInstalled = GenerativeModel.isInstalled
+    /// What the tool is busy with, when it's not a removal.
+    @State private var activity: String?
+
+    init(mode: Mode = .remove) {
+        self.mode = mode
+    }
 
     private static let markColor = Color(red: 1, green: 0.3, blue: 0.4)
     static let maxZoom: CGFloat = 16
@@ -70,6 +109,14 @@ struct RemoveObjectsEditor: View {
                             .frame(width: shown.width, height: shown.height)
                             .position(x: shown.midX, y: shown.midY)
                         markOverlay(in: shown)
+                        if mode == .change, !selectionApplied, !showOriginal, let selectionShown {
+                            Image(decorative: selectionShown, scale: 1)
+                                .resizable()
+                                .frame(width: shown.width, height: shown.height)
+                                .position(x: shown.midX, y: shown.midY)
+                                .allowsHitTesting(false)
+                                .modifier(Pulsing(active: busy))
+                        }
                         if let hover, !busy, !showOriginal, shown.contains(hover) {
                             Circle()
                                 .strokeBorder(.white, lineWidth: 1.5)
@@ -126,6 +173,7 @@ struct RemoveObjectsEditor: View {
         }
         .onChange(of: ModelDownloads.shared.installCount) {
             eraseInstalled = RemovalModel.isInstalled
+            generateInstalled = GenerativeModel.isInstalled
             if eraseInstalled && eraseWhenInstalled {
                 eraseWhenInstalled = false
                 setMethod(.erase)
@@ -136,7 +184,14 @@ struct RemoveObjectsEditor: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toolCommit)) { note in
-            if note.object as AnyObject? === model, !busy { finish() }
+            guard note.object as AnyObject? === model, !busy else { return }
+            // In Change Objects, Return makes the change described (when it's new); else it's Done.
+            let text = changeText.trimmingCharacters(in: .whitespacesAndNewlines)
+            if mode == .change, selection != nil, !text.isEmpty, !selectionApplied || text != appliedText {
+                applyChange()
+            } else {
+                finish()
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toolCancel)) { note in
             guard note.object as AnyObject? === model else { return }
@@ -248,11 +303,12 @@ struct RemoveObjectsEditor: View {
             .onEnded { value in
                 guard !busy, !stroke.isEmpty else { return }
                 let travel = hypot(value.location.x - value.startLocation.x, value.location.y - value.startLocation.y)
+                let option = NSEvent.modifierFlags.contains(.option)
                 if travel < 3, stroke.count < 4, let p = stroke.first {
                     stroke = []
-                    removeObject(at: p)
+                    mode == .change ? select(at: p, subtract: option) : removeObject(at: p)
                 } else {
-                    removeStroke()
+                    mode == .change ? selectStroke(subtract: option) : removeStroke()
                 }
             }
     }
@@ -261,6 +317,7 @@ struct RemoveObjectsEditor: View {
 
     private var hintText: String {
         if let message { return message }
+        if mode == .change { return changeHint }
         if busy {
             if let p = progress.value, p > 0 {
                 return method == .generate ? "Generating on this Mac… \(Int(p * 100))%" : "Removing… \(Int(p * 100))%"
@@ -276,6 +333,24 @@ struct RemoveObjectsEditor: View {
                 + (eraseInstalled || !GenerativeModel.isSupported ? "" : " (Using Match Photo: for Erase, the best fill, click Get the Model for Erase… below.)")
         }
         return "Removed. Paint or click to remove more; Try Again fills it differently, ⌘Z takes it back."
+    }
+
+    private var changeHint: String {
+        if busy {
+            if let p = progress.value, p > 0 { return "Generating on this Mac… \(Int(p * 100))%" }
+            return activity ?? "Changing…"
+        }
+        if showOriginal { return "The original. Turn off Original to keep changing." }
+        guard selection != nil else {
+            return removals.isEmpty
+                ? "Click what to change, such as a shirt, or paint over it. Then say below what it should be: “blue”, “dark green”, “a red plaid shirt”."
+                : "Click or paint over something else to change it too. ⌘Z takes back a change."
+        }
+        if selectionApplied {
+            let made = marks.last?.change.map { $0.color != nil ? "Recolored" : "Painted “\($0.description)”" } ?? "Changed"
+            return "\(made). Say something else below and press Return to make it over, or click something else to change it too."
+        }
+        return "Selected. Click or paint to add to it (⌥ takes away), then say below what it should be and press Return."
     }
 
     private var hint: some View {
@@ -297,28 +372,7 @@ struct RemoveObjectsEditor: View {
     private var controls: some View {
         VStack(spacing: 10) {
             HStack(spacing: 10) {
-                Picker("Fill", selection: Binding(get: { method }, set: { setMethod($0) })) {
-                    ForEach(RemovalMethod.allCases) { m in
-                        Text(m.title).tag(m)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(width: 300)
-                .help("Erase paints in what was behind, with a model made for removing objects; Match Photo copies the photo's own texture (good for grass, sand, sky); Generate paints what you describe in its place, with \(GenerativeModel.displayName)")
-                if method == .generate {
-                    TextField("Describe what to put there, such as “tall grass”", text: $promptText)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(minWidth: 180, maxWidth: 360)
-                        .help("Generate replaces what you mark with this. To just remove it, choose Erase.")
-                }
-                if !eraseInstalled && GenerativeModel.isSupported {
-                    Button("Get the Model for Erase…") {
-                        eraseWhenInstalled = true
-                        model.offerDownload(.removal) {}
-                    }
-                    .controlSize(.small)
-                    .help("Erase uses \(RemovalModel.displayName), which runs on this Mac (a one-time download of \(DownloadableModel.removal.formattedSize))")
-                }
+                if mode == .change { changeControls } else { removeControls }
                 Spacer()
                 Button { setZoom(zoom / 1.5, about: nil) } label: { Image(systemName: "minus.magnifyingglass") }
                     .disabled(zoom <= 1)
@@ -344,25 +398,96 @@ struct RemoveObjectsEditor: View {
                 Button { redo() } label: { Image(systemName: "arrow.uturn.forward") }
                     .disabled(busy || undone.isEmpty)
                     .help("Redo (⇧⌘Z)")
-                Button("Try Again") { tryAgain() }
-                    .disabled(busy || removals.isEmpty)
-                    .help("Remove the last one again, filled differently (with the Fill chosen now)")
+                if mode == .change {
+                    Button("Try Again") { tryAgain() }
+                        .disabled(busy || marks.last?.change.map { $0.color != nil } ?? true)
+                        .help("Paint the last change again, differently (a color comes out the same: say another color instead)")
+                    Text("Strength")
+                        .foregroundStyle(.secondary)
+                    Slider(value: Binding(get: { strength }, set: { setStrength($0) }), in: 0...1) { Text("Strength") }
+                        .labelsHidden()
+                        .frame(width: 110)
+                        .disabled(busy || removals.isEmpty)
+                        .help("How much of the last change shows")
+                } else {
+                    Button("Try Again") { tryAgain() }
+                        .disabled(busy || removals.isEmpty)
+                        .help("Remove the last one again, filled differently (with the Fill chosen now)")
+                }
                 Toggle(isOn: $showOriginal) { Label("Original", systemImage: "eye") }
                     .toggleStyle(.button)
                     .disabled(busy || removals.isEmpty)
-                    .help("Compare with the picture before these removals")
+                    .help(mode == .change ? "Compare with the picture before these changes" : "Compare with the picture before these removals")
+                if mode == .change {
+                    Button("Deselect") { clearSelection() }
+                        .disabled(busy || selection == nil)
+                        .help("Clear the selection, to start a new one")
+                }
                 Spacer()
                 Button("Cancel") { model.activeTool = nil }
                     .keyboardShortcut(.cancelAction)
-                Button("Done") { finish() }
-                    .prominentButtonStyle()
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(busy)
+                if mode == .change {
+                    // (Return makes the change; Done saves.)
+                    Button("Done") { finish() }
+                        .disabled(busy)
+                } else {
+                    Button("Done") { finish() }
+                        .prominentButtonStyle()
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(busy)
+                }
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.bar)
+    }
+
+    @ViewBuilder
+    private var removeControls: some View {
+        Picker("Fill", selection: Binding(get: { method }, set: { setMethod($0) })) {
+            ForEach(RemovalMethod.allCases) { m in
+                Text(m.title).tag(m)
+            }
+        }
+        .pickerStyle(.segmented)
+        .frame(width: 300)
+        .help("Erase paints in what was behind, with a model made for removing objects; Match Photo copies the photo's own texture (good for grass, sand, sky); Generate paints what you describe in its place, with \(GenerativeModel.displayName)")
+        if method == .generate {
+            TextField("Describe what to put there, such as “tall grass”", text: $promptText)
+                .textFieldStyle(.roundedBorder)
+                .frame(minWidth: 180, maxWidth: 360)
+                .help("Generate replaces what you mark with this. To just remove it, choose Erase.")
+        }
+        if !eraseInstalled && GenerativeModel.isSupported {
+            Button("Get the Model for Erase…") {
+                eraseWhenInstalled = true
+                model.offerDownload(.removal) {}
+            }
+            .controlSize(.small)
+            .help("Erase uses \(RemovalModel.displayName), which runs on this Mac (a one-time download of \(DownloadableModel.removal.formattedSize))")
+        }
+    }
+
+    @ViewBuilder
+    private var changeControls: some View {
+        TextField("What should it be? Such as “blue” or “a red plaid shirt”", text: $changeText)
+            .textFieldStyle(.roundedBorder)
+            .frame(minWidth: 220, maxWidth: 400)
+            .onSubmit { applyChange() }
+            .help("A color (“blue”, “dark green”, “navy”) is changed in place, keeping its shading; anything else (“a red plaid shirt”, “a leather jacket”) is painted there by \(GenerativeModel.displayName)")
+        Button("Change") { applyChange() }
+            .keyboardShortcut(.defaultAction)
+            .disabled(busy || selection == nil || changeText.trimmingCharacters(in: .whitespaces).isEmpty)
+            .help("Change what's selected (Return)")
+        Toggle("Only That Color", isOn: $onlyThatColor)
+            .toggleStyle(.checkbox)
+            .help("Select only what's the color where you click or paint: a shirt, not the person wearing it. Turn it off to select whole objects, or exactly what you paint.")
+        if !generateInstalled && GenerativeModel.isSupported {
+            Button("Get the Model…") { model.offerDownload(.generativeFill) {} }
+                .controlSize(.small)
+                .help("Colors change without it. Anything else (a pattern, a different thing) is painted by \(GenerativeModel.displayName), on this Mac: a one-time download of \(DownloadableModel.generativeFill.formattedSize).")
+        }
     }
 
     // MARK: Actions
@@ -410,8 +535,12 @@ struct RemoveObjectsEditor: View {
         guard let d = model.decoded else { return }
         var e = shownEdits
         e.removals = allRemovals.isEmpty ? nil : allRemovals
+        // (The latest wins, when the strength slider starts several.)
+        renderGeneration += 1
+        let generation = renderGeneration
         // (Up to 4096 px, so it's still sharp zoomed in.)
-        guard let output = await EditRenderer.shared.render(d, edits: e, maxDimension: 4096, stage: .full) else { return }
+        guard let output = await EditRenderer.shared.render(d, edits: e, maxDimension: 4096, stage: .full),
+              generation == renderGeneration else { return }
         picture = output.image
         if initial { original = output.image }
     }
@@ -443,8 +572,7 @@ struct RemoveObjectsEditor: View {
                 }
                 guard !Task.isCancelled else { return busy = false }
                 let size = CGSize(width: picture.width, height: picture.height)
-                found = found.transformed(by: CGAffineTransform(translationX: -found.extent.minX, y: -found.extent.minY))
-                    .transformed(by: CGAffineTransform(scaleX: size.width / found.extent.width, y: size.height / found.extent.height))
+                found = Self.fitted(found, to: size)
                 outline = Self.highlight(found, size: size)
                 guard let d = model.decoded, let bounds = VisionServices.maskBounds(found, imageSize: size) else {
                     throw VisionError.noSelection
@@ -462,7 +590,7 @@ struct RemoveObjectsEditor: View {
         }
     }
 
-    /// Makes a removal and adds it (`replacingLast`: in place of the last one, for Try Again).
+    /// Makes a removal (or a change) and adds it (`replacingLast`: in place of the last one, for Try Again).
     private func remove(_ mark: RemovalMark, replacingLast: Bool = false) {
         guard let d = model.decoded, d.url == model.currentURL else { return }
         if !method.isAvailable { method = .match }
@@ -484,16 +612,31 @@ struct RemoveObjectsEditor: View {
                 outline = nil
             }
             do {
-                let removal = try await withTaskCancellationHandler {
-                    try await ObjectRemover.remove(d, after: earlier, mask: mark.mask, grow: mark.grow, method: method, seed: seed,
-                                                   prompt: prompt, progress: { fraction in
-                        Task { @MainActor in if relay.value != nil { relay.value = fraction } }
-                        return flag.isSet
-                    })
+                let progress: @Sendable (Double) -> Bool = { fraction in
+                    Task { @MainActor in if relay.value != nil { relay.value = fraction } }
+                    return flag.isSet
+                }
+                var removal = try await withTaskCancellationHandler {
+                    switch mark.change {
+                    case let change? where change.color != nil:
+                        try await ObjectRemover.recolor(d, after: earlier, mask: mark.mask, reach: mark.reach, color: change.color!)
+                    case let change?:
+                        try await ObjectRemover.remove(d, after: earlier, mask: mark.mask, grow: mark.grow, method: .generate, seed: seed,
+                                                       prompt: change.description, keepShape: true, tint: change.tint, progress: progress)
+                    case nil:
+                        try await ObjectRemover.remove(d, after: earlier, mask: mark.mask, grow: mark.grow, method: method, seed: seed,
+                                                       prompt: prompt, progress: progress)
+                    }
                 } onCancel: {
                     flag.set()
                 }
                 guard !Task.isCancelled else { return }
+                if mark.change != nil {
+                    // A new change shows fully; one made over keeps the strength chosen.
+                    if !replacingLast { strength = 1 }
+                    removal.opacity = strength < 0.999 ? strength : nil
+                    if mark.selection != nil, mark.selection === selection { selectionApplied = true }
+                }
                 if replacingLast, !removals.isEmpty {
                     removals.removeLast()
                     marks.removeLast()
@@ -518,6 +661,9 @@ struct RemoveObjectsEditor: View {
         guard !busy, let removal = removals.popLast(), let mark = marks.popLast() else { return }
         undone.append((removal, mark))
         message = nil
+        // A change taken back leaves what it changed selected, to change some other way.
+        if let selected = mark.selection { show(selected, reach: mark.shownReach, applied: false) }
+        strength = removals.last?.opacity ?? 1
         Task { await render() }
     }
 
@@ -526,15 +672,170 @@ struct RemoveObjectsEditor: View {
         removals.append(last.removal)
         marks.append(last.mark)
         message = nil
+        if let selected = last.mark.selection { show(selected, reach: last.mark.shownReach, applied: true) }
+        strength = last.removal.opacity ?? 1
         Task { await render() }
     }
 
     private func finish() {
         task?.cancel()
         if let url = model.currentURL, let d = model.decoded, !removals.isEmpty {
-            model.finishRemovingObjects(removals, url: url, decoded: d)
+            model.finishRemovingObjects(removals, url: url, decoded: d, changed: mode == .change)
         }
         model.activeTool = nil
+    }
+
+    // MARK: Change Objects
+
+    /// Adds what's under `p` (normalized, top-left origin) to the selection (`subtract`: takes it away): the
+    /// object found there, or with Only That Color, the part of it that's the color clicked. Where no object is
+    /// found (the sky, a wall), Only That Color takes that color anywhere in the picture.
+    private func select(at p: CGPoint, subtract: Bool) {
+        guard let picture else { return }
+        let byColor = onlyThatColor
+        let size = CGSize(width: picture.width, height: picture.height)
+        let point = CGPoint(x: p.x, y: 1 - p.y)   // Vision: lower-left origin
+        busy = true
+        activity = "Finding what's there…"
+        message = nil
+        task = Task {
+            defer {
+                busy = false
+                activity = nil
+            }
+            var found: CIImage?
+            if #available(macOS 27, *), let refined = try? await VisionServices.objectMask(for: picture, included: [point], excluded: []) {
+                found = refined
+            } else {
+                found = try? await VisionServices.instanceMask(for: picture, at: point)
+            }
+            guard !Task.isCancelled else { return }
+            do {
+                if let object = found {
+                    let mask = Self.fitted(object, to: size)
+                    try add(byColor ? await Self.byColor(picture, mask: mask, seed: p) : mask, in: mask, subtract: subtract)
+                } else if byColor {
+                    let everywhere = CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size))
+                    try add(await Self.byColor(picture, mask: everywhere, seed: p), subtract: subtract)
+                } else {
+                    throw VisionError.noSelection
+                }
+            } catch {
+                message = "Nothing was found there. Paint over it instead."
+            }
+        }
+    }
+
+    /// Adds what was painted to the selection (`subtract`: takes it away; a loop, everything inside it). With
+    /// Only That Color, adding takes only what's the color most of the stroke covers.
+    private func selectStroke(subtract: Bool) {
+        guard let picture else { return }
+        let w = CGFloat(picture.width), h = CGFloat(picture.height)
+        let points = stroke.map { CGPoint(x: $0.x * w, y: (1 - $0.y) * h) }   // CG pixels, y up
+        let diameter = strokeWidth * w
+        guard let painted = Self.strokeMask(points, diameter: diameter, closed: Self.isLoop(points, diameter: diameter),
+                                            width: picture.width, height: picture.height) else { return stroke = [] }
+        let byColor = onlyThatColor && !subtract
+        busy = true
+        activity = "Finding what's there…"
+        message = nil
+        task = Task {
+            defer {
+                busy = false
+                activity = nil
+                stroke = []
+            }
+            do {
+                let mask = CIImage(cgImage: painted)
+                try add(byColor ? await Self.byColor(picture, mask: mask, seed: nil) : mask, in: mask, subtract: subtract)
+            } catch {
+                message = "Nothing to change was found there."
+            }
+        }
+    }
+
+    /// `mask` (the picture's size), found in `object` (nil: itself), added to the selection, or taken from it.
+    /// After a change, it starts a new one.
+    private func add(_ mask: CIImage, in object: CIImage? = nil, subtract: Bool) throws {
+        guard let picture else { return }
+        let rect = CGRect(x: 0, y: 0, width: picture.width, height: picture.height)
+        func combined(_ old: CIImage?, _ new: CIImage) -> CIImage? {
+            guard let old, !selectionApplied else { return subtract ? nil : new }
+            return subtract
+                ? old.applyingFilter("CIMultiplyCompositing", parameters: [kCIInputBackgroundImageKey: mask.applyingFilter("CIColorInvert")])
+                : new.applyingFilter("CIMaximumCompositing", parameters: [kCIInputBackgroundImageKey: old])
+        }
+        guard let selected = combined(selection, mask) else { return }
+        guard let flat = ObjectRemover.flattened(selected, in: rect) else { throw VisionError.noSelection }
+        guard VisionServices.maskBounds(flat, imageSize: rect.size) != nil else {
+            clearSelection()
+            if !subtract { throw VisionError.noSelection }
+            return
+        }
+        show(flat, reach: combined(reach, object ?? mask).flatMap { ObjectRemover.flattened($0, in: rect) } ?? flat, applied: false)
+    }
+
+    private func show(_ selected: CIImage, reach within: CIImage?, applied: Bool) {
+        selection = selected
+        reach = within
+        selectionApplied = applied
+        selectionShown = Self.highlight(selected, size: selected.extent.size, edged: true)
+    }
+
+    private func clearSelection() {
+        selection = nil
+        reach = nil
+        selectionShown = nil
+        selectionApplied = false
+    }
+
+    /// Change (or Return): what's selected made what `changeText` says. Again on the same selection, the last
+    /// change is made over.
+    private func applyChange() {
+        guard !busy else { return }
+        let text = changeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let selection else { return message = "Click or paint over what to change first." }
+        guard !text.isEmpty else { return message = "Say what it should be first, such as “blue” or “a red plaid shirt”." }
+        guard let d = model.decoded, d.url == model.currentURL else { return }
+        let request = ChangeRequest.parse(text)
+        guard request.color != nil || GenerativeModel.isInstalled else {
+            return message = GenerativeModel.isSupported
+                ? "“\(text)” is more than a color, so it's painted by \(GenerativeModel.displayName): click Get the Model… below. Or say just a color."
+                : "Only colors can be changed on this Mac, such as “blue”."
+        }
+        appliedText = text
+        let grow = max(2, 0.002 * max(d.pixelSize.width, d.pixelSize.height))
+        remove(RemovalMark(mask: sourceMask(selection), grow: grow, selection: selection, shownReach: reach,
+                           reach: reach.map(sourceMask), change: request),
+               replacingLast: selectionApplied && !removals.isEmpty)
+    }
+
+    private func setStrength(_ value: Double) {
+        strength = value
+        guard !removals.isEmpty else { return }
+        removals[removals.count - 1].opacity = value < 0.999 ? value : nil
+        // (One render at a time while the slider moves, then one for where it stopped.)
+        guard !rendering else { return renderAgain = true }
+        rendering = true
+        Task {
+            repeat {
+                renderAgain = false
+                await render()
+            } while renderAgain
+            rendering = false
+        }
+    }
+
+    /// The part of `mask` that's the color at `seed` (or most of it), worked out off the main thread.
+    @concurrent
+    nonisolated private static func byColor(_ picture: CGImage, mask: CIImage, seed: CGPoint?) async throws -> CIImage {
+        try ObjectRemover.selectByColor(in: CIImage(cgImage: picture), mask: mask, seed: seed)
+    }
+
+    /// A mask Vision made, moved to the origin and scaled to `size`.
+    private static func fitted(_ mask: CIImage, to size: CGSize) -> CIImage {
+        mask.transformed(by: CGAffineTransform(translationX: -mask.extent.minX, y: -mask.extent.minY))
+            .transformed(by: CGAffineTransform(scaleX: size.width / mask.extent.width, y: size.height / mask.extent.height))
     }
 
     // MARK: Marks
@@ -583,14 +884,22 @@ struct RemoveObjectsEditor: View {
         return length > 6 * diameter && gap < max(1.5 * diameter, 0.12 * length) && abs(area) / 2 > length * diameter
     }
 
-    /// A clicked object's outline, tinted, for showing over it while it's removed.
-    private static func highlight(_ mask: CIImage, size: CGSize) -> CGImage? {
+    /// A clicked object's outline, tinted, for showing over it while it's removed; `edged`, with a line around
+    /// it, so a selection is clear on any color.
+    private static func highlight(_ mask: CIImage, size: CGSize, edged: Bool = false) -> CGImage? {
         let rect = CGRect(origin: .zero, size: size)
         let tint = CIImage(color: CIColor(red: 1, green: 0.3, blue: 0.4, alpha: 0.5)).cropped(to: rect)
-        let shown = tint.applyingFilter("CIBlendWithMask", parameters: [
+        var shown = tint.applyingFilter("CIBlendWithMask", parameters: [
             kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect),
             kCIInputMaskImageKey: mask,
         ])
+        if edged {
+            let edge = mask.applyingFilter("CIMorphologyGradient", parameters: [kCIInputRadiusKey: max(1.5, max(size.width, size.height) / 900)])
+            shown = CIImage(color: CIColor(red: 1, green: 1, blue: 1, alpha: 0.9)).cropped(to: rect).applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: shown,
+                kCIInputMaskImageKey: edge,
+            ])
+        }
         return ImageDecoder.ciContext.createCGImage(shown, from: rect)
     }
 }

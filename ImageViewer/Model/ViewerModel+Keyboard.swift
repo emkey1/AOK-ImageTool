@@ -114,12 +114,12 @@ extension ViewerModel {
             pasteImage()
             return true
         }
-        // In Remove Objects, ⌘Z and ⇧⌘Z step through its removals, and ⌘+, ⌘− and ⌘0 zoom its picture.
-        if mods == .command, activeTool == .removeObjects, event.charactersIgnoringModifiers?.lowercased() == "z" {
+        // In Remove and Change Objects, ⌘Z and ⇧⌘Z step through its changes, and ⌘+, ⌘− and ⌘0 zoom its picture.
+        if mods == .command, activeTool?.paintsObjects == true, event.charactersIgnoringModifiers?.lowercased() == "z" {
             NotificationCenter.default.post(name: event.modifierFlags.contains(.shift) ? .toolRedo : .toolUndo, object: self)
             return true
         }
-        if activeTool == .removeObjects, mods == .command || mods.isEmpty, let step = Self.zoomStep(event.charactersIgnoringModifiers) {
+        if activeTool?.paintsObjects == true, mods == .command || mods.isEmpty, let step = Self.zoomStep(event.charactersIgnoringModifiers) {
             NotificationCenter.default.post(name: .toolZoom, object: self, userInfo: ["step": step])
             return true
         }
@@ -148,8 +148,8 @@ extension ViewerModel {
                 NotificationCenter.default.post(name: .toolCommit, object: self)
                 return true
             default:
-                // [ and ] size Remove Objects' brush.
-                if activeTool == .removeObjects, let ch = event.charactersIgnoringModifiers, ch == "[" || ch == "]" {
+                // [ and ] size Remove and Change Objects' brush.
+                if activeTool?.paintsObjects == true, let ch = event.charactersIgnoringModifiers, ch == "[" || ch == "]" {
                     NotificationCenter.default.post(name: .toolBrush, object: self, userInfo: ["larger": ch == "]"])
                     return true
                 }

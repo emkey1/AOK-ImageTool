@@ -98,14 +98,20 @@ nonisolated enum ObjectRemover {
     static let minRegion: CGFloat = 800
     /// Match Photo works on bigger areas at this size, then enlarges the fill.
     static let matchMaxSide = 2048
+    /// How much Change Objects' Generate redraws what's there: enough for a new look, little enough to keep its
+    /// shape and folds.
+    static let changeStrength: Float = 0.8
 
     /// Removes what `mask` marks (white = remove; Core Image, the image's pixel size, origin at 0) from
     /// `decoded` as the `earlier` removals left it. The marked area, grown by `grow` pixels, is filled with
-    /// `method` (Generate paints `prompt` there); the patch that covers it is saved in `RemovalStore`.
-    /// `progress` gets 0...1 and returns true to cancel.
+    /// `method` (Generate paints `prompt` there); the patch that covers it is saved in `RemovalStore`. With
+    /// `keepShape` (Change Objects), Generate redraws what's there instead of emptying it first, so the new
+    /// thing keeps its folds and shape, recolored to `tint` first when the description names a color (the model
+    /// keeps the colors it starts from). `progress` gets 0...1 and returns true to cancel.
     @concurrent
     static func remove(_ decoded: DecodedImage, after earlier: [Removal], mask: CIImage, grow: CGFloat, method: RemovalMethod,
-                       seed: UInt64, prompt: String? = nil, progress: (@Sendable (Double) -> Bool)? = nil) async throws -> Removal {
+                       seed: UInt64, prompt: String? = nil, keepShape: Bool = false, tint: ChangeRequest.Color? = nil,
+                       progress: (@Sendable (Double) -> Bool)? = nil) async throws -> Removal {
         let text = (prompt ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         if method == .generate, text.isEmpty { throw RemovalError.noDescription }
         let renderer = EditRenderer.shared
@@ -141,6 +147,13 @@ nonisolated enum ObjectRemover {
                 filled = try await erase(pixels, hole: hole, width: w, height: h, space: space)
             case .match:
                 filled = try match(pixels, hole: hole, width: w, height: h, seed: seed, space: space, progress: progress)
+            case .generate where keepShape:
+                var start = pixels
+                if let tint {
+                    iv_recolor(&start, hole.map { $0 * 255 }, nil, Int32(w), Int32(h), tint.red, tint.green, tint.blue)
+                }
+                filled = try await generate(pixels, start: start, hole: hole, width: w, height: h, prompt: text, seed: seed, space: space,
+                                            strength: changeStrength, startBlur: 2, progress: progress)
             case .generate:
                 let start = RemovalModel.isInstalled
                     ? try await erase(pixels, hole: hole, width: w, height: h, space: space)
@@ -173,6 +186,121 @@ nonisolated enum ObjectRemover {
         let rect = CGRect(x: patchRect.minX / full.width, y: 1 - patchRect.maxY / full.height,
                           width: patchRect.width / full.width, height: patchRect.height / full.height)
         return Removal(path: path, rect: rect)
+    }
+
+    /// Change Objects' selection in `decoded` as the `earlier` changes left it (see the other `selectByColor`).
+    @concurrent
+    static func selectByColor(_ decoded: DecodedImage, after earlier: [Removal], mask: CIImage, seed: CGPoint?) async throws -> CIImage {
+        var e = EditState()
+        e.removals = earlier.isEmpty ? nil : earlier
+        return try selectByColor(in: EditRenderer.shared.makeImage(decoded, edits: e, maxDimension: nil, stage: .source), mask: mask, seed: seed)
+    }
+
+    /// Change Objects' selection: of what `mask` roughly covers (an object found under a click, or a brush
+    /// stroke), the pixels close in color to the spot clicked (`seed`, normalized, top-left origin, in `source`)
+    /// or, for a stroke, to the color most of it covers. So a click on a shirt takes the shirt, not the whole
+    /// person Vision finds there. `source` and `mask` are Core Image, origin at 0; returns the refined mask,
+    /// `source`'s size.
+    static func selectByColor(in source: CIImage, mask: CIImage, seed: CGPoint?) throws -> CIImage {
+        let renderer = EditRenderer.shared
+        let full = source.extent
+        guard let marked = VisionServices.maskBounds(mask, imageSize: full.size) else { throw RemovalError.nothingMarked }
+        let rect = marked.insetBy(dx: -4, dy: -4).intersection(full).integral
+        let w = Int(rect.width), h = Int(rect.height)
+        guard w > 2, h > 2 else { throw RemovalError.nothingMarked }
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        renderer.context.render(source, toBitmap: &pixels, rowBytes: w * 4, bounds: rect, format: .RGBA8, colorSpace: srgb)
+        var rough = [UInt8](repeating: 0, count: w * h)
+        renderer.context.render(mask, toBitmap: &rough, rowBytes: w, bounds: rect, format: .L8, colorSpace: nil)
+        // The color to keep: around the spot clicked, else the most of what's marked.
+        var color = [UInt8](repeating: 0, count: 3)
+        var spot = rough
+        if let seed {
+            // (Bitmap rows are top-down.)
+            let cx = seed.x * full.width - rect.minX, row = seed.y * full.height - (full.height - rect.maxY)
+            let r = max(4, min(rect.width, rect.height) * 0.01)
+            spot = [UInt8](repeating: 0, count: w * h)
+            for y in max(0, Int(row - r))..<min(h, Int(row + r) + 1) {
+                for x in max(0, Int(cx - r))..<min(w, Int(cx + r) + 1) {
+                    let dx = CGFloat(x) - cx, dy = CGFloat(y) - row
+                    if dx * dx + dy * dy <= r * r { spot[y * w + x] = 255 }
+                }
+            }
+        }
+        guard iv_median_color(pixels, spot, Int32(w), Int32(h), &color) != 0
+                || iv_median_color(pixels, rough, Int32(w), Int32(h), &color) != 0 else { throw RemovalError.nothingMarked }
+        var picked = [UInt8](repeating: 0, count: w * h)
+        iv_select_color(pixels, rough, &picked, Int32(w), Int32(h), color[0], color[1], color[2], 22)
+        guard let picked = maskImage(picked, width: w, height: h) else { throw RemovalError.failed }
+        // Specks of the color elsewhere in the object dropped, small gaps (stitching, shadows) filled.
+        let cleaned = picked
+            .applyingFilter("CIMorphologyMinimum", parameters: [kCIInputRadiusKey: 1.5])
+            .applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: 3])
+            .applyingFilter("CIMorphologyMinimum", parameters: [kCIInputRadiusKey: 1.5])
+            .transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
+        return cleaned.cropped(to: rect).composited(over: CIImage(color: .black).cropped(to: full))
+    }
+
+    /// A mask from bytes (`width` × `height`, rows top-down), its values as they are: Core Image would otherwise
+    /// take them as gray levels and make them linear, so 50% would mask about 20%.
+    static func maskImage(_ bytes: [UInt8], width w: Int, height h: Int) -> CIImage? {
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData),
+              let gray = CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: w, space: CGColorSpaceCreateDeviceGray(),
+                                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue), provider: provider, decode: nil,
+                                 shouldInterpolate: true, intent: .defaultIntent) else { return nil }
+        return CIImage(cgImage: gray, options: [.colorSpace: NSNull()])
+    }
+
+    /// `mask` worked out into pixels (`rect`, origin at 0), so a mask built up in many steps stays quick to use.
+    static func flattened(_ mask: CIImage, in rect: CGRect) -> CIImage? {
+        let w = Int(rect.width), h = Int(rect.height)
+        var bytes = [UInt8](repeating: 0, count: w * h)
+        EditRenderer.shared.context.render(mask, toBitmap: &bytes, rowBytes: w, bounds: rect, format: .L8, colorSpace: nil)
+        return maskImage(bytes, width: w, height: h)
+    }
+
+    /// Change Objects with a color: what `mask` covers (soft-edged) given `color`, keeping its shading (the C
+    /// engine, `iv_recolor`), as a patch over `decoded` as the `earlier` removals left it. A few pixels past its
+    /// edge, and anywhere in `reach` (the objects it was found in), pixels change as much as they're its color, so
+    /// where it blends into what's next to it, or shows between strands of hair, none of the old color is left.
+    @concurrent
+    static func recolor(_ decoded: DecodedImage, after earlier: [Removal], mask: CIImage, reach: CIImage? = nil,
+                        color: ChangeRequest.Color) async throws -> Removal {
+        let renderer = EditRenderer.shared
+        var e = EditState()
+        e.removals = earlier.isEmpty ? nil : earlier
+        let source = renderer.makeImage(decoded, edits: e, maxDimension: nil, stage: .source)
+        let full = source.extent
+        let edge = max(2, (0.002 * max(full.width, full.height)).rounded())
+        var area = mask.applyingFilter("CIMorphologyMaximum", parameters: [kCIInputRadiusKey: edge])
+        if let reach { area = area.applyingFilter("CIMaximumCompositing", parameters: [kCIInputBackgroundImageKey: reach]) }
+        guard VisionServices.maskBounds(mask, imageSize: full.size) != nil,
+              let marked = VisionServices.maskBounds(area, imageSize: full.size) else { throw RemovalError.nothingMarked }
+        let rect = marked.insetBy(dx: -4, dy: -4).intersection(full).integral
+        let w = Int(rect.width), h = Int(rect.height)
+        guard w > 2, h > 2 else { throw RemovalError.nothingMarked }
+        let soft = area.clampedToExtent().applyingGaussianBlur(sigma: 1).cropped(to: full)
+        let srgb = CGColorSpace(name: CGColorSpace.sRGB)!
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        renderer.context.render(source, toBitmap: &pixels, rowBytes: w * 4, bounds: rect, format: .RGBA8, colorSpace: srgb)
+        var weight = [UInt8](repeating: 0, count: w * h), core = [UInt8](repeating: 0, count: w * h)
+        renderer.context.render(soft, toBitmap: &weight, rowBytes: w, bounds: rect, format: .L8, colorSpace: nil)
+        renderer.context.render(mask, toBitmap: &core, rowBytes: w, bounds: rect, format: .L8, colorSpace: nil)
+        iv_recolor(&pixels, weight, core, Int32(w), Int32(h), color.red, color.green, color.blue)
+        guard let recolored = image(pixels, width: w, height: h, space: srgb) else { throw RemovalError.failed }
+        let patch = CIImage(cgImage: recolored).transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
+            .applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect),
+                kCIInputMaskImageKey: soft,
+            ])
+            .cropped(to: rect)
+        guard let picture = renderer.context.createCGImage(patch, from: rect, format: .RGBA8, colorSpace: srgb) else {
+            throw RemovalError.failed
+        }
+        let path = try RemovalStore.save(picture)
+        return Removal(path: path, rect: CGRect(x: rect.minX / full.width, y: 1 - rect.maxY / full.height,
+                                                width: rect.width / full.width, height: rect.height / full.height))
     }
 
     /// The area worked on (Core Image pixels): `marked` with room around it, square where the image allows,
@@ -253,7 +381,9 @@ nonisolated enum ObjectRemover {
     /// the area emptied first (blurred, so only its colors carry over), and for a big area a second, finer pass
     /// that keeps the first one's layout.
     private static func generate(_ pixels: [UInt8], start: [UInt8], hole: [UInt8], width w: Int, height h: Int, prompt: String,
-                                 seed: UInt64, space: CGColorSpace, progress: (@Sendable (Double) -> Bool)?) async throws -> [UInt8] {
+                                 seed: UInt64, space: CGColorSpace, strength: Float = GenerativeExtend.strength,
+                                 startBlur: Int = GenerativeExtend.roughBlur,
+                                 progress: (@Sendable (Double) -> Bool)?) async throws -> [UInt8] {
         let n = GenerativeExtend.window
         let text = GenerativeExtend.prompt(prompt)
         guard let photo = image(pixels, width: w, height: h, space: space),
@@ -274,7 +404,7 @@ nonisolated enum ObjectRemover {
             if let start {
                 var s = RGBABitmap(width: cw, height: ch)
                 s.draw(start, topLeftRect: rect, space: space, quality: .high)
-                s.blur(radius: GenerativeExtend.roughBlur)
+                s.blur(radius: startBlur)
                 startBitmap = s
             }
             try await GenerativeExtend.paint(&canvas, known: &known, start: startBitmap, prompt: text, seed: seed, strength: strength,
@@ -282,7 +412,7 @@ nonisolated enum ObjectRemover {
             guard let made = canvas.makeImage(space: space) else { throw RemovalError.failed }
             return made
         }
-        var made = try await pass(CGFloat(n) / CGFloat(min(w, h)), base: rough, start: rough, strength: GenerativeExtend.strength,
+        var made = try await pass(CGFloat(n) / CGFloat(min(w, h)), base: rough, start: rough, strength: strength,
                                   steps: GenerativeExtend.steps, overlap: GenerativeExtend.overlap) { progress?((fine ? 0.6 : 1) * $0) ?? false }
         if fine {
             made = try await pass(min(1, 1024 / CGFloat(min(w, h))), base: made, start: nil, strength: GenerativeExtend.refineStrength,

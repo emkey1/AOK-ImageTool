@@ -55,6 +55,7 @@
   <a href="#editing">Editing</a>
   <a href="#extend">Extend and Generate</a>
   <a href="#remove">Removing objects</a>
+  <a href="#change">Changing objects</a>
   <a href="#cutouts">Subjects and backgrounds</a>
   <a href="#intelligence">Apple Intelligence</a>
   <a href="#files">Saving, exporting and files</a>
@@ -121,14 +122,14 @@
   <source media="(prefers-color-scheme: dark)" srcset="guide-stacks-dark.heic">
   <img class="shot" src="guide-stacks-light.heic" alt="The filmstrip with a stack spread out: a black and white copy, an upscaled copy and the original photo side by side on a shared background.">
 </picture>
-<p>Black &amp; White, Colorize, Fix Blur, Upscale with AI, Extend (and the cropped picture it starts from, when there's a crop), Remove Objects, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
+<p>Black &amp; White, Colorize, Fix Blur, Upscale with AI, Extend (and the cropped picture it starts from, when there's a crop), Remove Objects, Change Objects, Reimagine and Export (into the same folder) save a <b>copy</b> and leave the original alone. Each copy stacks with the photo it was made from, so a folder doesn't fill up with near-identical pictures.</p>
 <ul>
   <li><b>A stack takes one place</b> in the filmstrip and the grid, showing the copy you viewed or made last (at first, the newest), also after you open the folder again. Lines above the thumbnail and a count in its corner mark it.</li>
   <li><b>Step through a stack</b> with <kbd>⌥←</kbd> and <kbd>⌥→</kbd> (or <b>Go › Newer Copy in Stack</b> and <b>Older Copy in Stack</b>): newest first, the original last. The window's title says where you are, such as “Stack 2/3”.</li>
   <li><b>Spread it out.</b> Click the count, or choose <b>Show All Copies in Stack</b> (Go menu, or right-click), to see every copy side by side; click the count again to stack them up. The stack then shows the copy you were on.</li>
   <li><b>Copies of copies</b> (a colorized photo, then upscaled) stay in the original's stack. Renaming the original keeps its copies with it.</li>
   <li><b>View › Stack Copies with Originals</b> turns stacking off, showing every file on its own.</li>
-  <li><b>Changing the image itself instead.</b> In <b>Settings › Editing › Copies</b>, turn off “makes a copy” for Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend or Remove Objects, and its result replaces the image, as Save would: the original goes to the Trash (if Save does that), after asking first (if Save asks). Photos from your Photos library and animations always get a copy.</li>
+  <li><b>Changing the image itself instead.</b> In <b>Settings › Editing › Copies</b>, turn off “makes a copy” for Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects or Change Objects, and its result replaces the image, as Save would: the original goes to the Trash (if Save does that), after asking first (if Save asks). Photos from your Photos library and animations always get a copy.</li>
 </ul>
 <p class="note">A copy remembers what it was made from in the file's extended attributes; copies with names like “Beach (Colorized)” or “Beach (2×)” stack even without that.</p>
 
@@ -205,6 +206,21 @@
 </ul>
 <p>Removals are made on the photo itself, so cropping, turning, extending or adjusting it afterwards keeps them. On a Live Photo they make it a still, as Extend does.</p>
 
+<h2 id="change">Changing objects</h2>
+<p><b>Intelligence › Change Objects…</b> <kbd>⇧⌘J</kbd> (or <b>Change Objects…</b> in the Intelligence panel) changes something in a photo into what you say: “blue” for a shirt, “dark green” for a car, “a red plaid flannel shirt”, “a stormy sky”. It works like <a href="#remove">Remove Objects</a>, with the same zoom, brush and steps.</p>
+<ol>
+  <li><b>Select what to change.</b> <b>Click</b> it: with <b>Only That Color</b> on (the default), that takes the part of the object under the click that's the color you clicked, such as a shirt rather than the person wearing it, light and shadow included; where there's no object (the sky, a wall), it takes that color anywhere in the picture. Or <b>paint</b> over it roughly: Only That Color keeps the color most of the stroke covers. Click or paint more to add to the selection, hold <kbd>⌥</kbd> to take away from it, and <b>Deselect</b> to start over. With Only That Color off, a click takes the whole object, and painting exactly what you paint.</li>
+  <li><b>Say what it should be</b> in the field in the bar, and press <kbd>Return</kbd> (or <b>Change</b>).
+    <ul>
+      <li><b>A color</b> (“blue”, “make it navy”, “change her dress to dark green”) is changed in place, keeping the folds, shading and texture, in about a second, on any Mac.</li>
+      <li><b>Anything more</b> (“a red plaid flannel shirt”, “a leather jacket”, “white with blue stripes”) is painted over it by the <a href="#model">generative fill model</a>, keeping its shape and folds and starting from the color it names. That takes about a minute and needs the model, a one-time download: click <b>Get the Model…</b> in the bar.</li>
+    </ul>
+  </li>
+  <li><b>Adjust it.</b> Say something else and press <kbd>Return</kbd> to make the same change over (it replaces the last one); <b>Try Again</b> paints a described change again, differently; <b>Strength</b> sets how much of the last change shows; <b>Original</b> compares. Click something else to change it too. <kbd>⌘Z</kbd> takes a change back and leaves what it changed selected.</li>
+  <li><b>Done</b> saves the result as a copy, “<i>name</i> (Changed)”, stacked on the original. With <b>Change Objects makes a copy</b> turned off in <b>Settings › Editing</b>, the changes become an edit of the photo instead.</li>
+</ol>
+<p class="note">A described change is the model's picture of what you asked for, painted into the shape of what was there: check it closely, and use Try Again or say it differently if it isn't right. A color change also changes the old color where it shows between strands of hair over what you change; a described change paints only what's selected, so a little of the old color can show between them.</p>
+
 <h2 id="cutouts">Subjects and backgrounds</h2>
 <ul>
   <li><b>Remove Background</b> (<kbd>⌥⌘B</kbd>, or in the Intelligence panel) keeps the subject: a person, pet, object or several. Choose it again to restore the background.</li>
@@ -256,7 +272,7 @@
   <li><b>Save</b> <kbd>⌘S</kbd> sends the edit to Photos.</li>
   <li><b>Live Photos stay live.</b> Light, color, filters, crop, rotation and straightening apply to every frame of the motion too. A removed background and Extend are for a single picture, so a Live Photo with those is saved as a still; you're asked first.</li>
   <li><b>Edit again later.</b> A photo you edited here opens with its settings, so you can carry on adjusting instead of starting over. Take every edit off (<b>File › Revert to Original</b>) and save, and it's back to its original in Photos too.</li>
-  <li><b>Copies</b> you make (Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects) are added to your Photos library as new photos.</li>
+  <li><b>Copies</b> you make (Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects, Change Objects) are added to your Photos library as new photos.</li>
   <li>Edits not yet saved to Photos are lost when you quit (edits to files are kept). Rename, move or delete the photos themselves in Photos.</li>
   <li><b>File › Import from Photos…</b> copies the photos you pick out of the library into a folder, as ordinary files that are yours to keep and edit like any others (edits then stay in the files; the photos in Photos aren't changed). It offers the folder you imported into last, or <b>Choose Folder…</b> for another (the first time, it asks), then opens that folder. Each photo comes as it looks now in Photos, with its own name and its date taken as the file's date; a Live Photo comes as its still.</li>
   <li><b>Image › Edit With › AOK-ImageTool</b> in Photos works too, for one photo at a time: Save sends the edit back. Photos turns off a Live Photo's motion when it hands it to another app this way, so use Open from Photos for Live Photos.</li>
@@ -267,7 +283,7 @@
 <ul>
   <li><b>General:</b> what <kbd>↑</kbd> <kbd>↓</kbd> do (browse or zoom); whether <kbd>Space</kbd> shows the next image; wrapping around at the end of a folder; moving on after a pick or reject; including subfolders and hidden files; slideshow timing; <a href="#updates">checking for updates</a>; and the list of supported formats.</li>
   <li><b>Viewing:</b> the canvas background, the checkerboard behind transparency, enlarging small images, crisp pixels when zoomed in, HDR, and file names under thumbnails.</li>
-  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, whether Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend and Remove Objects each make a <a href="#stacks">copy</a> or change the image itself, and the <a href="#model">image models</a> (generative fill, colorizing, blur fixing, faces, object removal): their status, <b>Download</b>, <b>Remove…</b>, and under <b>More</b>, installing one you converted yourself and the model's license.</li>
+  <li><b>Editing:</b> moving the original to the Trash on Save, asking before saving over it, whether Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects and Change Objects each make a <a href="#stacks">copy</a> or change the image itself, and the <a href="#model">image models</a> (generative fill, colorizing, blur fixing, faces, object removal): their status, <b>Download</b>, <b>Remove…</b>, and under <b>More</b>, installing one you converted yourself and the model's license.</li>
   <li><b>Intelligence:</b> whether Apple Intelligence is available, describing images automatically, Live Text, and <b>Clear Cached Analysis</b> (search analysis is made again when needed).</li>
 </ul>
 
@@ -288,6 +304,7 @@
   <tr><td><kbd>R</kbd> <kbd>⇧R</kbd></td><td>Rotate right / left</td></tr>
   <tr><td><kbd>C</kbd> <kbd>⌘K</kbd> <kbd>⇧⌘K</kbd></td><td>Crop &amp; straighten, Extend</td></tr>
   <tr><td><kbd>⇧⌘X</kbd></td><td><a href="#remove">Remove objects</a>; in it, <kbd>[</kbd> <kbd>]</kbd> size the brush, <kbd>⌘+</kbd> <kbd>⌘−</kbd> <kbd>⌘0</kbd> zoom, and <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd> step through its removals</td></tr>
+  <tr><td><kbd>⇧⌘J</kbd></td><td><a href="#change">Change objects</a>, with the same keys; <kbd>⌥</kbd>-click or <kbd>⌥</kbd>-paint takes away from the selection</td></tr>
   <tr><td><kbd>\</kbd></td><td>Show the original</td></tr>
   <tr><td><kbd>⌥⌘E</kbd> <kbd>⌥⌘C</kbd></td><td>Auto enhance, adjust color</td></tr>
   <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
@@ -314,11 +331,12 @@
   <tr><td>Colorize</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">colorizing model</a> is installed</td></tr>
   <tr><td>Fix Blur</td><td colspan="4">Any version, on Apple silicon, once its <a href="#model">models</a> are installed</td></tr>
   <tr><td>Remove Objects › Erase</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">object removal model</a> is installed (Match Photo works everywhere). Clicking an object takes the one under the click on macOS 15 and 26; on 27, any object.</td></tr>
+  <tr><td>Change Objects</td><td colspan="4">Colors on any version. Anything more needs Apple silicon and the <a href="#model">generative fill model</a>.</td></tr>
 </table>
 <p>¹ On a Mac with Apple Intelligence, turned on in System Settings.</p>
 
 <h2 id="model">The image models</h2>
-<p>Several features use image models that run on this Mac but aren't built into the app, because they're large: <b>Generate</b> (in Extend, Remove Objects and Generate a Background) uses <b>Stable Diffusion 1.5 Inpainting</b>, about 2 GB; <b>Colorize</b> uses <b>DDColor</b>, about 425 MB; <b>Fix Blur</b> uses <b>Restormer</b> (out of focus and camera shake, about 100 MB together) and, to restore faces, <b>GFPGAN</b>, about 315 MB; and Remove Objects' <b>Erase</b> uses <b>LaMa</b>, about 190 MB. They need Apple silicon.</p>
+<p>Several features use image models that run on this Mac but aren't built into the app, because they're large: <b>Generate</b> (in Extend, Remove Objects, Change Objects and Generate a Background) uses <b>Stable Diffusion 1.5 Inpainting</b>, about 2 GB; <b>Colorize</b> uses <b>DDColor</b>, about 425 MB; <b>Fix Blur</b> uses <b>Restormer</b> (out of focus and camera shake, about 100 MB together) and, to restore faces, <b>GFPGAN</b>, about 315 MB; and Remove Objects' <b>Erase</b> uses <b>LaMa</b>, about 190 MB. They need Apple silicon.</p>
 <ul>
   <li><b>Getting them.</b> The first time you use the feature, the app offers to download its model; or click <b>Download</b> in <b>Settings › Editing</b>. Progress shows there and at the top of the window, and you can keep working meanwhile. Each download is checked against a fingerprint built into the app before it's installed.</li>
   <li><b>Licenses.</b> Stable Diffusion's license, <b>CreativeML Open RAIL-M</b>, limits how the model may be used (no illegal or harmful content, no deceiving or harassing people, among others), so the app asks you to accept it before downloading; <b>View License</b> shows it. DDColor's and LaMa's are <b>Apache 2.0</b>, Restormer's <b>MIT</b>, and GFPGAN's <b>Apache 2.0</b> with exceptions for code it adapted (listed in its license).</li>

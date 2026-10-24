@@ -169,6 +169,156 @@ enum SelfTest {
         }
     }
 
+    /// Change Objects: instructions read as a color or a description; a click selects what's that color; a color
+    /// is changed keeping its shading, partly with less strength; Done saves “(Changed)”.
+    /// (`AOK_SELFTEST_ONLY=change` runs just these.)
+    private static func changeObjectsChecks(_ boat: DecodedImage, out: URL) async {
+        func rgbaPixels(_ image: CGImage) -> [UInt8] {
+            var px = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            let ctx = CGContext(data: &px, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return px
+        }
+        // Reading instructions (without Apple Intelligence).
+        let blue = ChangeRequest.colors["blue"]!, green = ChangeRequest.colors["green"]!
+        func brightness(_ c: ChangeRequest.Color?) -> Int { c.map { Int($0.red) + Int($0.green) + Int($0.blue) } ?? -1 }
+        let colorCases: [(String, ChangeRequest.Color?)] = [
+            ("Change his shirt to be blue", blue), ("Make her dress red.", ChangeRequest.colors["red"]), ("navy blue", ChangeRequest.colors["navy blue"]),
+            ("change the car to light blue please", ChangeRequest.colors["light blue"]), ("Make her leather jacket black", ChangeRequest.colors["black"]),
+        ]
+        let colorsRead = colorCases.filter { ChangeRequest.parse($0.0).color != $0.1 }.map(\.0)
+        check(colorsRead.isEmpty, "instructions that end on a color are read as that color\(colorsRead.isEmpty ? "" : ": not \(colorsRead)")")
+        let describedCases = ["Change his shirt to a red plaid shirt", "make it a blue jacket", "Change it to plaid red", "make her dress red with white dots"]
+        let described = describedCases.filter { ChangeRequest.parse($0).color != nil }
+        check(described.isEmpty && ChangeRequest.parse(describedCases[0]).description == "a red plaid shirt",
+              "anything more than a color is a description for the generative model\(described.isEmpty ? "" : ": not \(described)")")
+        let dark = ChangeRequest.parse("make it dark green").color, light = ChangeRequest.parse("pale green").color
+        check(brightness(dark) < brightness(green) && brightness(light) > brightness(green), "dark and pale shades")
+        let plaid = ChangeRequest.parse("make it a red plaid flannel shirt")
+        check(plaid.color == nil && plaid.tint == ChangeRequest.colors["red"] && ChangeRequest.parse("a navy blue blazer").tint == ChangeRequest.colors["navy blue"],
+              "a description that names a color starts from it (“\(plaid.description)”)")
+
+        // Selecting by color: of what's marked, what's the color clicked, its shading too.
+        let pickSize = CGSize(width: 400, height: 200)
+        let left = CGRect(x: 0, y: 0, width: 200, height: 200), all = CGRect(origin: .zero, size: pickSize)
+        let shadedRed = CIFilter(name: "CILinearGradient", parameters: [
+            "inputPoint0": CIVector(x: 0, y: 0), "inputPoint1": CIVector(x: 0, y: 200),
+            "inputColor0": CIColor(red: 0.45, green: 0.06, blue: 0.06), "inputColor1": CIColor(red: 0.9, green: 0.22, blue: 0.2),
+        ])!.outputImage!.cropped(to: left)
+        // (With a gray band across the red, as a strand of hair over a shirt.)
+        let band = CGRect(x: 120, y: 0, width: 30, height: 200)
+        let picture = CIImage(color: CIColor(red: 0.55, green: 0.53, blue: 0.5)).cropped(to: band)
+            .composited(over: shadedRed).composited(over: CIImage(color: CIColor(red: 0.15, green: 0.55, blue: 0.2)).cropped(to: all))
+        let everything = CIImage(color: .white).cropped(to: all)
+        func coverage(_ mask: CIImage, in rect: CGRect) -> Double {
+            var px = [UInt8](repeating: 0, count: Int(rect.width * rect.height))
+            ImageDecoder.ciContext.render(mask, toBitmap: &px, rowBytes: Int(rect.width), bounds: rect, format: .L8, colorSpace: nil)
+            return Double(px.filter { $0 > 127 }.count) / Double(max(px.count, 1))
+        }
+        do {
+            let red = try ObjectRemover.selectByColor(in: picture, mask: everything, seed: CGPoint(x: 0.25, y: 0.5))
+            let greenPart = try ObjectRemover.selectByColor(in: picture, mask: everything, seed: CGPoint(x: 0.75, y: 0.5))
+            // A stroke mostly over the red: its color.
+            let stroke = try ObjectRemover.selectByColor(in: picture, mask: CIImage(color: .white).cropped(to: CGRect(x: 0, y: 0, width: 260, height: 200)), seed: nil)
+            let right = CGRect(x: 200, y: 0, width: 200, height: 200)
+            let redPart = CGRect(x: 0, y: 0, width: 110, height: 200), inBand = band.insetBy(dx: 4, dy: 0)
+            let r = (coverage(red, in: redPart), coverage(red, in: right)), g = (coverage(greenPart, in: left), coverage(greenPart, in: right))
+            check(r.0 > 0.95 && r.1 < 0.02 && coverage(red, in: inBand) < 0.05 && g.0 < 0.02 && g.1 > 0.95
+                  && coverage(stroke, in: redPart) > 0.95 && coverage(stroke, in: right) < 0.02,
+                  String(format: "a click selects what's the color clicked, light and shadow (%.0f%%), not a gray strand across it (%.0f%%) or the rest (%.0f%%); a stroke, the color it mostly covers",
+                         r.0 * 100, coverage(red, in: inBand) * 100, r.1 * 100))
+        } catch {
+            check(false, "selecting by color: \(error.localizedDescription)")
+        }
+
+        // Recoloring the (blue) sky red: red, with its gradient kept; nothing else changed; less with less strength.
+        let size = boat.pixelSize
+        let frame = CGRect(origin: .zero, size: size)
+        let sky = CGRect(x: size.width * 0.05, y: size.height * 0.62, width: size.width * 0.3, height: size.height * 0.25).integral
+        let mask = CIImage(color: .white).cropped(to: sky).composited(over: CIImage(color: .black).cropped(to: frame))
+        func render(_ e: EditState) -> CGImage? { EditRenderer.shared.renderSync(boat, edits: e, maxDimension: nil)?.image }
+        let area = CGRect(x: sky.minX + 8, y: size.height - sky.maxY + 8, width: sky.width - 16, height: sky.height - 16)
+        func stats(_ image: CGImage) -> (red: Double, spread: Double, pixels: [UInt8]) {
+            let px = image.cropping(to: area).map(rgbaPixels) ?? []
+            let n = max(px.count / 4, 1)
+            var reds = 0
+            var lum = [Double]()
+            for i in 0..<n {
+                let r = Double(px[i * 4]), g = Double(px[i * 4 + 1]), b = Double(px[i * 4 + 2])
+                if r > b + 30 { reds += 1 }
+                lum.append(0.2126 * r + 0.7152 * g + 0.0722 * b)
+            }
+            let mean = lum.reduce(0, +) / Double(n)
+            return (Double(reds) / Double(n), (lum.map { ($0 - mean) * ($0 - mean) }.reduce(0, +) / Double(n)).squareRoot(), px)
+        }
+        func corner(_ image: CGImage) -> [UInt8] { image.cropping(to: CGRect(x: image.width - 96, y: image.height - 96, width: 96, height: 96)).map(rgbaPixels) ?? [] }
+        if let plain = render(.identity) {
+            do {
+                let before = stats(plain)
+                let change = try await ObjectRemover.recolor(boat, after: [], mask: mask, color: ChangeRequest.colors["red"]!)
+                var e = EditState()
+                e.removals = [change]
+                guard let changed = render(e) else { throw RemovalError.failed }
+                writeJPEG(changed, to: out.appendingPathComponent("changed-sky-red.jpg"))
+                let after = stats(changed)
+                check(before.red < 0.2 && after.red > 0.9 && after.spread > 0.4 * before.spread && corner(changed) == corner(plain),
+                      String(format: "a color change turns the sky red (%.0f%% → %.0f%% red), its gradient kept (spread %.0f → %.0f); the rest untouched",
+                             before.red * 100, after.red * 100, before.spread, after.spread))
+                e.removals?[0].opacity = 0.5
+                guard let half = render(e) else { throw RemovalError.failed }
+                func difference(_ a: [UInt8], _ b: [UInt8]) -> Double { Double(zip(a, b).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }) / Double(max(a.count, 1)) }
+                let full = difference(after.pixels, before.pixels), partly = difference(stats(half).pixels, before.pixels)
+                check(partly > 0.25 * full && partly < 0.8 * full,
+                      String(format: "at half strength, it changes about half as much (%.0f of %.0f)", partly, full))
+                if GenerativeModel.isInstalled {
+                    let started = Date()
+                    let painted = try await ObjectRemover.remove(boat, after: [], mask: mask, grow: 4, method: .generate, seed: 7,
+                                                                 prompt: "a stormy sky with dark grey clouds", keepShape: true,
+                                                                 tint: ChangeRequest.colors["dark gray"])
+                    var g = EditState()
+                    g.removals = [painted]
+                    guard let made = render(g) else { throw RemovalError.failed }
+                    writeJPEG(made, to: out.appendingPathComponent("changed-sky-generated.jpg"))
+                    let moved = difference(stats(made).pixels, before.pixels)
+                    check(moved > 8 && corner(made) == corner(plain),
+                          String(format: "a description is painted over what's there (changed by %.0f) in %.0f s; the rest untouched", moved, Date().timeIntervalSince(started)))
+                } else {
+                    print("  • generative model not installed; skipping a described change")
+                }
+            } catch {
+                check(false, "changing the sky's color: \(error.localizedDescription)")
+            }
+        }
+
+        // Done: “(Changed)”, stacked on the original, or (copies off) an edit.
+        let fm = FileManager.default
+        let folder = out.appendingPathComponent("change")
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("Boat.heic")
+        try? fm.copyItem(at: boat.url, to: file)
+        let model = ViewerModel()
+        model.stacksEnabled = true
+        model.openFolder(folder, selecting: file)
+        for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+        if let d = model.decoded, let change = try? await ObjectRemover.recolor(d, after: [], mask: mask, color: blue) {
+            model.finishRemovingObjects([change], url: file.standardizedFileURL, decoded: d, changed: true)
+            let copy = folder.appendingPathComponent("Boat (Changed).heic")
+            for _ in 0..<300 where !fm.fileExists(atPath: copy.path) { try? await Task.sleep(for: .milliseconds(100)) }
+            check(fm.fileExists(atPath: copy.path) && ImageStacks.source(of: copy) == "Boat.heic" && model.edits[file.standardizedFileURL] == nil,
+                  "Done saves “Boat (Changed)”, stacked on the original, which stays as it was")
+            Prefs.setBool(true, CopyOperation.removeObjects.key)
+            Prefs.setBool(false, CopyOperation.changeObjects.key)
+            model.select(file.standardizedFileURL)
+            for _ in 0..<100 where model.decoded?.url != file.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            model.finishRemovingObjects([change], url: file.standardizedFileURL, decoded: d, changed: true)
+            check(model.edits[file.standardizedFileURL]?.removals == [change] && Prefs.makesCopy(.removeObjects),
+                  "with Change Objects' copies off, the change is an edit of the image (Remove Objects' setting is its own)")
+        } else {
+            check(false, "a change for Done")
+        }
+    }
+
     /// Shot Quality and Best Shots in a folder with stacks: a picture is scored on its own before the folder is
     /// analyzed, every shown picture (stacks' top copies too) after, and a copy made later is scored by itself.
     /// (`AOK_SELFTEST_ONLY=quality` runs just these.)
@@ -314,7 +464,7 @@ enum SelfTest {
         // put them back afterwards.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
-                           CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, PrefKey.confirmOverwrite,
+                           CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, PrefKey.confirmOverwrite,
                            PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
                            PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key, PrefKey.stackFronts]
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
@@ -376,9 +526,13 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "remove", let boat = decodedByName["Sailboat.heic"] {
-            print("\n[Remove Objects]")
-            await removeObjectsChecks(boat, out: out)
+        if ["remove", "change"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]), let boat = decodedByName["Sailboat.heic"] {
+            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "remove" {
+                print("\n[Remove Objects]")
+                await removeObjectsChecks(boat, out: out)
+            }
+            print("\n[Change Objects]")
+            await changeObjectsChecks(boat, out: out)
             for (key, value) in savedPrefs {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
@@ -1267,6 +1421,8 @@ enum SelfTest {
         // 6d. Remove Objects.
         print("\n[Remove Objects]")
         if let boat = decodedByName["Sailboat.heic"] { await removeObjectsChecks(boat, out: out) }
+        print("\n[Change Objects]")
+        if let boat = decodedByName["Sailboat.heic"] { await changeObjectsChecks(boat, out: out) }
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")

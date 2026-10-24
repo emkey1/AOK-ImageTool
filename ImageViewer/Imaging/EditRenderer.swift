@@ -449,7 +449,10 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         let ext = image.extent
         var img = image
         for removal in removals {
-            guard let patch = removalPatch(removal.path) else { continue }
+            guard var patch = removalPatch(removal.path) else { continue }
+            if let opacity = removal.opacity, opacity < 1 {
+                patch = patch.applyingFilter("CIColorMatrix", parameters: ["inputAVector": CIVector(x: 0, y: 0, z: 0, w: max(opacity, 0))])
+            }
             let target = Self.pixelRect(removal.rect, in: ext)
             img = patch
                 .transformed(by: CGAffineTransform(scaleX: target.width / patch.extent.width, y: target.height / patch.extent.height))
