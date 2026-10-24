@@ -21,7 +21,7 @@ struct IntelligencePanel: View {
                     textSection
                     subjectSection
                     fixSection
-                    if supportsImagePlayground { createSection }
+                    if supportsImagePlayground || GenerativeModel.isSupported { createSection }
                     qualitySection
                 }
                 folderSection
@@ -275,12 +275,21 @@ struct IntelligencePanel: View {
     private var createSection: some View {
         PanelSection(title: "Create", systemImage: "apple.image.playground") {
             Button {
-                model.showPlayground = true
+                model.beginNewImage()
             } label: {
-                Label("Reimagine in Image Playground…", systemImage: "apple.image.playground")
+                Label("New Image from Description…", systemImage: "wand.and.stars")
             }
-            Text("Turn this image into an animation, illustration or sketch. The result is saved next to the original.")
+            Text("Describe a picture and it's painted on this Mac, as a new image.")
                 .font(.caption).foregroundStyle(.secondary)
+            if supportsImagePlayground {
+                Button {
+                    model.showPlayground = true
+                } label: {
+                    Label("Reimagine in Image Playground…", systemImage: "apple.image.playground")
+                }
+                Text("Turn this image into an animation, illustration or sketch. The result is saved next to the original.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
 

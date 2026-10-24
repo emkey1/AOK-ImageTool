@@ -155,6 +155,11 @@ final class ViewerModel {
     var showBackgroundPlayground = false
     /// The on-device model's background sheet (GenerateSheets.swift).
     var showGenerateBackground = false
+    /// File ▸ New Image from Description…, and Image Playground for the same description (other styles).
+    var showNewImage = false
+    var showNewImagePlayground = false
+    /// What New Image from Description was last asked for in this window (kept between openings).
+    var newImageDescription = ""
     var showBlackAndWhite = false
     var showFixBlur = false
     var showDuplicates = false

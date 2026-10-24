@@ -31,6 +31,9 @@ struct ViewerCommands: Commands {
                 .disabled(viewer == nil)
             Button("Import from Photos…") { viewer?.importFromPhotos() }
                 .disabled(viewer == nil)
+            Button("New Image from Description…") { viewer?.beginNewImage() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(viewer == nil)
             Menu("Open Recent") {
                 ForEach(RecentFolders.all, id: \.self) { url in
                     Button(url.lastPathComponent) { open([url]) }

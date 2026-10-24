@@ -541,6 +541,64 @@ enum SelfTest {
               "presets: Indoor Lamps cools, Shade warms, Fluorescent takes green out")
     }
 
+    /// New Image from Description: titles and prompts; a preview in each shape's proportions, and the one kept
+    /// finished at 2048 px (when the model is installed); saved into the folder under its title.
+    /// (`AOK_SELFTEST_ONLY=newimage` runs just these.)
+    private static func newImageChecks(out: URL) async {
+        check(GenerativeImage.title(for: "a lighthouse on a rocky coast at sunset.") == "Lighthouse on a rocky coast at sunset"
+              && GenerativeImage.title(for: "  ") == "New Image" && GenerativeImage.title(for: "cats/dogs: a story") == "Cats dogs a story",
+              "a new image is named after its description")
+        check(GenerativeImage.picturePrompt("a red fox").hasPrefix("a high quality photo of a red fox")
+              && !GenerativeImage.picturePrompt("a watercolor of a sailboat").contains("photo of"),
+              "a description is painted as a photo, unless it says it's another kind of picture")
+        check(GenerativeImage.Shape.allCases.allSatisfy { s in
+            let (w, h) = s.workingSize
+            return min(w, h) == GenerativeExtend.window && w % 8 == 0 && h % 8 == 0
+        } && GenerativeImage.Shape.wide.workingSize.width == 904, "each shape is painted with 512 on its short side")
+        var made: CGImage?
+        if GenerativeModel.isInstalled {
+            do {
+                let started = Date()
+                let preview = try await GenerativeImage.picture("a red fox sitting in fresh snow", shape: .landscape, seed: 5)
+                let previewTime = Date().timeIntervalSince(started)
+                let finished = try await GenerativeImage.finished(preview, description: "a red fox sitting in fresh snow", seed: 5)
+                writeJPEG(finished, to: out.appendingPathComponent("new-image.jpg"))
+                /// How much the picture varies (0 for a blank one).
+                func spread(_ image: CGImage) -> Double {
+                    let stats = CIImage(cgImage: image).applyingFilter("CIAreaMinMaxRed", parameters: [kCIInputExtentKey: CIVector(cgRect: CGRect(x: 0, y: 0, width: image.width, height: image.height))])
+                    var px = [UInt8](repeating: 0, count: 4)
+                    ImageDecoder.ciContext.render(stats, toBitmap: &px, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+                    return Double(px[1]) - Double(px[0])
+                }
+                check(preview.width == 768 && preview.height == 512 && max(finished.width, finished.height) == 2048
+                      && abs(Double(finished.width) / Double(finished.height) - 1.5) < 0.01 && spread(finished) > 100,
+                      String(format: "a preview is painted (768×512 in %.0f s) and finished at %d×%d, in %.0f s in all", previewTime,
+                             finished.width, finished.height, Date().timeIntervalSince(started)))
+                made = finished
+            } catch {
+                check(false, "painting a new image: \(error.localizedDescription)")
+            }
+        } else {
+            print("  • generative model not installed; skipping painting a new image")
+        }
+        // Kept: saved into the folder under its title, and shown.
+        let fm = FileManager.default
+        let folder = out.appendingPathComponent("new-image")
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let model = ViewerModel()
+        model.openFolder(folder, selecting: nil)
+        for _ in 0..<40 where model.folderURL == nil { try? await Task.sleep(for: .milliseconds(50)) }
+        let picture = made ?? CIContext().createCGImage(CIImage(color: .red).cropped(to: CGRect(x: 0, y: 0, width: 64, height: 64)),
+                                                       from: CGRect(x: 0, y: 0, width: 64, height: 64))
+        if let picture {
+            model.saveNewImage(picture, description: "a red fox sitting in fresh snow")
+            let saved = folder.appendingPathComponent("Red fox sitting in fresh snow.heic")
+            for _ in 0..<40 where model.currentURL != saved.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            check(fm.fileExists(atPath: saved.path) && model.currentURL == saved.standardizedFileURL,
+                  "Keep saves “Red fox sitting in fresh snow.heic” into the folder and shows it")
+        }
+    }
+
     /// Shot Quality and Best Shots in a folder with stacks: a picture is scored on its own before the folder is
     /// analyzed, every shown picture (stacks' top copies too) after, and a copy made later is scored by itself.
     /// (`AOK_SELFTEST_ONLY=quality` runs just these.)
@@ -748,10 +806,13 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ["clone", "wb"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+        if ["clone", "wb", "newimage"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
             if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "clone" {
                 print("\n[Clone & Heal]")
                 await cloneHealChecks(out: out)
+            } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "newimage" {
+                print("\n[New Image]")
+                await newImageChecks(out: out)
             } else {
                 print("\n[White Balance]")
                 await whiteBalanceChecks(out: out)
@@ -1676,6 +1737,8 @@ enum SelfTest {
         await cloneHealChecks(out: out)
         print("\n[White Balance]")
         await whiteBalanceChecks(out: out)
+        print("\n[New Image]")
+        await newImageChecks(out: out)
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")

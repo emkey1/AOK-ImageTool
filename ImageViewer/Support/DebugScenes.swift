@@ -65,6 +65,9 @@ enum DebugScenes {
         case "grid":
             model.gridThumbnailSize = 200
             model.viewMode = .grid
+        case "newimage":
+            model.newImageDescription = "a lighthouse on a rocky coast at sunset"
+            model.showNewImage = true
         case "adjust":
             model.updateEdits("Adjust") {
                 $0.exposure = 0.2

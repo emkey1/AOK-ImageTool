@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **New Image from Description** (File ▸ New Image from Description…, ⇧⌘N, or the Intelligence panel's Create section): describe a picture and choose a shape (Square, 3:2, 2:3, 16:9); four previews are painted on this Mac, one after another, with Stable Diffusion; the one you keep is painted again at twice the size for detail (keeping the preview's color and light, so its windows don't show) and enlarged to 2048 px, then saved as a new image named after the description. Illustration, Animation or Sketch… hands the description to Image Playground instead.
+
 ## 1.1.0
 
 - **Remove Objects** (Intelligence ▸ Remove Objects…, ⇧⌘X): zoom in (pinch, ⌘-scroll, ⌘+/⌘−/⌘0) to mark small things; paint over something, click it or circle it, and it's gone, filled in from what's around it. Three fills: **Erase** (LaMa, a model made for removing objects, a one-time 190 MB download in Settings), **Match Photo** (the photo's own texture, no download), and **Generate**, which paints what you describe in its place. Each removal is a step (⌘Z, Try Again, compare with the original); Done saves "Name (Retouched)", stacked on the original, or, with Settings ▸ Editing ▸ "Remove Objects makes a copy" off, keeps the removals as an edit.

@@ -109,6 +109,32 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -create "<description>" <square|landscape|portrait|wide> <out-prefix> [seed]`: New Image from
+        // Description's preview (<out-prefix>-preview.png) and the finished picture (<out-prefix>.png).
+        if let i = args.firstIndex(of: "-create"), i + 3 < args.count, let shape = GenerativeImage.Shape(rawValue: args[i + 2]) {
+            let description = args[i + 1], out = args[i + 3]
+            let seed = UInt64(args.count > i + 4 ? args[i + 4] : "") ?? 7
+            do {
+                var t0 = Date()
+                // (PREVIEWS=<n>: more previews first, timed, as the sheet makes them one after another.)
+                for extra in 1..<max(1, Int(ProcessInfo.processInfo.environment["PREVIEWS"] ?? "") ?? 1) {
+                    let more = try await GenerativeImage.picture(description, shape: shape, seed: seed &+ UInt64(extra))
+                    print(String(format: "extra preview %d×%d in %.1f s", more.width, more.height, Date().timeIntervalSince(t0)))
+                    t0 = Date()
+                }
+                let preview = try await GenerativeImage.picture(description, shape: shape, seed: seed)
+                try ImageWriter.write(preview, to: URL(fileURLWithPath: out + "-preview.png"), format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                print(String(format: "preview %d×%d in %.1f s", preview.width, preview.height, Date().timeIntervalSince(t0)))
+                t0 = Date()
+                let made = try await GenerativeImage.finished(preview, description: description, seed: seed)
+                try ImageWriter.write(made, to: URL(fileURLWithPath: out + ".png"), format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                print(String(format: "finished %d×%d in %.1f s; prompt “%@”; title “%@”", made.width, made.height, Date().timeIntervalSince(t0),
+                             GenerativeImage.picturePrompt(description), GenerativeImage.title(for: description)))
+            } catch {
+                print("failed:", error.localizedDescription)
+            }
+            exit(0)
+        }
         // `-extendTest -pickWhiteBalance <image> <x> <y> <out.jpg>`: White Balance's eyedropper at (x, y) (normalized,
         // top-left origin); saves the photo before and after, side by side.
         // (CAST="<warmth>,<tint>": with that cast put in first.)

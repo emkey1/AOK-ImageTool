@@ -29,6 +29,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   your Mac.
 - **Remove objects:** paint over a passer-by, a sign or a power line, click it or circle it, and it's filled in from
   what's around it, with LaMa (a model made for this) running on your Mac.
+- **New images from a description:** “a lighthouse on a rocky coast at sunset”, painted on your Mac in the shape you
+  choose; pick from four previews and it's finished at full size (or make it an illustration with Image Playground).
 - **White balance:** click something that should be white or gray and the color cast is gone; or Auto, or correct
   for the light (indoor lamps, shade, fluorescent).
 - **Clone & heal:** ⌥-click clean skin, sky or grass and paint it over a blemish, a wire or a bare patch; Heal

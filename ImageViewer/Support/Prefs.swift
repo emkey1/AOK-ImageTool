@@ -36,6 +36,7 @@ nonisolated enum PrefKey {
     static let lastImportFolder = "lastImportFolder"
     static let photosEditFiles = "photosEditFiles"
     static let remindOfKeptEdits = "remindOfKeptEdits"
+    static let newImageShape = "newImageShape"
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
     static let stackCopies = "stackCopies"

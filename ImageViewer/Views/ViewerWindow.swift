@@ -37,6 +37,7 @@ struct ViewerWindow: View {
         .sheet(isPresented: $model.showGenerateBackground) { GenerateBackgroundSheet() }
         .sheet(isPresented: $model.showBlackAndWhite) { BlackAndWhiteSheet() }
         .sheet(isPresented: $model.showFixBlur) { FixBlurSheet() }
+        .sheet(isPresented: $model.showNewImage) { NewImageSheet() }
         .alert(model.alert?.title ?? "", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } })) {
             Button("OK") { model.alert = nil }
         } message: {
@@ -53,8 +54,8 @@ struct ViewerWindow: View {
     }
 }
 
-/// Image Playground: "Reimagine" (from the current image) and a scene to put behind a cutout
-/// (Intelligence ▸ Background ▸ Generate…). The sheets hang off a background view, so switching between
+/// Image Playground: "Reimagine" (from the current image), a scene to put behind a cutout
+/// (Intelligence ▸ Background ▸ Generate…), and a new picture from New Image from Description's description. The sheets hang off a background view, so switching between
 /// having an image and not doesn't rebuild the window.
 private struct PlaygroundSheet: ViewModifier {
     @Bindable var model: ViewerModel
@@ -87,6 +88,11 @@ private struct PlaygroundSheets: View {
         .background {
             Color.clear.imagePlaygroundSheet(isPresented: $model.showBackgroundPlayground, concepts: []) { url in
                 model.useGeneratedBackground(from: url)
+            }
+        }
+        .background {
+            Color.clear.imagePlaygroundSheet(isPresented: $model.showNewImagePlayground, concept: model.newImageDescription) { url in
+                model.saveNewImage(from: url, description: model.newImageDescription)
             }
         }
     }
