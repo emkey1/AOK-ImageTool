@@ -8,8 +8,9 @@ extension ViewerModel {
         showNewImage = true
     }
 
-    /// Where a new picture goes: this folder, or Pictures (no folder open, or a photo from Photos showing).
-    private var newImageFolder: (url: URL, isHere: Bool) {
+    /// Where a new picture goes: this folder, or Pictures (no folder open, a photo from Photos showing, or a
+    /// folder that can't be written to).
+    var newImageFolder: (url: URL, isHere: Bool) {
         let fm = FileManager.default
         if let folder = folderURL, !PhotosRoundTrip.isFromPhotos(folder.appendingPathComponent("x")), fm.isWritableFile(atPath: folder.path) {
             return (folder, true)

@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-- **New Image from Description** (File ▸ New Image from Description…, ⇧⌘N, or the Intelligence panel's Create section): describe a picture and choose a shape (Square, 3:2, 2:3, 16:9); four previews are painted on this Mac, one after another, with Stable Diffusion; keep as many as you like (⌘-click or a preview's circle chooses several; the sheet stays open, and previews still to be painted wait): each is painted again at twice the size for detail (keeping the preview's color and light, so its windows don't show) and enlarged to 2048 px, then saved as a new image named after the description. Illustration, Animation or Sketch… hands the description to Image Playground instead.
+- **New Image from Description** (File ▸ New Image from Description…, ⇧⌘N, or the Intelligence panel's Create section): describe a picture and choose a shape (Square, 3:2, 2:3, 16:9); four previews are painted on this Mac, one after another, with Stable Diffusion; keep as many as you like (⌘-click or a preview's circle chooses several, and a double-click on one of them keeps them all; the sheet stays open, and previews still to be painted wait): each is painted again at twice the size for detail (keeping the preview's color and light, so its windows don't show) and enlarged to 2048 px, then saved as a new image named after the description. Illustration, Animation or Sketch… hands the description to Image Playground instead.
 - Change Objects' selection shows on any color: tinted blue, with a white line between dark edges (the pink tint vanished on red things, and the line was under a point wide).
 - The Guide's pictures are all new, with more of them: Remove, Change, Clone & Heal, Fix Blur, Black & White, the Info panel and New Image.
 

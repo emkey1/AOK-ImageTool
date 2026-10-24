@@ -182,6 +182,8 @@ struct NewImageSheet: View {
     @State private var made = ""
     @State private var madeShape = GenerativeImage.Shape.square
     @State private var chosen: Set<Int> = []
+    /// What was chosen before the last click (the first of a double-click changes it).
+    @State private var choiceBeforeClick: Set<Int> = []
     @State private var queue: [Work] = []
     @State private var current: Work?
     @State private var progress = SheetProgress()
@@ -204,7 +206,7 @@ struct NewImageSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             Label("New Image", systemImage: "wand.and.stars").font(.title2.weight(.bold))
             Text("Describe a picture and it's painted on this Mac. Keep the ones you like: each is finished at full size and saved as a new image "
-                 + (model.folderURL == nil ? "in Pictures." : "in this folder."))
+                 + (model.newImageFolder.isHere ? "in this folder." : "in Pictures."))
                 .foregroundStyle(.secondary)
             TextField("Describe the picture, e.g. “a lighthouse on a rocky coast at sunset”", text: $text, axis: .vertical)
                 .lineLimit(2...4)
@@ -237,7 +239,7 @@ struct NewImageSheet: View {
             if installed {
                 tiles
                 Text(previews.contains { $0.image != nil }
-                     ? "Click to choose one, ⌘-click (or its circle) to choose more, then Keep. Double-click keeps one right away."
+                     ? "Click to choose one, ⌘-click (or its circle) to choose more, then Keep. Double-click to keep right away."
                      : " ")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -370,15 +372,25 @@ struct NewImageSheet: View {
         }
         .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 3))
         .contentShape(Rectangle())
-        .onTapGesture(count: 2) {
-            guard ready else { return }
-            chosen = [index]
-            keep()
-        }
+        // (One tap gesture, not a double-tap one as well: that would hold each click back until a second
+        // couldn't come, by when ⌘ may be up.)
         .onTapGesture {
             guard ready else { return }
-            if NSEvent.modifierFlags.contains(.command) || NSEvent.modifierFlags.contains(.shift) { toggle(index) } else { chosen = [index] }
+            click(index, event: NSApp.currentEvent)
         }
+    }
+
+    /// A click on a preview chooses it (⌘ or ⇧ adds or removes it). A double-click keeps it right away, along
+    /// with the others chosen if it was one of them, as a double-click in Finder opens all that's selected.
+    private func click(_ index: Int, event: NSEvent?) {
+        if let event, event.clickCount >= 2 {
+            chosen = choiceBeforeClick.contains(index) ? choiceBeforeClick : [index]
+            keep()
+            return
+        }
+        choiceBeforeClick = chosen
+        let flags = event?.modifierFlags ?? []
+        if flags.contains(.command) || flags.contains(.shift) { toggle(index) } else { chosen = [index] }
     }
 
     private var missingModel: some View {
