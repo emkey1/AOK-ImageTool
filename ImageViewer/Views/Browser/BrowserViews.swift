@@ -182,6 +182,11 @@ struct FilmstripCell: View {
             .overlay(alignment: .topLeading) {
                 FlagBadge(flag: item.flag).font(.system(size: 13)).padding(2)
             }
+            .overlay(alignment: .bottomLeading) {
+                if let rating = item.rating, rating > 0 {
+                    RatingBadge(rating: rating, compact: true).padding(2)
+                }
+            }
             .overlay(alignment: .bottomTrailing) {
                 if isEdited {
                     Image(systemName: "slider.horizontal.3")
@@ -271,6 +276,11 @@ struct GridCell: View {
                             .help("Apple Intelligence quality score")
                     }
                 }
+                .overlay(alignment: .bottomLeading) {
+                    if let rating = item.rating, rating > 0 {
+                        RatingBadge(rating: rating, compact: size < 120).padding(4)
+                    }
+                }
                 .overlay(alignment: .bottomTrailing) {
                     if model.edits[item.url] != nil {
                         Image(systemName: "slider.horizontal.3")
@@ -333,9 +343,21 @@ struct ItemContextMenu: View {
             NSPasteboard.general.writeObjects(targets.map { $0 as NSURL })
         }
         Divider()
+        Button("Copy Edits") { model.copyEdits(from: item.url) }
+            .disabled(model.edits[item.url]?.adjustments.isIdentity ?? true)
+        Button(targets.count > 1 ? "Paste Edits to \(targets.count) Images" : "Paste Edits") { model.pasteEdits(to: targets) }
+            .disabled(EditClipboard.shared.adjustments == nil)
+        Divider()
         Button("Pick") { model.setFlag(.pick, for: targets) }
         Button("Reject") { model.setFlag(.reject, for: targets) }
         Button("Unflag") { model.setFlag(.none, for: targets) }
+        Menu("Rating") {
+            ForEach([5.0, 4.5, 4, 3.5, 3, 2.5, 2, 1.5, 1, 0.5], id: \.self) { stars in
+                Button(starsText(stars)) { model.setRating(stars, for: targets) }
+            }
+            Divider()
+            Button("None") { model.setRating(0, for: targets) }
+        }
         Divider()
         Button("Export…") { model.exportRequest = ExportRequest(urls: targets) }
         Button("Find Similar Images") {
@@ -344,5 +366,52 @@ struct ItemContextMenu: View {
         }
         Divider()
         Button("Move to Trash", role: .destructive) { model.moveToTrash(targets) }
+    }
+}
+
+/// A thumbnail's stars: filled ones only, or (compact) a number and one star.
+struct RatingBadge: View {
+    let rating: Double
+    var compact = false
+
+    var body: some View {
+        Group {
+            if compact {
+                let whole = Int(rating)
+                Text((whole > 0 ? "\(whole)" : "") + (rating - Double(whole) >= 0.5 ? "½" : "") + "★")
+                    .font(.system(size: 9, weight: .bold))
+            } else {
+                Text(starsText(rating)).font(.caption2.weight(.semibold))
+            }
+        }
+        .foregroundStyle(.yellow)
+        .padding(.horizontal, 4).padding(.vertical, 1.5)
+        .background(.black.opacity(0.55), in: Capsule())
+        .help("Rated \(starsText(rating))")
+    }
+}
+
+/// Five stars to click: the left half of one gives a half star; clicking the rating it has takes it off.
+struct RatingControl: View {
+    let rating: Double
+    let set: (Double) -> Void
+    private let size: CGFloat = 17
+
+    var body: some View {
+        HStack(spacing: 3) {
+            ForEach(1...5, id: \.self) { i in
+                let n = Double(i)
+                Image(systemName: rating >= n ? "star.fill" : rating >= n - 0.5 ? "star.leadinghalf.filled" : "star")
+                    .font(.system(size: size))
+                    .foregroundStyle(rating >= n - 0.5 ? Color.yellow : Color.secondary)
+                    .frame(width: size + 2, height: size + 2)
+                    .contentShape(Rectangle())
+                    .onTapGesture(coordinateSpace: .local) { point in
+                        let value = point.x < (size + 2) / 2 ? n - 0.5 : n
+                        set(value == rating ? 0 : value)
+                    }
+            }
+        }
+        .help("Click a star to rate (its left half for a half star), or the rating it has to take it off. Keys: 1–5, again for a half star, 0 for none.")
     }
 }

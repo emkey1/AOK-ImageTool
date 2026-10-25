@@ -60,6 +60,15 @@ struct InfoPanel: View {
                     HistogramView(image: model.display?.isPlaceholder == false ? model.display?.image : nil,
                                   key: model.display?.contentKey ?? 0)
 
+                    if !PhotosRoundTrip.isFromPhotos(item.url) {
+                        HStack {
+                            Text("Rating").foregroundStyle(.secondary)
+                            Spacer()
+                            RatingControl(rating: item.rating ?? 0) { model.setRating($0, for: [item.url]) }
+                        }
+                        .font(.callout)
+                    }
+
                     if let description = model.intelligence.descriptions[item.url] {
                         PanelSection(title: description.title, systemImage: "apple.intelligence") {
                             Text(description.caption)
@@ -151,6 +160,7 @@ struct FolderStats: View {
         let all = model.allItems
         let picks = all.filter { $0.flag == .pick }.count
         let rejects = all.filter { $0.flag == .reject }.count
+        let rated = all.filter { ($0.rating ?? 0) > 0 }.count
         let size = all.reduce(Int64(0)) { $0 + $1.fileSize }
         PanelSection(title: "Folder", systemImage: "folder") {
             Text("\(all.count) images · \(MetadataFormatting.fileSize(size))")
@@ -158,6 +168,7 @@ struct FolderStats: View {
             HStack(spacing: 14) {
                 Label("\(picks) picks", systemImage: "flag.fill").foregroundStyle(.green)
                 Label("\(rejects) rejects", systemImage: "xmark.circle.fill").foregroundStyle(.red)
+                Label("\(rated) rated", systemImage: "star.fill").foregroundStyle(.yellow)
             }
             .font(.callout)
             if rejects > 0 {

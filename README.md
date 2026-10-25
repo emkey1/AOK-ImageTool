@@ -15,12 +15,13 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
 
 - **Fast browsing.** Arrow keys step through a folder, with the next images decoded ahead of time. Every format macOS
   reads, including HEIC, AVIF, JPEG XL, WebP, 30+ camera RAW formats, PDF and SVG, with HDR shown in HDR. As many
-  windows as you like (⌘N, ⌘` between them), each on its own folder or the same one.
-- **Pick the keepers.** P, X and U pick, reject and unflag (as Finder color labels); filter, sort by Apple's
-  judgment of the best shots, find duplicates and similar photos.
+  windows as you like (⌘N, ⌘` between them), each on its own folder or the same one, and they come back next time.
+- **Pick the keepers.** P, X and U pick, reject and unflag (as Finder color labels); 1–5 rate with stars (half
+  stars too), written into the file's XMP (a sidecar for RAW) so Lightroom and Bridge see them; filter, sort by
+  rating or Apple's judgment of the best shots, find duplicates and similar photos.
 - **Edit without fear.** Light, color, detail and filters, crop and straighten (by the degree or tenth of a degree, or
-  Auto, which levels the horizon). Nothing touches the file until you Save, every change can be undone, and unsaved
-  edits survive quitting.
+  Auto, which levels the horizon). Copy one picture's edits and paste them onto a whole shoot (⇧⌘C, ⇧⌘V). Nothing
+  touches the picture until you Save, every change can be undone, and unsaved edits survive quitting.
 - **Your Photos library too.** Open photos from Photos (Live Photos stay live), edit them here, and Save sends the edit
   back as a Photos edit you can revert, synced by iCloud Photos. Or use Photos' Image ▸ Edit With, or import photos
   into a folder as ordinary files.
@@ -42,7 +43,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   GIFs too), Extend, Remove and Change Objects, Clone & Heal, and Reimagine save new copies, stacked with the original
   in the filmstrip so a folder stays tidy. (Settings can have them change the image itself instead.)
 - **Paste a picture** (⌘V) from anywhere as a new image in the folder.
-- **Apple Intelligence** where your Mac has it: describe a photo (alt text, keywords, a file name), ask about it, search
+- **Apple Intelligence** where your Mac has it: describe a photo (alt text, keywords, a file name, saved into the file's
+  metadata if you like), ask about it, search
   a folder by what's in the pictures or the text in them, remove backgrounds and generate new ones.
 - **A full guide** inside the app (Help ▸ AOK-ImageTool Guide, ⌘?).
 

@@ -245,6 +245,8 @@ final class ViewerModel {
     @ObservationIgnored var keyMonitor: Any?
     @ObservationIgnored private var windowObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var pendingOpenURLs: [URL] = []
+    /// Where a window being reopened goes, once it has its window.
+    @ObservationIgnored private var pendingFrame: NSRect?
     @ObservationIgnored private var openDebounce: Task<Void, Never>?
     @ObservationIgnored private var enteredFullScreenForSlideshow = false
     @ObservationIgnored var gridAnchor: Int?
@@ -313,6 +315,10 @@ final class ViewerModel {
         guard self.window !== window else { return }
         self.window = window
         ViewerRegistry.shared.windowsChanged()
+        if let frame = pendingFrame {
+            pendingFrame = nil
+            window.setFrame(frame, display: true)
+        }
         if DebugHooks.isActive { DebugScenes.prepare(window) }
         // The default size is bigger than a small screen (or a VM's); keep the whole window on it.
         if let screen = (window.screen ?? NSScreen.main)?.visibleFrame,
@@ -445,8 +451,11 @@ final class ViewerModel {
                            files: restrictedTo.map { $0.map(\.path).sorted().joined(separator: "\n") })
     }
 
-    /// A window macOS brought back at launch: its folder and picture again, if they're still there.
-    func reopen(_ place: WindowPlace) {
+    /// A window brought back at launch: its folder and picture again, if they're still there (and where it was).
+    func reopen(_ place: WindowPlace, frame: NSRect? = nil) {
+        if let frame {
+            if let window { window.setFrame(frame, display: true) } else { pendingFrame = frame }
+        }
         let fm = FileManager.default
         let folder = URL(fileURLWithPath: place.folder, isDirectory: true)
         guard folderURL == nil, FolderScanner.isDirectory(folder) else { return }
@@ -524,9 +533,11 @@ final class ViewerModel {
             isScanning = false
             var dates: [URL: Date] = [:]
             var previousModified: [URL: Date] = [:]
+            var ratings: [URL: Double] = [:]
             for item in allItems {
                 if let d = item.dateTaken { dates[item.url] = d }
                 if let m = item.modificationDate { previousModified[item.url] = m }
+                if let r = item.rating { ratings[item.url] = r }
             }
             // Files changed by another app: drop stale decodes/thumbnails.
             var currentChanged = false
@@ -542,11 +553,14 @@ final class ViewerModel {
             allItems = scanned.map { item in
                 var item = item
                 item.dateTaken = dates[item.url]
+                // (A file changed elsewhere is read again.)
+                if previousModified[item.url] == item.modificationDate { item.rating = ratings[item.url] }
                 return item
             }
             // (The image now on screen: the user may have moved on while the folder was scanned.)
             applySortAndFilter(selecting: selecting ?? currentURL)
             if sortKey == .dateTaken { loadDatesTaken() }
+            loadRatings()
             intelligence.itemsDidChange()
         }
     }
@@ -562,7 +576,7 @@ final class ViewerModel {
                 .sorted { distances[$0.url]! < distances[$1.url]! }
                 .prefix(60))
         }
-        var filtered = flagFilter == .edited ? sorted.filter { isUnsaved($0.url) } : sorted.filter { flagFilter.includes($0.flag) }
+        var filtered = flagFilter == .edited ? sorted.filter { isUnsaved($0.url) } : sorted.filter { flagFilter.includes($0) }
         let query = trimmedSearch
         if !query.isEmpty {
             let terms = intelligence.searchTerms(for: query)
@@ -589,6 +603,7 @@ final class ViewerModel {
 
     private func sortKeyDidChange() {
         if sortKey == .dateTaken { loadDatesTaken() }
+        if sortKey == .rating { loadRatings() }
         if sortKey == .quality { intelligence.ensureIndexed(reason: .quality) }
         applySortAndFilter()
     }
@@ -615,6 +630,31 @@ final class ViewerModel {
             }
             if sortKey == .dateTaken { applySortAndFilter() }
         }
+    }
+
+    /// The star ratings of the images not read yet, from their XMP (in the background).
+    private func loadRatings() {
+        let missing = allItems.filter { $0.rating == nil }.map(\.url)
+        guard !missing.isEmpty else { return }
+        Task {
+            let ratings = await Task.detached(priority: .utility) { () -> [URL: Double] in
+                var result: [URL: Double] = [:]
+                for url in missing { result[url] = FileTags.read(url).rating }
+                return result
+            }.value
+            allItems = allItems.map { item in
+                var item = item
+                if item.rating == nil { item.rating = ratings[item.url] }
+                return item
+            }
+            if sortKey == .rating || flagFilter.minimumStars != nil { applySortAndFilter() } else { refreshListedRatings() }
+        }
+    }
+
+    /// The listed items take their (newly read) ratings, keeping their order.
+    private func refreshListedRatings() {
+        let ratings = Dictionary(allItems.map { ($0.url, $0.rating) }, uniquingKeysWith: { a, _ in a })
+        for i in items.indices { items[i].rating = ratings[items[i].url] ?? items[i].rating }
     }
 
     // MARK: - Navigation

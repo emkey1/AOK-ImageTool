@@ -84,6 +84,9 @@ nonisolated enum FolderScanner {
             sorted = items.sorted { ($0.fileSize, $0.name) < ($1.fileSize, $1.name) }
         case .kind:
             sorted = items.sorted { ($0.kindDescription, $0.name) < ($1.kindDescription, $1.name) }
+        case .rating:
+            // (Best first, like Best Shots.)
+            sorted = items.sorted { ($0.rating ?? 0, $1.name) > ($1.rating ?? 0, $0.name) }
         case .quality:
             // Highest score first when "ascending" is off feels backwards; treat ascending as best-first.
             sorted = items.sorted { (scores[$0.url] ?? -2) > (scores[$1.url] ?? -2) }

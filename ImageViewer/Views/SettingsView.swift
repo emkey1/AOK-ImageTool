@@ -22,6 +22,7 @@ private struct GeneralSettings: View {
     @AppStorage(PrefKey.advanceAfterFlag) private var advanceAfterFlag = true
     @AppStorage(PrefKey.slideshowInterval) private var slideshowInterval = 4.0
     @AppStorage(PrefKey.checkForUpdates) private var checkForUpdates = true
+    @AppStorage(PrefKey.reopenWindows) private var reopenWindows = true
 
     var body: some View {
         Form {
@@ -37,6 +38,7 @@ private struct GeneralSettings: View {
             Section("Folders") {
                 Toggle("Include images in subfolders", isOn: $includeSubfolders)
                 Toggle("Show hidden files", isOn: $showHidden)
+                Toggle("Reopen windows from last time", isOn: $reopenWindows)
             }
             Section("Slideshow") {
                 LabeledContent("Seconds per image") {

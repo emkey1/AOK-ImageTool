@@ -23,7 +23,7 @@ extension ViewerModel {
         ("Zoom", [
             Shortcut(keys: "Z  ·  Double-click", action: "Toggle fit / actual size"),
             Shortcut(keys: "+  −", action: "Zoom in / out"),
-            Shortcut(keys: "0  ·  1", action: "Fit / 100%"),
+            Shortcut(keys: "⌘9  ·  ⌘0", action: "Fit / 100%"),
             Shortcut(keys: "⌘ or ⌥ + Scroll  ·  Pinch", action: "Zoom at pointer"),
             Shortcut(keys: "L", action: "Lock zoom & position across images"),
         ]),
@@ -31,6 +31,7 @@ extension ViewerModel {
             Shortcut(keys: "P", action: "Pick (green label)"),
             Shortcut(keys: "X", action: "Reject (red label)"),
             Shortcut(keys: "U", action: "Unflag"),
+            Shortcut(keys: "1–5  ·  0", action: "Stars (again for ½) / none"),
             Shortcut(keys: "⌘⌫", action: "Move to Trash (undoable)"),
         ]),
         ("Edit", [
@@ -39,6 +40,7 @@ extension ViewerModel {
             Shortcut(keys: "⇧⌘X", action: "Remove objects ([ ] brush, ⌘+ ⌘− ⌘0 zoom)"),
             Shortcut(keys: "\\", action: "Show original (before / after)"),
             Shortcut(keys: "⌘S  ·  ⇧⌘E", action: "Save / Export"),
+            Shortcut(keys: "⇧⌘C  ·  ⇧⌘V", action: "Copy / paste edits"),
             Shortcut(keys: "⌘V", action: "Paste a picture as a new image"),
         ]),
         ("View", [
@@ -231,8 +233,7 @@ extension ViewerModel {
         case "z", "Z": toggleFitActual()
         case "+", "=": zoomIn()
         case "-", "_": zoomOut()
-        case "0": zoomToFit()
-        case "1": zoomToActualSize()
+        case "0", "1", "2", "3", "4", "5": rateKey(ch.wholeNumberValue ?? 0)
         case "l", "L":
             lockZoom.toggle()
             showToast(lockZoom ? "Zoom locked across images" : "Zoom unlocked", systemImage: lockZoom ? "lock" : "lock.open")

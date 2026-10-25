@@ -74,7 +74,9 @@ struct ViewerToolbar: ToolbarContent {
 
             Menu {
                 Picker("Show", selection: Binding(get: { model.flagFilter }, set: { model.flagFilter = $0 })) {
-                    ForEach(FlagFilter.allCases) { Text($0.title).tag($0) }
+                    ForEach(FlagFilter.byFlag) { Text($0.title).tag($0) }
+                    Divider()
+                    ForEach(FlagFilter.byRating) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.inline)
                 Picker("Sort By", selection: Binding(get: { model.sortKey }, set: { model.sortKey = $0 })) {

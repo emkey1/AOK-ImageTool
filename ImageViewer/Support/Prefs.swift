@@ -36,6 +36,8 @@ nonisolated enum PrefKey {
     static let lastImportFolder = "lastImportFolder"
     static let photosEditFiles = "photosEditFiles"
     static let remindOfKeptEdits = "remindOfKeptEdits"
+    static let reopenWindows = "reopenWindows"
+    static let openWindows = "openWindows"
     static let newImageShape = "newImageShape"
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
@@ -121,6 +123,8 @@ nonisolated enum Prefs {
     static var confirmOverwrite: Bool { bool(PrefKey.confirmOverwrite, true) }
     /// Quitting with unsaved edits to files (kept for next time) asks first.
     static var remindOfKeptEdits: Bool { bool(PrefKey.remindOfKeptEdits, true) }
+    /// Launching reopens the windows that were open at quit.
+    static var reopenWindows: Bool { bool(PrefKey.reopenWindows, true) }
     static var showFilmstrip: Bool { bool(PrefKey.showFilmstrip, true) }
     static var autoDescribe: Bool { bool(PrefKey.autoDescribe, false) }
     static var stackCopies: Bool { bool(PrefKey.stackCopies, true) }

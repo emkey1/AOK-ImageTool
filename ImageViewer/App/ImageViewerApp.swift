@@ -36,6 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        WindowSession.launchedToOpenFiles = (notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool) == false
         AppStorageLocation.removeStaleIsolatedFolders()
         if let appearance = DebugHooks.appearance {
             NSApp.appearance = NSAppearance(named: appearance == "dark" ? .darkAqua : .aqua)
@@ -101,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        WindowSession.save()
         PendingEdits.shared.flush()
     }
 
@@ -109,9 +111,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-/// URLs chosen before a window existed to receive them (e.g. File ▸ Open with no windows open).
+/// URLs chosen before a window existed to receive them (e.g. File ▸ Open with no windows open), and windows
+/// from last time being reopened, each taken by the next window to appear.
 enum PendingOpen {
     static var urls: [URL] = []
+    static var windows: [WindowSession.Window] = []
 
     static func take() -> [URL] {
         defer { urls = [] }

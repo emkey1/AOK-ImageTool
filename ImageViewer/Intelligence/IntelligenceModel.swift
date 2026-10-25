@@ -381,6 +381,31 @@ final class IntelligenceModel {
         }
     }
 
+    /// Writes the description into the file's metadata (a sidecar for RAW): title, caption (as alt text too) and
+    /// keywords, added to any it has, where Spotlight, Photos and Lightroom find them.
+    func saveDescriptionToFile() {
+        guard let viewer, let url = viewer.currentURL, let description = descriptions[url] else { return }
+        guard !PhotosRoundTrip.isFromPhotos(url) else {
+            viewer.alert = AlertInfo(title: "This photo belongs to Photos", message: "Add a caption and keywords in Photos (Window ▸ Info).")
+            return
+        }
+        Task {
+            do {
+                let existing = await Task.detached { FileTags.read(url).keywords }.value
+                var keywords = existing
+                for k in description.keywords where !keywords.contains(where: { $0.caseInsensitiveCompare(k) == .orderedSame }) {
+                    keywords.append(k)
+                }
+                let update = FileTags.Update(title: description.title, caption: description.caption, keywords: keywords)
+                if let modified = try await FileTags.write(update, to: url) { viewer.fileRewritten(url, modified: modified) }
+                let place = FileTags.sidecar(for: url).map { "“\($0.lastPathComponent)”" } ?? "the file"
+                viewer.showToast("Saved the title, caption and \(keywords.count) keywords in \(place)", systemImage: "square.and.arrow.down")
+            } catch {
+                viewer.showError("Couldn't save the description in the file", error)
+            }
+        }
+    }
+
     func renameToSuggestion() {
         guard let viewer, let item = viewer.currentItem, let name = descriptions[item.url]?.fileName, !name.isEmpty else { return }
         if viewer.rename(item, to: name) {

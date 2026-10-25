@@ -121,6 +121,42 @@ extension ViewerModel {
         updateEdits("Reset Adjustments") { $0.resetAdjustments() }
     }
 
+    // MARK: - Copy and paste edits
+
+    /// Edit ▸ Copy Edits: an image's light, color, detail and filter (the current one unless given), to paste
+    /// onto others, in any window.
+    func copyEdits(from image: URL? = nil) {
+        guard let url = image ?? currentURL else { return }
+        let copied = (edits[url] ?? .identity).adjustments
+        guard !copied.isIdentity else { return showToast("No adjustments to copy", systemImage: "slider.horizontal.3") }
+        EditClipboard.shared.adjustments = copied
+        showToast("Copied edits", systemImage: "doc.on.doc")
+    }
+
+    /// Edit ▸ Paste Edits: the copied adjustments on the selected images (or `targets`), replacing theirs; each
+    /// keeps its own crop, turn and retouching. One step to undo.
+    func pasteEdits(to targets: [URL]? = nil) {
+        guard let copied = EditClipboard.shared.adjustments else { return }
+        let urls = (targets ?? actionTargets).filter { !savingURLs.contains($0) }
+        guard !urls.isEmpty else { return }
+        let name = "Paste Edits"
+        undoManager?.beginUndoGrouping()
+        var changed = 0
+        for url in urls {
+            let old = edits[url] ?? .identity
+            var new = old
+            new.takeAdjustments(from: copied)
+            guard new != old else { continue }
+            applyEdits(new, to: url, undoName: name, previous: old)
+            changed += 1
+        }
+        undoManager?.endUndoGrouping()
+        undoManager?.setActionName(name)
+        guard changed > 0 else { return showToast(urls.count == 1 ? "It already has these edits" : "They already have these edits",
+                                                  systemImage: "checkmark.circle") }
+        showToast(changed == 1 ? "Pasted edits" : "Pasted edits to \(changed) images", systemImage: "doc.on.clipboard")
+    }
+
     var canEdit: Bool {
         guard let url = currentURL else { return false }
         return decoded != nil && activeTool == nil && !savingURLs.contains(url)
@@ -337,4 +373,11 @@ extension ViewerModel {
         }
         return (written, errors)
     }
+}
+
+/// The adjustments Copy Edits took, for Paste Edits in any window.
+@Observable
+final class EditClipboard {
+    static let shared = EditClipboard()
+    var adjustments: EditState?
 }

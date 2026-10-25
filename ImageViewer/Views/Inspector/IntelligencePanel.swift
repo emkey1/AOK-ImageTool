@@ -84,6 +84,8 @@ struct IntelligencePanel: View {
                             NSPasteboard.general.setString(d.caption, forType: .string)
                         }
                         Button("Add Finder Tags") { ai.applyKeywordsAsTags() }
+                        Button("Save in File") { ai.saveDescriptionToFile() }
+                            .help("Write the title, caption (also as alt text) and keywords into the file's metadata, for Spotlight, Photos and Lightroom (a sidecar .xmp for RAW)")
                     }
                     .controlSize(.small)
                     if !d.fileName.isEmpty, let item = model.currentItem,

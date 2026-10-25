@@ -94,8 +94,16 @@ struct ViewerCommands: Commands {
             Button("Copy Image") { viewer?.copyImage() }
                 .disabled(!hasImage)
             Button("Copy Subject") { viewer?.intelligence.copySubject() }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .keyboardShortcut("c", modifiers: [.command, .shift, .option])
                 .disabled(!hasImage)
+            Divider()
+            Button("Copy Edits") { viewer?.copyEdits() }
+                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .disabled(!hasEdits)
+            Button("Paste Edits") { viewer?.pasteEdits() }
+                .keyboardShortcut("v", modifiers: [.command, .shift])
+                .disabled(viewer?.actionTargets.isEmpty ?? true || EditClipboard.shared.adjustments == nil)
+            Divider()
             Button("Copy File Path") { viewer?.copyPath() }
                 .disabled(!hasImage)
         }
@@ -132,7 +140,9 @@ struct ViewerCommands: Commands {
             }
             Toggle("Reverse Order", isOn: Binding(get: { !(viewer?.sortAscending ?? true) }, set: { viewer?.sortAscending = !$0 }))
             Picker("Show", selection: Binding(get: { viewer?.flagFilter ?? .all }, set: { viewer?.flagFilter = $0 })) {
-                ForEach(FlagFilter.allCases) { Text($0.title).tag($0) }
+                ForEach(FlagFilter.byFlag) { Text($0.title).tag($0) }
+                    Divider()
+                    ForEach(FlagFilter.byRating) { Text($0.title).tag($0) }
             }
             Toggle("Include Subfolders", isOn: Binding(get: { viewer?.includeSubfolders ?? false }, set: { viewer?.includeSubfolders = $0 }))
             Toggle("Stack Copies with Originals", isOn: Binding(get: { viewer?.stacksEnabled ?? true }, set: { viewer?.stacksEnabled = $0 }))

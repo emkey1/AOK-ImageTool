@@ -9,6 +9,7 @@ struct WindowPlace: Equatable {
 }
 
 struct ViewerWindow: View {
+    @Environment(\.openWindow) private var openWindow
     @State private var model = ViewerModel()
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .detailOnly
     // (Kept by macOS with the window, so one brought back at launch shows its folder again.)
@@ -57,10 +58,17 @@ struct ViewerWindow: View {
         .modifier(PlaygroundSheet(model: model))
         .onAppear {
             let pending = PendingOpen.take()
+            // (Only the launch's first window gets them, whatever it shows.)
+            let lastTime = WindowSession.takeAtLaunch()
             if !pending.isEmpty {
                 model.open(pending)
+            } else if !PendingOpen.windows.isEmpty {
+                let window = PendingOpen.windows.removeFirst()
+                model.reopen(window.place, frame: window.frame)
             } else if let folder = savedFolder {
                 model.reopen(WindowPlace(folder: folder, image: savedImage, files: savedFiles))
+            } else if !lastTime.isEmpty {
+                reopen(lastTime)
             }
             if DebugScenes.showsSidebar { sidebarVisibility = .all }
         }
@@ -71,6 +79,22 @@ struct ViewerWindow: View {
         }
         // Outermost, so sheets, alerts, toolbar and inspector all see the model.
         .environment(model)
+    }
+
+    /// The first window of a launch brings back the windows open at quit, unless macOS brought back its own or
+    /// the app was opened to show files.
+    private func reopen(_ windows: [WindowSession.Window]) {
+        Task {
+            // (Windows macOS restores, or a file the app was opened with, arrive just after this one.)
+            try? await Task.sleep(for: .milliseconds(300))
+            guard model.folderURL == nil, ViewerRegistry.shared.windowCount <= 1, !WindowSession.launchedToOpenFiles else { return }
+            // This window takes the backmost; the others open in front of it, the frontmost last.
+            model.reopen(windows[windows.count - 1].place, frame: windows[windows.count - 1].frame)
+            for window in windows.dropLast().reversed() {
+                PendingOpen.windows.append(window)
+                openWindow(id: "viewer")
+            }
+        }
     }
 }
 
@@ -176,8 +200,13 @@ struct ViewerPane: View {
             if !model.trimmedSearch.isEmpty {
                 ContentUnavailableView.search(text: model.trimmedSearch)
             } else if model.flagFilter != .all {
-                ContentUnavailableView("No \(model.flagFilter.title)", systemImage: "flag.slash",
-                                       description: Text("Press P to pick or X to reject images."))
+                if model.flagFilter.minimumStars != nil {
+                    ContentUnavailableView("Nothing Rated \(model.flagFilter.title)", systemImage: "star.slash",
+                                           description: Text("Press 1–5 to rate images (again for a half star)."))
+                } else {
+                    ContentUnavailableView("No \(model.flagFilter.title)", systemImage: "flag.slash",
+                                           description: Text("Press P to pick or X to reject images."))
+                }
             } else {
                 ContentUnavailableView("No Images", systemImage: "photo.on.rectangle.angled",
                                        description: Text("This folder doesn't contain any images AOK-ImageTool can open."))

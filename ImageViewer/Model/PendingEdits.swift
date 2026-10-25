@@ -44,6 +44,14 @@ final class PendingEdits {
         scheduleSave()
     }
 
+    /// The file was rewritten with only its metadata changed (a rating, a caption): its edits still apply.
+    func fileRewritten(_ url: URL, modificationDate: Date) {
+        let key = url.standardizedFileURL.path
+        guard entries[key] != nil, entries[key]?.modDate != modificationDate else { return }
+        entries[key]?.modDate = modificationDate
+        scheduleSave()
+    }
+
     /// Follows a rename (the content, and so the modification date, is unchanged).
     func move(from old: URL, to new: URL) {
         guard let entry = entries.removeValue(forKey: old.standardizedFileURL.path) else { return }

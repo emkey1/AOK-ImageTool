@@ -354,13 +354,39 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         }
     }
 
+    /// What belongs to this picture alone, as opposed to its adjustments (light, color, detail, the filter): its
+    /// turn, crop and straightening, Extend, retouching, cutout and background.
+    private var ownParts: (Int, Bool, Bool, Double, CGRect?, Quad?, Cutout?, Backdrop?, Double?, [Removal]?, UInt64?, ExtendMethod?,
+                           String?, ExtendFill?) {
+        get {
+            (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
+             removals, extendSeed, extendMethod, extendPrompt, extendFill)
+        }
+        set {
+            // The fill comes last: setting straighten or perspective clears it.
+            (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
+             removals, extendSeed, extendMethod, extendPrompt, extendFill) = newValue
+        }
+    }
+
     mutating func resetAdjustments() {
-        // The fill comes last: setting straighten or perspective clears it.
-        let geometry = (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-                        removals, extendSeed, extendMethod, extendPrompt, extendFill)
+        let own = ownParts
         self = EditState()
-        (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-         removals, extendSeed, extendMethod, extendPrompt, extendFill) = geometry
+        ownParts = own
+    }
+
+    /// The adjustments alone, for Copy Edits.
+    var adjustments: EditState {
+        var e = self
+        e.ownParts = EditState().ownParts
+        return e
+    }
+
+    /// Paste Edits: `other`'s adjustments, this picture keeping its own parts.
+    mutating func takeAdjustments(from other: EditState) {
+        let own = ownParts
+        self = other
+        ownParts = own
     }
 
     mutating func resetGeometry() {

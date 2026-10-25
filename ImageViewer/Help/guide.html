@@ -86,13 +86,13 @@
   <li><b>The sidebar</b> (toolbar button, top left) shows the current folder, its enclosing folder and subfolders, your recent folders, and common places such as Pictures and Downloads. Right-click a folder for <b>Show in Finder</b> or <b>Open in New Window</b>.</li>
   <li><b>Folders.</b> <b>Go › Enclosing Folder</b> <kbd>⌘↑</kbd>. <b>Go › Next Folder</b> and <b>Previous Folder</b> (<kbd>⌥⌘→</kbd> <kbd>⌥⌘←</kbd>) walk the folders beside this one, which is handy for date-named photo folders. <b>View › Include Subfolders</b> shows everything below the folder as one list.</li>
   <li><b>Each folder remembers</b> the last image you looked at, and opens there next time. <b>File › Open Recent</b> lists recent folders.</li>
-  <li><b>Windows.</b> Each window browses its own folder, or the same one as another. <kbd>⌘N</kbd> opens a new window; hold <kbd>⌥</kbd> in the File menu for <b>Open in New Window…</b> (<kbd>⌥⌘O</kbd>) and to open a recent folder in a new window, or right-click a folder in the sidebar. <kbd>⌘`</kbd> goes to the next window, and the Window menu lists them all (or merge them into tabs with Window ▸ Merge All Windows). Two windows on the same folder show the same edits, and closing one only asks about edits the other doesn't have. When macOS reopens the windows (after <b>Quit and Keep Windows</b>, <kbd>⌥⌘Q</kbd>, or a restart, or every time with System Settings ▸ Desktop &amp; Dock ▸ “Close windows when quitting an application” off), each comes back at its folder and picture. A picture or folder opened from Finder that a window already shows brings that window to the front.</li>
+  <li><b>Windows.</b> Each window browses its own folder, or the same one as another. <kbd>⌘N</kbd> opens a new window; hold <kbd>⌥</kbd> in the File menu for <b>Open in New Window…</b> (<kbd>⌥⌘O</kbd>) and to open a recent folder in a new window, or right-click a folder in the sidebar. <kbd>⌘`</kbd> goes to the next window, and the Window menu lists them all (or merge them into tabs with Window ▸ Merge All Windows). Two windows on the same folder show the same edits, and closing one only asks about edits the other doesn't have. The windows open when you quit come back the next time, each at its folder, picture and place on the screen (Settings ▸ General ▸ “Reopen windows from last time”; not when the app is opened to show a picture from Finder). Windows macOS itself reopens, after <b>Quit and Keep Windows</b> <kbd>⌥⌘Q</kbd> or a restart, come back the same way. A picture or folder opened from Finder that a window already shows brings that window to the front.</li>
 </ul>
 
 <h2 id="viewing">Viewing</h2>
 <ul>
   <li><b>Formats.</b> Everything macOS can read: JPEG, PNG, HEIC, AVIF, JPEG XL, WebP, TIFF, GIF, BMP, PSD, OpenEXR and 30+ camera RAW formats, plus PDF and SVG. <b>Settings › General</b> lists them all.</li>
-  <li><b>Zoom.</b> <kbd>Z</kbd> toggles between fitting the window and actual size. A double-click goes to full resolution at the spot clicked, and another goes back to the zoom you had, fitted or not; <kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>0</kbd> fits, <kbd>1</kbd> is 100%. Pinch, or hold <kbd>⌘</kbd> or <kbd>⌥</kbd> and scroll, to zoom at the pointer. Drag to pan.</li>
+  <li><b>Zoom.</b> <kbd>Z</kbd> toggles between fitting the window and actual size. A double-click goes to full resolution at the spot clicked, and another goes back to the zoom you had, fitted or not; <kbd>+</kbd> <kbd>−</kbd> zoom, <kbd>⌘9</kbd> fits, <kbd>⌘0</kbd> is 100%. Pinch, or hold <kbd>⌘</kbd> or <kbd>⌥</kbd> and scroll, to zoom at the pointer. Drag to pan.</li>
   <li><b>Lock Zoom</b> (<kbd>L</kbd>) keeps the same zoom and position as you move between images: the quickest way to compare focus across a burst of shots.</li>
   <li><b>Small images.</b> <b>View › Enlarge Small Images to Fit Window</b> <kbd>⌥⌘9</kbd> scales them up. <b>Sharpen Enlarged Images with AI</b> shows them through Apple's on-device upscaler instead of plain smoothing.</li>
   <li><b>HDR.</b> HDR photos, like those from iPhone, show their full brightness on displays that can show it. A small HDR badge says so.</li>
@@ -115,10 +115,11 @@
 </picture>
 <ul>
   <li><b>Flag as you go.</b> <kbd>P</kbd> picks, <kbd>X</kbd> rejects, <kbd>U</kbd> unflags, and the next image comes up (you can turn that off in Settings). Flags are Finder color labels, green and red, so Finder and other apps see them too.</li>
-  <li><b>Filter.</b> The Sort &amp; Filter button in the toolbar (or <b>View › Show</b>) shows only picks, only rejects or only unflagged images.</li>
+  <li><b>Rate with stars.</b> <kbd>1</kbd> to <kbd>5</kbd> give that many stars, and the same number again adds a half (<kbd>3</kbd>, then <kbd>3</kbd> again, is 3½); <kbd>0</kbd> takes the rating off. Or click the stars in the Info panel (the left half of one for a half star), or right-click ▸ Rating. Ratings are written where other apps read them: into the file's own metadata for JPEG, HEIC, PNG and TIFF (only the metadata changes, never the picture), and into a sidecar next to it (“IMG_0001.xmp”) for camera RAW, DNG and other formats, as Lightroom, Bridge and Capture One do. Lightroom and Bridge show whole stars. Photos doesn't keep ratings, so photos from Photos can't be rated.</li>
+  <li><b>Filter.</b> The Sort &amp; Filter button in the toolbar (or <b>View › Show</b>) shows only picks, only rejects, only unflagged images, or those rated at least one to five stars.</li>
   <li><b>Move Rejects to Trash</b> (<b>Image › Flag</b>, or the Info panel) clears them out in one go. Moving to the Trash can be undone.</li>
-  <li><b>Sort</b> by name, date taken, date created or modified, size, kind, at random, or <b>Best Shots</b>: Apple's on-device judgment of how good each photo is. <b>Reverse Order</b> flips any of them.</li>
-  <li><b>Select several</b> in the grid with <kbd>⇧</kbd>-click, <kbd>⌘</kbd>-click or <kbd>⇧</kbd> and the arrow keys. Flagging, moving, copying, trashing, sharing and exporting work on the whole selection.</li>
+  <li><b>Sort</b> by name, date taken, date created or modified, size, kind, rating (best first), at random, or <b>Best Shots</b>: Apple's on-device judgment of how good each photo is. <b>Reverse Order</b> flips any of them.</li>
+  <li><b>Select several</b> in the grid with <kbd>⇧</kbd>-click, <kbd>⌘</kbd>-click or <kbd>⇧</kbd> and the arrow keys. Flagging, rating, pasting edits, moving, copying, trashing, sharing and exporting work on the whole selection.</li>
   <li><b>Duplicates.</b> <b>Intelligence › Find Duplicates…</b> groups identical and near-identical shots, best first. Slide toward <b>Loose</b> to catch similar shots too, then <b>Keep Best of Each Group</b> marks the rest for the Trash.</li>
   <li><b>Find Similar Images</b> (Intelligence menu) shows the images that look like the one you're on; <b>Show All</b> goes back.</li>
 </ul>
@@ -173,6 +174,7 @@
   <li><b>Crop and straighten</b> (<kbd>C</kbd> or <kbd>⌘K</kbd>). Drag the corners and edges, or pick an aspect (Square, 16:9, 4:3…; the button beside it swaps portrait and landscape). The slider straightens (as does Straighten in Adjust); <b>Auto</b> levels it for you, from the horizon or from upright lines such as walls and door frames. <b>Smart Crop</b> frames the subject. <kbd>Return</kbd> applies, <kbd>Esc</kbd> cancels.</li>
   <li><b>Straighten Document</b> (Intelligence menu) finds a page, sign or whiteboard and squares it up.</li>
   <li><b>Revert to Original</b> (File menu) drops every edit; <b>Reset Adjustments</b> in the panel keeps the crop and drops the rest.</li>
+  <li id="copyedits"><b>Copy and paste edits.</b> <b>Edit › Copy Edits</b> <kbd>⇧⌘C</kbd> takes a picture's light, color, detail, white balance and filter; select other pictures (in the grid, or just the one showing, in any window) and <b>Edit › Paste Edits</b> <kbd>⇧⌘V</kbd> gives them the same. Each keeps its own crop, turn, straightening, retouching and cutout. The whole paste is one step to undo. Also in the right-click menu.</li>
 </ul>
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="guide-blackwhite-dark.heic">
@@ -286,7 +288,7 @@
 <ul>
   <li><b>Remove Background</b> (<kbd>⌥⌘B</kbd>, or in the Intelligence panel) keeps the subject: a person, pet, object or several. Choose it again to restore the background.</li>
   <li><b>Select Object…</b> (Intelligence menu) lets you pick exactly what to keep. Click an object to select it, click more to add, <kbd>⌥</kbd>-click to leave something out. Then <b>Cut Out</b> (keeps only the selection, still undoable), <b>Copy</b>, or <b>Save as PNG…</b>.</li>
-  <li><b>Copy Subject</b> <kbd>⇧⌘C</kbd> puts just the subject on the clipboard, ready to paste into Keynote, Messages or a document.</li>
+  <li><b>Copy Subject</b> <kbd>⌥⇧⌘C</kbd> puts just the subject on the clipboard, ready to paste into Keynote, Messages or a document.</li>
   <li><b>A new background.</b> With the background removed, or for a picture that already has transparency (a logo, a saved cutout), choose what goes behind it in the Intelligence panel or <b>Intelligence › Background</b>: transparent, a color, the original blurred (a portrait look), a picture of your own, or a generated one:
     <ul>
       <li><b>Generate on This Mac…</b> (with the <a href="#model">generative fill model</a>) paints the scene around your subject, so its framing, eye level and light suit them. Describe the scene (“a sunny beach with palm trees”, or pick a suggestion); Apple Intelligence describes the subject (“a smiling woman with grey hair and a blue shirt”), which you can correct, and both go to the model. <b>Try Again</b> makes another; <b>Use Background</b> puts it behind the cutout.</li>
@@ -303,7 +305,7 @@
 </picture>
 <p>Everything here runs on this Mac. The Intelligence panel (<kbd>A</kbd>, or <kbd>⌘J</kbd>) gathers it; most of it is also in the Intelligence menu.</p>
 <ul>
-  <li><b>Describe Image</b> <kbd>⇧⌘D</kbd> writes a title, an alt-text caption and keywords. <b>Copy Alt Text</b> for a website or document; <b>Add Finder Tags</b> makes the keywords Finder tags, which Spotlight finds; <b>Rename to “…”</b> takes the suggested file name. Settings can describe each image automatically while the panel is open.</li>
+  <li><b>Describe Image</b> <kbd>⇧⌘D</kbd> writes a title, an alt-text caption and keywords. <b>Copy Alt Text</b> for a website or document; <b>Add Finder Tags</b> makes the keywords Finder tags, which Spotlight finds; <b>Save in File</b> writes the title, caption (also as the picture's alt text) and keywords into the file's metadata (a sidecar for RAW), where Spotlight, Photos (when it imports the file) and Lightroom find them, adding to any keywords it has; <b>Rename to “…”</b> takes the suggested file name. Settings can describe each image automatically while the panel is open.</li>
   <li><b>Ask About This Image.</b> Type a question (“What breed is this?”, “Where could this be?”) or click a suggestion. Follow-up questions remember the conversation.</li>
   <li><b>Text in Image.</b> <b>Read Text</b> finds all the text in a photo (signs, receipts, slides) to copy or <b>Translate…</b>.</li>
   <li><b>Smart Fixes:</b> Auto Enhance, Straighten (levels the horizon or upright lines), Smart Crop, Fix Document, and, with their models installed, Generative Extend and Colorize.</li>
@@ -357,11 +359,13 @@
   <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First / last image</td></tr>
   <tr><td><kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Previous / next page (PDF, multi-page TIFF)</td></tr>
   <tr><td><kbd>G</kbd> <kbd>⌘1</kbd> <kbd>⌘2</kbd></td><td>Toggle grid / viewer / grid</td></tr>
-  <tr><td><kbd>Z</kbd> <kbd>0</kbd> <kbd>1</kbd> <kbd>+</kbd> <kbd>−</kbd></td><td>Fit or actual size, fit, 100%, zoom in, zoom out</td></tr>
+  <tr><td><kbd>Z</kbd> <kbd>⌘9</kbd> <kbd>⌘0</kbd> <kbd>+</kbd> <kbd>−</kbd></td><td>Fit or actual size, fit, 100%, zoom in, zoom out</td></tr>
   <tr><td><kbd>L</kbd></td><td>Lock zoom across images</td></tr>
   <tr><td><kbd>F</kbd> <kbd>S</kbd> <kbd>T</kbd></td><td>Full screen, slideshow, filmstrip</td></tr>
   <tr><td><kbd>I</kbd> <kbd>E</kbd> <kbd>A</kbd></td><td>Info, Adjust, Intelligence panel</td></tr>
   <tr><td><kbd>P</kbd> <kbd>X</kbd> <kbd>U</kbd></td><td>Pick, reject, unflag</td></tr>
+  <tr><td><kbd>1</kbd>–<kbd>5</kbd> <kbd>0</kbd></td><td>Rate one to five stars (the same number again adds a half star), no rating</td></tr>
+  <tr><td><kbd>⇧⌘C</kbd> <kbd>⇧⌘V</kbd></td><td><a href="#copyedits">Copy edits, paste edits</a></td></tr>
   <tr><td><kbd>R</kbd> <kbd>⇧R</kbd></td><td>Rotate right / left</td></tr>
   <tr><td><kbd>C</kbd> <kbd>⌘K</kbd> <kbd>⇧⌘K</kbd></td><td>Crop &amp; straighten, Extend</td></tr>
   <tr><td><kbd>⇧⌘X</kbd></td><td><a href="#remove">Remove objects</a>; in it, <kbd>[</kbd> <kbd>]</kbd> size the brush, <kbd>⌘+</kbd> <kbd>⌘−</kbd> <kbd>⌘0</kbd> zoom, and <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd> step through its removals</td></tr>
@@ -371,7 +375,7 @@
   <tr><td><kbd>⇧⌘N</kbd></td><td><a href="#newimage">New image from a description</a></td></tr>
   <tr><td><kbd>\</kbd></td><td>Show the original</td></tr>
   <tr><td><kbd>⌥⌘E</kbd> <kbd>⌥⌘C</kbd></td><td>Auto enhance, adjust color</td></tr>
-  <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
+  <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⌥⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
   <tr><td><kbd>⌘S</kbd> <kbd>⇧⌘E</kbd></td><td>Save, export</td></tr>
   <tr><td><kbd>⇧⌘O</kbd></td><td>Open from Photos</td></tr>
   <tr><td><kbd>⌘V</kbd></td><td>Paste a picture as a new image</td></tr>

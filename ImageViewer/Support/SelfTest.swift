@@ -733,6 +733,133 @@ enum SelfTest {
               "Fix Blur saves “Harbor (Sharpened)”, stacked on the original\(model.alert.map { " (\($0.title): \($0.message))" } ?? "")")
     }
 
+    /// Ratings, captions and keywords written to files: in the file for JPEG, PNG, TIFF and HEIC (the picture,
+    /// Finder label and other attributes unchanged), in a sidecar for RAW and GIF (Lightroom's settings in it
+    /// kept); the rating keys, filter and sort; unsaved edits surviving the rewrite; Copy and Paste Edits.
+    /// (`AOK_SELFTEST_ONLY=tags` runs just these.)
+    private static func tagsChecks(out: URL) async {
+        let fm = FileManager.default
+        let folder = out.appendingPathComponent("tags")
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let ctx = CGContext(data: nil, width: 301, height: 199, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return check(false, "test picture") }
+        for y in 0..<199 {
+            ctx.setFillColor(CGColor(srgbRed: Double(y) / 199, green: 0.4, blue: 1 - Double(y) / 199, alpha: 1))
+            ctx.fill(CGRect(x: 0, y: y, width: 301, height: 1))
+        }
+        guard let picture = ctx.makeImage() else { return check(false, "test picture") }
+        func pixels(_ url: URL) -> Data? {
+            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil), let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return nil }
+            return image.dataProvider?.data as Data?
+        }
+        func xattr(_ url: URL) -> String? {
+            var buffer = [UInt8](repeating: 0, count: 64)
+            let n = url.withUnsafeFileSystemRepresentation { getxattr($0, "com.oneopa.selftest", &buffer, 64, 0, 0) }
+            return n > 0 ? String(decoding: buffer.prefix(n), as: UTF8.self) : nil
+        }
+
+        let update = FileTags.Update(rating: 3.5, title: "Gradient", caption: "A gradient from blue to red", keywords: ["gradient", "test"])
+        for format in [ExportFormat.jpeg, .png, .tiff, .heic] {
+            let file = folder.appendingPathComponent("Gradient.\(format.rawValue)")
+            try? ImageWriter.write(picture, to: file, format: format, quality: 0.9, sourceProperties: [:], metadata: .removeAll)
+            var labelled = file
+            var values = URLResourceValues()
+            values.labelNumber = Flag.pick.rawValue
+            try? labelled.setResourceValues(values)
+            _ = file.withUnsafeFileSystemRepresentation { setxattr($0, "com.oneopa.selftest", "kept", 4, 0, 0) }
+            let before = pixels(file)
+            do {
+                _ = try FileTags.writeNow(update, to: file)
+                let read = FileTags.read(file)
+                let label = try? file.resourceValues(forKeys: [.labelNumberKey]).labelNumber
+                check(FileTags.sidecar(for: file) == nil && read.rating == 3.5 && read.title == "Gradient"
+                      && read.caption == "A gradient from blue to red" && read.keywords == ["gradient", "test"],
+                      "\(format.rawValue): the rating, title, caption and keywords are written in the file (\(read))")
+                check(before != nil && pixels(file) == before, "\(format.rawValue): the picture is unchanged")
+                check(label == Flag.pick.rawValue && xattr(file) == "kept", "\(format.rawValue): its Finder label and other attributes are kept")
+                _ = try FileTags.writeNow(FileTags.Update(rating: 0), to: file)
+                let cleared = FileTags.read(file)
+                check(cleared.rating == 0 && cleared.title == "Gradient", "\(format.rawValue): a rating is taken off, the rest kept")
+            } catch {
+                check(false, "\(format.rawValue): \(error.localizedDescription)")
+            }
+        }
+
+        // RAW: a sidecar, keeping what Lightroom keeps in it.
+        let raw = folder.appendingPathComponent("IMG_0001.CR2")
+        fm.createFile(atPath: raw.path, contents: Data())
+        let sidecar = folder.appendingPathComponent("IMG_0001.xmp")
+        try? Data("""
+        <x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+        <rdf:Description rdf:about="" xmlns:xmp="http://ns.adobe.com/xap/1.0/" xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/"
+         xmp:Rating="2" crs:Exposure2012="+0.45"/></rdf:RDF></x:xmpmeta>
+        """.utf8).write(to: sidecar)
+        check(FileTags.read(raw).rating == 2, "RAW: the rating in Lightroom's sidecar is read")
+        do {
+            _ = try FileTags.writeNow(FileTags.Update(rating: 4, keywords: ["fox"]), to: raw)
+            let text = (try? String(contentsOf: sidecar, encoding: .utf8)) ?? ""
+            check(FileTags.sidecar(for: raw) == sidecar && FileTags.read(raw).rating == 4 && FileTags.read(raw).keywords == ["fox"]
+                  && text.contains("Exposure2012") && (try? Data(contentsOf: raw))?.isEmpty == true,
+                  "RAW: the rating and keywords go in its sidecar, Lightroom's settings kept, the RAW untouched")
+        } catch {
+            check(false, "RAW sidecar: \(error.localizedDescription)")
+        }
+        let gif = folder.appendingPathComponent("Gradient.gif")
+        try? ImageWriter.write(picture, to: gif, format: .gif, quality: 1, sourceProperties: [:], metadata: .removeAll)
+        _ = try? FileTags.writeNow(FileTags.Update(rating: 5), to: gif)
+        check(FileTags.read(gif).rating == 5 && fm.fileExists(atPath: folder.appendingPathComponent("Gradient.xmp").path),
+              "GIF: a sidecar holds the rating")
+
+        // The model: keys, half stars, filter and sort, and edits surviving the rewrite. (Not with the RAW, which
+        // is no picture.)
+        try? fm.removeItem(at: raw)
+        try? fm.removeItem(at: sidecar)
+        let jpeg = folder.appendingPathComponent("Gradient.jpeg").standardizedFileURL
+        let png = folder.appendingPathComponent("Gradient.png").standardizedFileURL
+        let model = ViewerModel()
+        model.openFolder(folder, selecting: jpeg)
+        for _ in 0..<100 where model.isScanning || model.allItems.contains(where: { $0.rating == nil }) { try? await Task.sleep(for: .milliseconds(50)) }
+        check(model.allItems.first { $0.url == gif.standardizedFileURL }?.rating == 5, "a folder's ratings are read when it opens")
+        model.updateEdits("Exposure") { $0.exposure = 0.4 }
+        model.rateKey(3)
+        check(model.currentItem?.rating == 3, "3 rates three stars")
+        model.rateKey(3)
+        check(model.currentItem?.rating == 3.5, "3 again makes it three and a half")
+        for _ in 0..<60 where FileTags.read(jpeg).rating != 3.5 { try? await Task.sleep(for: .milliseconds(50)) }
+        try? await Task.sleep(for: .milliseconds(200))
+        // (A fresh URL: the one above has cached the date from before.)
+        let fileDate = try? URL(fileURLWithPath: jpeg.path).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        check(FileTags.read(jpeg).rating == 3.5 && model.currentItem?.modificationDate == fileDate,
+              "the rating is written to the file, and the window knows its new date (\(FileTags.read(jpeg).rating), "
+              + "\(String(describing: model.currentItem?.modificationDate)) vs \(String(describing: fileDate)))")
+        model.flagFilter = .threeStars
+        check(Set(model.items.map(\.url)) == [jpeg, gif.standardizedFileURL], "★★★ or More shows the rated images")
+        model.flagFilter = .all
+        model.sortKey = .rating
+        check(model.items.first?.url == gif.standardizedFileURL && model.items.dropFirst().first?.url == jpeg, "sorting by rating puts the best first")
+        model.sortKey = .name
+        let reopened = ViewerModel()
+        reopened.openFolder(folder, selecting: jpeg)
+        check(reopened.edits[jpeg]?.exposure == 0.4, "unsaved edits still come back after the rating rewrote the file")
+        model.select(jpeg)
+        model.rateKey(0)
+        for _ in 0..<60 where FileTags.read(jpeg).rating != 0 { try? await Task.sleep(for: .milliseconds(50)) }
+        check(model.currentItem?.rating == 0 && FileTags.read(jpeg).rating == 0, "0 takes the rating off")
+
+        // Copy and Paste Edits: the adjustments, not the other picture's crop or turn.
+        model.updateEdits("Crop") { $0.crop = CGRect(x: 0.1, y: 0.1, width: 0.5, height: 0.5); $0.quarterTurns = 1; $0.contrast = 0.2 }
+        model.copyEdits()
+        model.select(png)
+        model.updateEdits("Straighten") { $0.straighten = 2 }
+        model.pasteEdits(to: [png])
+        let pasted = model.edits[png]
+        check(pasted?.exposure == 0.4 && pasted?.contrast == 0.2 && pasted?.crop == nil && pasted?.quarterTurns == 0 && pasted?.straighten == 2,
+              "Paste Edits brings the light and color, and the picture keeps its own crop and straightening")
+        model.edits.keys.forEach { model.setEditsDictionary($0, nil) }
+        reopened.edits.keys.forEach { reopened.setEditsDictionary($0, nil) }
+    }
+
     static func run() async {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-selfTest"), i + 1 < args.count else {
@@ -806,8 +933,11 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ["clone", "wb", "newimage"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
-            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "clone" {
+        if ["clone", "wb", "newimage", "tags"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "tags" {
+                print("\n[Ratings, captions, Copy Edits]")
+                await tagsChecks(out: out)
+            } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "clone" {
                 print("\n[Clone & Heal]")
                 await cloneHealChecks(out: out)
             } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "newimage" {
@@ -1739,6 +1869,8 @@ enum SelfTest {
         await whiteBalanceChecks(out: out)
         print("\n[New Image]")
         await newImageChecks(out: out)
+        print("\n[Ratings, captions, Copy Edits]")
+        await tagsChecks(out: out)
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")
