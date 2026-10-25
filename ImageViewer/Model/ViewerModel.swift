@@ -285,11 +285,13 @@ final class ViewerModel {
     }
 
     var windowSubtitle: String {
+        // (With more than one window, which folder this one is on, here and in the Window menu.)
+        let folder = ViewerRegistry.shared.windowCount > 1 ? folderURL?.lastPathComponent : nil
         guard let i = currentIndex, !items.isEmpty else {
             if isScanning { return "Loading…" }
-            return folderURL == nil ? "" : "No images"
+            return folderURL == nil ? "" : [folder, "No images"].compactMap { $0 }.joined(separator: "  ·  ")
         }
-        var parts = ["\(i + 1) of \(items.count)"]
+        var parts = [folder, "\(i + 1) of \(items.count)"].compactMap { $0 }
         if let p = currentStackPosition { parts.append("Stack \(p.index + 1)/\(p.count)") }
         if let url = currentURL, PhotosRoundTrip.isFromPhotos(url) {
             parts.append(PhotosLibrary.shared.photo(for: url)?.isLive == true ? "Live Photo from Photos" : "From Photos")
@@ -310,6 +312,7 @@ final class ViewerModel {
     func attach(to window: NSWindow) {
         guard self.window !== window else { return }
         self.window = window
+        ViewerRegistry.shared.windowsChanged()
         if DebugHooks.isActive { DebugScenes.prepare(window) }
         // The default size is bigger than a small screen (or a VM's); keep the whole window on it.
         if let screen = (window.screen ?? NSScreen.main)?.visibleFrame,
@@ -350,6 +353,7 @@ final class ViewerModel {
         windowObservers.forEach(NotificationCenter.default.removeObserver)
         windowObservers = []
         ViewerRegistry.shared.remove(self)
+        ViewerRegistry.shared.windowsChanged()
     }
 
     var undoManager: UndoManager? { window?.undoManager }
@@ -365,8 +369,26 @@ final class ViewerModel {
             guard !Task.isCancelled else { return }
             let urls = pendingOpenURLs
             pendingOpenURLs = []
+            // A window already showing it (this one first) shows it again, rather than this one switching folders.
+            let windows = [self] + ViewerRegistry.shared.all.filter { $0 !== self }
+            if let showing = windows.first(where: { $0.showAgain(urls) }) {
+                showing.window?.makeKeyAndOrderFront(nil)
+                return
+            }
             open(urls)
         }
+    }
+
+    /// Shows what Finder (or the Dock) opened, if it's this window's folder or a picture in it: the picture is
+    /// selected, nothing else changes. False if it's somewhere else.
+    private func showAgain(_ urls: [URL]) -> Bool {
+        guard let folderURL, urls.count == 1, let url = urls.first?.standardizedFileURL else { return false }
+        if url == folderURL { return restrictedTo == nil }
+        // (Not one a filter or search is hiding: opening it again shows the whole folder.)
+        guard items.contains(where: { $0.url == url }) || stackOf[url] != nil else { return false }
+        select(url)
+        if viewMode == .grid { viewMode = .viewer }
+        return true
     }
 
     func open(_ urls: [URL]) {
@@ -414,6 +436,25 @@ final class ViewerModel {
         }
         openFolder(file.deletingLastPathComponent(), selecting: file, restrictedTo: [file])
         showToast("Editing a photo from Photos: Save sends your changes back to it", systemImage: "photo.on.rectangle")
+    }
+
+    /// Where this window is, for macOS to keep with it: nil for photos from Photos (their files don't last).
+    var place: WindowPlace? {
+        guard let folderURL, !PhotosRoundTrip.isFromPhotos(folderURL.appendingPathComponent("x")) else { return nil }
+        return WindowPlace(folder: folderURL.path, image: currentURL?.path,
+                           files: restrictedTo.map { $0.map(\.path).sorted().joined(separator: "\n") })
+    }
+
+    /// A window macOS brought back at launch: its folder and picture again, if they're still there.
+    func reopen(_ place: WindowPlace) {
+        let fm = FileManager.default
+        let folder = URL(fileURLWithPath: place.folder, isDirectory: true)
+        guard folderURL == nil, FolderScanner.isDirectory(folder) else { return }
+        let image = place.image.map { URL(fileURLWithPath: $0) }.flatMap { fm.fileExists(atPath: $0.path) ? $0 : nil }
+        guard let files = place.files else { return openFolder(folder, selecting: image ?? LastViewed.file(in: folder)) }
+        let chosen = Set(files.split(separator: "\n").map { URL(fileURLWithPath: String($0)) }.filter { fm.fileExists(atPath: $0.path) })
+        guard let first = chosen.min(by: { $0.path < $1.path }) else { return }
+        openFolder(folder, selecting: image ?? first, restrictedTo: chosen)
     }
 
     func openFolder(_ folder: URL, selecting: URL?, restrictedTo: Set<URL>? = nil) {
@@ -1054,6 +1095,10 @@ final class ViewerModel {
         if let e = edits.removeValue(forKey: old) {
             edits[newItem.url] = e
             PendingEdits.shared.move(from: old, to: newItem.url)
+            // (Other windows see the new name when they next look at the folder.)
+            for other in ViewerRegistry.shared.all where other !== self {
+                if let e = other.edits.removeValue(forKey: old) { other.edits[newItem.url] = e }
+            }
         }
         if let i = allItems.firstIndex(where: { $0.url == old }) { allItems[i] = newItem }
         if let i = items.firstIndex(where: { $0.url == old }) { items[i] = newItem }
@@ -1076,16 +1121,38 @@ final class ViewerModel {
         edits[url] = state
         // (Showing only edited images: one that's reverted, or newly edited, comes or goes.)
         if flagFilter == .edited, wasEdited != (state != nil) { applySortAndFilter(selecting: currentURL) }
+        for other in ViewerRegistry.shared.all where other !== self { other.mirrorEdits(state, for: url) }
         // (Not for a photo opened from Photos: its working file is gone after a relaunch.)
         guard !PhotosLibrary.isWorkingFile(url) else { return }
         PendingEdits.shared.set(state, for: url, modificationDate: allItems.first { $0.url == url }?.modificationDate)
     }
+
+    /// Another window changed `url`'s edits: they change here too, if this window has the image (two windows
+    /// on one folder show the same edits, so saving in one doesn't leave them in the other).
+    private func mirrorEdits(_ state: EditState?, for url: URL) {
+        guard edits[url] != state, edits[url] != nil || allItems.contains(where: { $0.url == url }) else { return }
+        let wasEdited = edits[url] != nil
+        edits[url] = state
+        if flagFilter == .edited, wasEdited != (state != nil) { applySortAndFilter(selecting: currentURL) }
+        if url == currentURL { refreshDisplay() }
+        window?.isDocumentEdited = hasUnsavedEdits
+    }
+
+    /// The unsaved edits that are only in this window: closing it leaves any other window's alone.
+    var unsavedURLsOnlyHere: [URL] {
+        let others = ViewerRegistry.shared.all.filter { $0 !== self }
+        return unsavedURLs.filter { url in !others.contains { $0.isUnsaved(url) } }
+    }
 }
 
-/// Weak registry of open viewer windows (used to warn about unsaved edits on quit).
+/// Weak registry of open viewer windows (used to warn about unsaved edits on quit, and to share edits between
+/// windows on the same images).
+@Observable
 final class ViewerRegistry {
     static let shared = ViewerRegistry()
-    private var models: [WeakModel] = []
+    @ObservationIgnored private var models: [WeakModel] = []
+    /// How many windows are open (with more than one, each says which folder it's on).
+    private(set) var windowCount = 0
 
     private struct WeakModel {
         weak var model: ViewerModel?
@@ -1101,4 +1168,8 @@ final class ViewerRegistry {
     }
 
     var all: [ViewerModel] { models.compactMap(\.model) }
+
+    func windowsChanged() {
+        windowCount = all.filter { $0.window != nil }.count
+    }
 }

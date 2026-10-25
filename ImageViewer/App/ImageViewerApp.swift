@@ -58,7 +58,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         let viewers = ViewerRegistry.shared.all
-        let unsaved = viewers.flatMap(\.unsavedURLs)
+        // (Two windows on one folder have the same edits.)
+        let unsaved = Set(viewers.flatMap(\.unsavedURLs)).sorted { $0.path < $1.path }
         let count = unsaved.count
         guard count > 0, !Updater.isRelaunchingForUpdate else { return .terminateNow }
         let fromPhotos = unsaved.filter { PhotosLibrary.shared.photo(for: $0) != nil }.count

@@ -26,6 +26,10 @@ struct ViewerCommands: Commands {
                 .keyboardShortcut("n")
             Button("Open…") { open() }
                 .keyboardShortcut("o")
+                .modifierKeyAlternate(.option) {
+                    Button("Open in New Window…") { open(inNewWindow: true) }
+                        .keyboardShortcut("o", modifiers: [.command, .option])
+                }
             Button("Open from Photos…") { viewer?.openFromPhotos() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(viewer == nil)
@@ -37,6 +41,9 @@ struct ViewerCommands: Commands {
             Menu("Open Recent") {
                 ForEach(RecentFolders.all, id: \.self) { url in
                     Button(url.lastPathComponent) { open([url]) }
+                        .modifierKeyAlternate(.option) {
+                            Button("\(url.lastPathComponent) in a New Window") { open([url], inNewWindow: true) }
+                        }
                 }
                 Divider()
                 Button("Clear Menu") { RecentFolders.clear() }
@@ -332,8 +339,9 @@ struct ViewerCommands: Commands {
         viewer?.showInspector = true
     }
 
-    private func open(_ urls: [URL]? = nil) {
-        if let viewer {
+    /// Opens in the window in front, or in a new one (as with no window open). With no `urls`, asks which.
+    private func open(_ urls: [URL]? = nil, inNewWindow: Bool = false) {
+        if let viewer, !inNewWindow {
             if let urls { viewer.open(urls) } else { viewer.showOpenPanel() }
             return
         }

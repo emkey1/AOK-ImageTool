@@ -35,13 +35,14 @@ enum WindowCloseInterception {
 }
 
 extension ViewerModel {
-    /// The close button (or any other `performClose`) asks what to do with unsaved edits first.
+    /// The close button (or any other `performClose`) asks what to do with unsaved edits first (those another
+    /// window on the same images also has stay with it).
     func windowShouldClose(_ window: NSWindow) -> Bool {
         guard !isSavingBeforeClose else { return false }
-        guard hasUnsavedEdits else { return true }
+        let urls = unsavedURLsOnlyHere
+        guard !urls.isEmpty else { return true }
         guard window.attachedSheet == nil else { return false }
 
-        let urls = unsavedURLs
         let alert = NSAlert()
         alert.messageText = urls.count == 1
             ? "Do you want to save the changes to “\(urls[0].lastPathComponent)”?"
@@ -62,20 +63,20 @@ extension ViewerModel {
         discard.keyEquivalentModifierMask = .command
         alert.beginSheetModal(for: window) { [weak self] response in
             switch response {
-            case .alertFirstButtonReturn: self?.saveAllAndClose()
-            case .alertThirdButtonReturn: self?.discardAllAndClose()
+            case .alertFirstButtonReturn: self?.saveAllAndClose(urls)
+            case .alertThirdButtonReturn: self?.discardAllAndClose(urls)
             default: break
             }
         }
         return false
     }
 
-    private func saveAllAndClose() {
+    private func saveAllAndClose(_ urls: [URL]) {
         isSavingBeforeClose = true
-        let count = unsavedURLs.count
+        let count = urls.count
         showToast(count == 1 ? "Saving…" : "Saving \(count) images…", systemImage: "arrow.down.doc")
         Task {
-            let failures = await saveAllEdits()
+            let failures = await saveAllEdits(urls)
             isSavingBeforeClose = false
             if failures.isEmpty {
                 window?.performClose(nil)
@@ -89,8 +90,8 @@ extension ViewerModel {
         }
     }
 
-    private func discardAllAndClose() {
-        for url in Array(edits.keys) { setEditsDictionary(url, nil) }
+    private func discardAllAndClose(_ urls: [URL]) {
+        for url in urls { setEditsDictionary(url, nil) }
         undoManager?.removeAllActions(withTarget: self)
         window?.isDocumentEdited = false
         // Let the sheet finish ending before closing its window.

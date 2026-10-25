@@ -14,7 +14,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
 </p>
 
 - **Fast browsing.** Arrow keys step through a folder, with the next images decoded ahead of time. Every format macOS
-  reads, including HEIC, AVIF, JPEG XL, WebP, 30+ camera RAW formats, PDF and SVG, with HDR shown in HDR.
+  reads, including HEIC, AVIF, JPEG XL, WebP, 30+ camera RAW formats, PDF and SVG, with HDR shown in HDR. As many
+  windows as you like (⌘N, ⌘` between them), each on its own folder or the same one.
 - **Pick the keepers.** P, X and U pick, reject and unflag (as Finder color labels); filter, sort by Apple's
   judgment of the best shots, find duplicates and similar photos.
 - **Edit without fear.** Light, color, detail and filters, crop and straighten (by the degree or tenth of a degree, or

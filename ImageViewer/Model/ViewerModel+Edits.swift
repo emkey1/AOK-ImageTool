@@ -243,12 +243,12 @@ extension ViewerModel {
         fileDidChange(url)
     }
 
-    /// Saves every edited image in place, one at a time, without asking (closing the window already
-    /// asked). Returns a line for each image that couldn't be saved.
-    func saveAllEdits() async -> [String] {
+    /// Saves every edited image (or just `urls`) in place, one at a time, without asking (closing the window
+    /// already asked). Returns a line for each image that couldn't be saved.
+    func saveAllEdits(_ urls: [URL]? = nil) async -> [String] {
         var failures: [String] = []
         let hdr = Prefs.hdrEnabled
-        for url in unsavedURLs {
+        for url in urls ?? unsavedURLs {
             let e = edits[url] ?? .identity
             do {
                 let d: DecodedImage

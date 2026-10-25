@@ -47,6 +47,8 @@ extension ViewerModel {
             Shortcut(keys: "I  ·  E  ·  A", action: "Info / Adjust / Intelligence panel"),
             Shortcut(keys: "T", action: "Show / hide filmstrip"),
             Shortcut(keys: "Esc", action: "Exit tool, slideshow or full screen"),
+            Shortcut(keys: "⌘N  ·  ⌥⌘O", action: "New window / open in a new window"),
+            Shortcut(keys: "⌘`", action: "Next window"),
             Shortcut(keys: "?", action: "This help"),
         ]),
     ]

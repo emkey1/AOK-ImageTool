@@ -1,9 +1,20 @@
 import ImagePlayground
 import SwiftUI
 
+/// A window's folder, picture, and the files it was opened with when it shows just those (paths, one a line).
+struct WindowPlace: Equatable {
+    var folder: String
+    var image: String?
+    var files: String?
+}
+
 struct ViewerWindow: View {
     @State private var model = ViewerModel()
     @State private var sidebarVisibility: NavigationSplitViewVisibility = .detailOnly
+    // (Kept by macOS with the window, so one brought back at launch shows its folder again.)
+    @SceneStorage("folder") private var savedFolder: String?
+    @SceneStorage("image") private var savedImage: String?
+    @SceneStorage("files") private var savedFiles: String?
 
     var body: some View {
         @Bindable var model = model
@@ -46,8 +57,17 @@ struct ViewerWindow: View {
         .modifier(PlaygroundSheet(model: model))
         .onAppear {
             let pending = PendingOpen.take()
-            if !pending.isEmpty { model.open(pending) }
+            if !pending.isEmpty {
+                model.open(pending)
+            } else if let folder = savedFolder {
+                model.reopen(WindowPlace(folder: folder, image: savedImage, files: savedFiles))
+            }
             if DebugScenes.showsSidebar { sidebarVisibility = .all }
+        }
+        .onChange(of: model.place) { _, place in
+            savedFolder = place?.folder
+            savedImage = place?.image
+            savedFiles = place?.files
         }
         // Outermost, so sheets, alerts, toolbar and inspector all see the model.
         .environment(model)
