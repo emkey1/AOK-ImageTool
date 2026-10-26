@@ -208,8 +208,7 @@ struct ViewerPane: View {
                                            description: Text("Press P to pick or X to reject images."))
                 }
             } else {
-                ContentUnavailableView("No Images", systemImage: "photo.on.rectangle.angled",
-                                       description: Text("This folder doesn't contain any images AOK-ImageTool can open."))
+                EmptyFolderView()
             }
         } else if let error = model.loadError {
             ContentUnavailableView("Can't Display Image", systemImage: "exclamationmark.triangle", description: Text(error))

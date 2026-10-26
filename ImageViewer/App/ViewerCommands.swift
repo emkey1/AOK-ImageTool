@@ -30,6 +30,9 @@ struct ViewerCommands: Commands {
                     Button("Open in New Window…") { open(inNewWindow: true) }
                         .keyboardShortcut("o", modifiers: [.command, .option])
                 }
+            Button("New Folder…") { viewer?.beginNewFolder() }
+                .keyboardShortcut("n", modifiers: [.command, .option])
+                .disabled(viewer == nil)
             Button("Open from Photos…") { viewer?.openFromPhotos() }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(viewer == nil)
@@ -360,13 +363,9 @@ struct ViewerCommands: Commands {
             openWindow(id: "viewer")
             return
         }
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = true
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = SupportedFormats.readableTypes + [.folder]
+        let panel = ViewerModel.openPanel()
         if panel.runModal() == .OK {
-            PendingOpen.urls = panel.urls
+            PendingOpen.urls = ViewerModel.chosen(in: panel)
             openWindow(id: "viewer")
         }
     }

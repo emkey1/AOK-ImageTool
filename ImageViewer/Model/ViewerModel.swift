@@ -503,15 +503,55 @@ final class ViewerModel {
     }
 
     func showOpenPanel() {
+        let panel = Self.openPanel()
+        let handler: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+            guard response == .OK else { return }
+            self?.open(Self.chosen(in: panel))
+        }
+        if let window { panel.beginSheetModal(for: window, completionHandler: handler) } else { handler(panel.runModal()) }
+    }
+
+    /// File ▸ Open's panel: images or folders, and a New Folder button.
+    static func openPanel() -> NSOpenPanel {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = true
         panel.allowsMultipleSelection = true
+        panel.canCreateDirectories = true
         panel.allowedContentTypes = SupportedFormats.readableTypes + [.folder]
         panel.message = "Choose images or a folder"
+        return panel
+    }
+
+    /// What was chosen: Open with nothing selected (inside an empty folder, say) means the folder showing.
+    static func chosen(in panel: NSOpenPanel) -> [URL] {
+        if !panel.urls.isEmpty { return panel.urls }
+        return panel.directoryURL.map { [$0] } ?? []
+    }
+
+    /// File ▸ New Folder…: a new, empty folder (named and placed in a Save panel, inside this one to start
+    /// with), opened here, ready for pictures pasted, dropped, made with New Image or copied in.
+    func beginNewFolder() {
+        let panel = NSSavePanel()
+        panel.title = "New Folder"
+        panel.prompt = "Create"
+        panel.nameFieldLabel = "Name:"
+        panel.nameFieldStringValue = "Untitled Folder"
+        panel.message = "Make a new folder for pictures, and open it."
+        panel.canCreateDirectories = true
+        panel.directoryURL = newImageFolder.isHere ? folderURL : FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first
         let handler: (NSApplication.ModalResponse) -> Void = { [weak self] response in
-            guard response == .OK else { return }
-            self?.open(panel.urls)
+            guard response == .OK, let url = panel.url, let self else { return }
+            // (A name that's taken: the panel asked to "replace" it, which here just opens that folder.)
+            if !FolderScanner.isDirectory(url) {
+                do {
+                    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+                } catch {
+                    return showError("Couldn't make the folder", error)
+                }
+            }
+            openFolder(url, selecting: nil)
+            showToast("Opened “\(url.lastPathComponent)”", systemImage: "folder.badge.plus")
         }
         if let window { panel.beginSheetModal(for: window, completionHandler: handler) } else { handler(panel.runModal()) }
     }

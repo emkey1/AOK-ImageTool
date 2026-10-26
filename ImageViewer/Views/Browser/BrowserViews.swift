@@ -242,8 +242,12 @@ struct GridPane: View {
         }
         .overlay {
             if model.items.isEmpty && !model.isScanning {
-                ContentUnavailableView(model.trimmedSearch.isEmpty ? "No Images" : "No Results",
-                                       systemImage: model.trimmedSearch.isEmpty ? "photo.on.rectangle.angled" : "magnifyingglass")
+                if model.trimmedSearch.isEmpty && model.flagFilter == .all {
+                    EmptyFolderView()
+                } else {
+                    ContentUnavailableView(model.trimmedSearch.isEmpty ? "No Images" : "No Results",
+                                           systemImage: model.trimmedSearch.isEmpty ? "photo.on.rectangle.angled" : "magnifyingglass")
+                }
             }
         }
     }
@@ -413,5 +417,25 @@ struct RatingControl: View {
             }
         }
         .help("Click a star to rate (its left half for a half star), or the rating it has to take it off. Keys: 1–5, again for a half star, 0 for none.")
+    }
+}
+
+/// A folder with no pictures (a new one, say): what can go in it.
+struct EmptyFolderView: View {
+    @Environment(ViewerModel.self) private var model
+
+    var body: some View {
+        let writable = model.newImageFolder.isHere
+        ContentUnavailableView {
+            Label("No Images", systemImage: "photo.on.rectangle.angled")
+        } description: {
+            Text(writable ? "This folder has no pictures AOK-ImageTool can open. Drop some here, paste one (⌘V), or make one from a description."
+                          : "This folder doesn't contain any images AOK-ImageTool can open.")
+        } actions: {
+            if writable {
+                Button("New Image from Description…") { model.beginNewImage() }
+            }
+            Button("Open…") { model.showOpenPanel() }
+        }
     }
 }
