@@ -247,39 +247,83 @@ nonisolated enum VisionServices {
 
     // MARK: - Geometry helpers
 
-    /// Degrees to turn the picture clockwise to level it: from its long straight lines (a horizon, or walls
-    /// and door frames), with Vision's horizon detector as a second opinion. nil when it has neither a clear
-    /// horizon nor upright lines. (Vision alone finds no horizon in a level photo, and misses many tilts.)
-    @concurrent
+    /// How far to turn `image` clockwise to level it (degrees), or nil when there's nothing clear to go by.
+    /// Wary, because turning a picture that was fine is worse than leaving one a little off:
+    /// - Upright lines (walls, door frames, window edges, posts) show a tilted camera best: horizontal ones that
+    ///   recede (a counter, a facade, a railing seen at an angle) slant in perspective anyway. So where there
+    ///   are uprights they decide, and horizontal lines only count when they agree with them; a picture with
+    ///   none (an open horizon) goes by its horizontal lines.
+    /// - Weak lines may only make a small turn; a big one takes long, clear lines.
+    /// - Vision's horizon only counts when a line in the picture backs it up (on its own it finds "horizons"
+    ///   in portraits), by the same rule, and never against uprights.
     static func straightenAngle(_ image: CGImage) async -> Double? {
-        let lines = tiltFromLines(image)
-        var vision: Double?
-        if let o = try? await DetectHorizonRequest().perform(on: image, orientation: nil) {
-            vision = -atan2(Double(o.transform.b), Double(o.transform.a)) * 180 / .pi
+        guard let gray = GrayProxy(image), let f = gray.families() else { return nil }
+        if let lines = lineTilt(f) { return lines }
+        guard let o = try? await DetectHorizonRequest().perform(on: image, orientation: nil) else { return nil }
+        let vision = -atan2(Double(o.transform.b), Double(o.transform.a)) * 180 / .pi
+        let support = gray.horizontalStrength(near: vision, tolerance: 1)
+        guard abs(vision) <= largestTurn(strength: support), !hasUprights(f) || abs(f.vertical - vision) <= 1.5 else { return nil }
+        return vision
+    }
+
+    /// Upright lines clear enough to judge by (if not to turn by).
+    private static func hasUprights(_ f: (horizontal: Double, hStrength: Double, vertical: Double, vStrength: Double)) -> Bool {
+        f.vStrength >= 0.2 && abs(f.vertical) <= 10
+    }
+
+    /// The tilt the lines make convincing (see `straightenAngle`), or nil.
+    static func lineTilt(_ f: (horizontal: Double, hStrength: Double, vertical: Double, vStrength: Double)) -> Double? {
+        let horizontal = f.hStrength >= 0.3 && abs(f.horizontal) <= largestTurn(strength: f.hStrength)
+        let vertical = f.vStrength >= 0.3 && abs(f.vertical) <= largestTurn(strength: f.vStrength)
+        guard hasUprights(f) else { return horizontal ? f.horizontal : nil }
+        if horizontal, abs(f.horizontal - f.vertical) <= 1.5 { return f.hStrength > f.vStrength ? f.horizontal : f.vertical }
+        return vertical ? f.vertical : nil
+    }
+
+    /// The largest turn lines this convincing may make (strength: the best line's length as a fraction of the
+    /// picture's width, or height for vertical lines).
+    nonisolated static func largestTurn(strength: Double) -> Double {
+        strength >= 0.5 ? 15 : strength >= 0.4 ? 8 : strength >= 0.3 ? 4 : 0
+    }
+
+    /// A small grayscale copy for the C line finder (Imaging/Straighten).
+    struct GrayProxy {
+        let pixels: [UInt8]
+        let width: Int, height: Int
+
+        init?(_ image: CGImage) {
+            let scale = min(1, 640 / Double(max(image.width, image.height)))
+            let w = max(16, Int(Double(image.width) * scale)), h = max(16, Int(Double(image.height) * scale))
+            var gray = [UInt8](repeating: 0, count: w * h)
+            let drew = gray.withUnsafeMutableBytes { buf -> Bool in
+                guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
+                                          space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+                ctx.interpolationQuality = .high
+                ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+                return true
+            }
+            guard drew else { return nil }
+            (pixels, width, height) = (gray, w, h)
         }
-        switch (lines, vision) {
-        case let (l?, v?): return abs(l.degrees - v) < 1.5 || l.strength >= 0.4 ? l.degrees : v
-        case let (l?, nil): return l.degrees
-        case let (nil, v?): return v
-        case (nil, nil): return nil
+
+        /// Both kinds of lines: the strongest near-horizontal one's tilt, and the near-vertical ones'.
+        func families(maxDegrees: Double = 20) -> (horizontal: Double, hStrength: Double, vertical: Double, vStrength: Double)? {
+            var h = 0.0, hs = 0.0, v = 0.0, vs = 0.0
+            guard iv_tilt_families(pixels, Int32(width), Int32(height), maxDegrees, &h, &hs, &v, &vs) == 1 else { return nil }
+            return (h, hs, v, vs)
+        }
+
+        /// The strongest near-horizontal line tilted within `tolerance` of `degrees`.
+        func horizontalStrength(near degrees: Double, tolerance: Double) -> Double {
+            iv_horizontal_strength_near(pixels, Int32(width), Int32(height), degrees, tolerance)
         }
     }
 
-    /// The C line finder (Imaging/Straighten) on a small grayscale copy.
+    /// The C line finder on its own (the old way, kept for the self-test's "no false horizon" check).
     static func tiltFromLines(_ image: CGImage, maxDegrees: Double = 20) -> (degrees: Double, strength: Double)? {
-        let scale = min(1, 640 / Double(max(image.width, image.height)))
-        let w = max(16, Int(Double(image.width) * scale)), h = max(16, Int(Double(image.height) * scale))
-        var gray = [UInt8](repeating: 0, count: w * h)
-        let drew = gray.withUnsafeMutableBytes { buf -> Bool in
-            guard let ctx = CGContext(data: buf.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w,
-                                      space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
-            ctx.interpolationQuality = .high
-            ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
-            return true
-        }
-        guard drew else { return nil }
+        guard let gray = GrayProxy(image) else { return nil }
         var degrees = 0.0, strength = 0.0, kind: Int32 = 0
-        guard iv_estimate_tilt(gray, Int32(w), Int32(h), maxDegrees, &degrees, &strength, &kind) == 1 else { return nil }
+        guard iv_estimate_tilt(gray.pixels, Int32(gray.width), Int32(gray.height), maxDegrees, &degrees, &strength, &kind) == 1 else { return nil }
         return (degrees, strength)
     }
 

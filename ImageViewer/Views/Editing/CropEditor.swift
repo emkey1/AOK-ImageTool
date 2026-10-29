@@ -540,7 +540,7 @@ struct CropEditor: View {
                 }
                 render()
             } else {
-                model.showToast("No horizon or straight lines found", systemImage: "level")
+                model.showToast("No clear horizon or upright lines to level by", systemImage: "level")
             }
             busy = false
         }

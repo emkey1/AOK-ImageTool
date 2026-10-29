@@ -1,5 +1,6 @@
 #if DEBUG
 import AppKit
+import Vision
 import CoreImage
 import ImageIO
 import Photos
@@ -968,6 +969,70 @@ enum SelfTest {
         }
     }
 
+    /// Auto Straighten: a horizon's tilt measured; no false horizon in a photo without lines; a room's receding
+    /// lines don't tilt it; uprights leaning apart in perspective still show the camera's tilt.
+    /// (`AOK_SELFTEST_ONLY=straighten` runs just these.)
+    private static func straightenChecks(decodedByName: [String: DecodedImage]) async {
+        let w = 900, h = 600
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.setFillColor(CGColor(red: 0.55, green: 0.72, blue: 0.9, alpha: 1)); ctx.fill(CGRect(x: 0, y: 260, width: w, height: h - 260))
+        ctx.setFillColor(CGColor(red: 0.1, green: 0.25, blue: 0.4, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: 260))
+        var rng = GaussianNoise(seed: 5)
+        for _ in 0..<1500 {   // waves
+            let x = CGFloat(abs(rng.next()) * 300).truncatingRemainder(dividingBy: CGFloat(w)), y = CGFloat(abs(rng.next()) * 80).truncatingRemainder(dividingBy: 250)
+            ctx.setFillColor(CGColor(red: 0.3, green: 0.45, blue: 0.6, alpha: 0.6)); ctx.fill(CGRect(x: x, y: y, width: 18, height: 2))
+        }
+        let sea = ctx.makeImage()!
+        func turned(_ degrees: Double) -> CGImage {
+            let ci = CIImage(cgImage: sea).transformed(by: CGAffineTransform(rotationAngle: degrees * .pi / 180))
+            let e = ci.extent
+            let r = CGRect(x: (e.midX - 0.36 * CGFloat(w)).rounded(), y: (e.midY - 0.36 * CGFloat(h)).rounded(),
+                           width: (0.72 * CGFloat(w)).rounded(), height: (0.72 * CGFloat(h)).rounded())
+            return ImageDecoder.ciContext.createCGImage(ci, from: r, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))!
+        }
+        var results: [String] = []
+        var ok = true
+        for tilt in [0.0, 0.8, 3.0, -7.0] {
+            // Turned counterclockwise by `tilt`, it needs turning clockwise by `tilt` to be level.
+            let m = await VisionServices.straightenAngle(turned(tilt))
+            results.append(m.map { String(format: "%.1f°→%.1f°", tilt, $0) } ?? String(format: "%.1f°→none", tilt))
+            if m == nil || abs(m! - tilt) > 0.5 { ok = false }
+        }
+        check(ok, "straighten measures a horizon's tilt: " + results.joined(separator: ", "))
+        if let bird = decodedByName["Hummingbird.heic"] {
+            check(VisionServices.tiltFromLines(bird.cgImage) == nil, "no straight lines in a photo of a bird and flowers, so no false horizon")
+        }
+        // A room: plumb door frames, and a long counter receding at 7° (perspective, not a tilted camera).
+        func room(roll: Double, keystone: Double, counter: Double?) -> CGImage {
+            let w = 900, h = 700
+            let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.setFillColor(CGColor(gray: 0.85, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.translateBy(x: CGFloat(w) / 2, y: CGFloat(h) / 2)
+            ctx.rotate(by: roll * .pi / 180)   // the picture turned counterclockwise by `roll` (y up here)
+            ctx.setStrokeColor(CGColor(gray: 0.15, alpha: 1))
+            ctx.setLineWidth(6)
+            for x in stride(from: -360.0, through: 360, by: 180) {
+                // (Uprights lean apart, more the further from the middle: looking up.)
+                let lean = keystone * x / 360 * .pi / 180
+                ctx.move(to: CGPoint(x: x - 300 * tan(lean), y: -300)); ctx.addLine(to: CGPoint(x: x + 300 * tan(lean), y: 300))
+            }
+            ctx.strokePath()
+            if let counter {
+                ctx.setLineWidth(10)
+                ctx.move(to: CGPoint(x: -420, y: -120 - 420 * tan(counter * .pi / 180)))
+                ctx.addLine(to: CGPoint(x: 420, y: -120 + 420 * tan(counter * .pi / 180)))
+                ctx.strokePath()
+            }
+            return ctx.makeImage()!
+        }
+        let level = await VisionServices.straightenAngle(room(roll: 0, keystone: 0, counter: 7))
+        check(level.map { abs($0) < 0.6 } ?? true, "a room's receding counter doesn't tilt it: its plumb door frames say level (\(String(describing: level)))")
+        let rolled = await VisionServices.straightenAngle(room(roll: 2, keystone: 6, counter: nil))
+        check(rolled.map { abs($0 - 2) < 0.6 } == true, "uprights leaning apart in perspective still show a 2° tilt (\(String(describing: rolled)))")
+    }
+
     static func run() async {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-selfTest"), i + 1 < args.count else {
@@ -1037,6 +1102,13 @@ enum SelfTest {
             for (key, value) in savedPrefs {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "straighten" {
+            print("\n[Straighten]")
+            await straightenChecks(decodedByName: decodedByName)
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
@@ -2044,38 +2116,7 @@ enum SelfTest {
         }
         // Straightening: a sea horizon turned by known angles should be measured back, and a picture with
         // no straight lines (lightning) should get no answer rather than a wrong one.
-        do {
-            let w = 900, h = 600
-            let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
-            ctx.setFillColor(CGColor(red: 0.55, green: 0.72, blue: 0.9, alpha: 1)); ctx.fill(CGRect(x: 0, y: 260, width: w, height: h - 260))
-            ctx.setFillColor(CGColor(red: 0.1, green: 0.25, blue: 0.4, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: 260))
-            var rng = GaussianNoise(seed: 5)
-            for _ in 0..<1500 {   // waves
-                let x = CGFloat(abs(rng.next()) * 300).truncatingRemainder(dividingBy: CGFloat(w)), y = CGFloat(abs(rng.next()) * 80).truncatingRemainder(dividingBy: 250)
-                ctx.setFillColor(CGColor(red: 0.3, green: 0.45, blue: 0.6, alpha: 0.6)); ctx.fill(CGRect(x: x, y: y, width: 18, height: 2))
-            }
-            let sea = ctx.makeImage()!
-            func turned(_ degrees: Double) -> CGImage {
-                let ci = CIImage(cgImage: sea).transformed(by: CGAffineTransform(rotationAngle: degrees * .pi / 180))
-                let e = ci.extent
-                let r = CGRect(x: (e.midX - 0.36 * CGFloat(w)).rounded(), y: (e.midY - 0.36 * CGFloat(h)).rounded(),
-                               width: (0.72 * CGFloat(w)).rounded(), height: (0.72 * CGFloat(h)).rounded())
-                return ImageDecoder.ciContext.createCGImage(ci, from: r, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))!
-            }
-            var results: [String] = []
-            var ok = true
-            for tilt in [0.0, 0.8, 3.0, -7.0] {
-                // Turned counterclockwise by `tilt`, it needs turning clockwise by `tilt` to be level.
-                let m = await VisionServices.straightenAngle(turned(tilt))
-                results.append(m.map { String(format: "%.1f°→%.1f°", tilt, $0) } ?? String(format: "%.1f°→none", tilt))
-                if m == nil || abs(m! - tilt) > 0.5 { ok = false }
-            }
-            check(ok, "straighten measures a horizon's tilt: " + results.joined(separator: ", "))
-            if let bird = decodedByName["Hummingbird.heic"] {
-                check(VisionServices.tiltFromLines(bird.cgImage) == nil, "no straight lines in a photo of a bird and flowers, so no false horizon")
-            }
-        }
+        await straightenChecks(decodedByName: decodedByName)
         print("  • query expansion puppy → \(QueryExpander.shared.variants(of: "puppy"))")
 
         // 8. Folder index → content search, best-shot ranking, duplicates (through the real model).

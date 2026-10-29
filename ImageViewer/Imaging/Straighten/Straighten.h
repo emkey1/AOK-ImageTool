@@ -17,4 +17,14 @@
 int iv_estimate_tilt(const uint8_t *gray, int width, int height, double maxDegrees,
                      double *degrees, double *strength, int *kind);
 
+/// Both families at once: the strongest near-horizontal line's tilt and strength, and the near-vertical lines'
+/// (the middle of the strong ones). Same conventions as above; a strength of 0 means none. Returns 0 on
+/// failure (too small, out of memory).
+int iv_tilt_families(const uint8_t *gray, int width, int height, double maxDegrees,
+                     double *hDegrees, double *hStrength, double *vDegrees, double *vStrength);
+
+/// The strength of the strongest near-horizontal line tilted within `tolerance` of `degrees` (same convention
+/// as above): whether there's a line in the picture to back up a horizon found some other way.
+double iv_horizontal_strength_near(const uint8_t *gray, int width, int height, double degrees, double tolerance);
+
 #endif

@@ -18,7 +18,9 @@
 #define MIN_MAGNITUDE 48
 #define BORDER_MARGIN 4         // pixels next to the picture's edges never count as edges
 
-typedef struct { double angle; int votes; } Line;
+/// A line: its angle, votes, and where it crosses the middle of the picture (x for a near-vertical line at
+/// half the height, y for a near-horizontal one at half the width).
+typedef struct { double angle; int votes; double position; } Line;
 
 static int cmp_line_votes(const void *a, const void *b) {
     return ((const Line *)b)->votes - ((const Line *)a)->votes;
@@ -29,18 +31,18 @@ static int cmp_double(const void *a, const void *b) {
     return x < y ? -1 : x > y;
 }
 
-/// Hough over one family of lines. `vertical` swaps the roles of x and y: lines x = y·tan(a) + c.
-/// Fills `best` with up to `count` strongest lines (distinct angles), returns how many.
-static int hough(const int16_t *gx, const int16_t *gy, const uint8_t *edge, int w, int h, double maxDeg,
+/// Hough over one family of lines, at angles from `lo` to `hi` degrees. `vertical` swaps the roles of x and y:
+/// lines x = y·tan(a) + c. Fills `best` with up to `count` strongest lines (distinct angles), returns how many.
+static int hough(const int16_t *gx, const int16_t *gy, const uint8_t *edge, int w, int h, double lo, double hi,
                  int vertical, Line *best, int count) {
-    const int bins = (int)lround(2 * maxDeg / ANGLE_STEP) + 1;
+    const int bins = (int)lround((hi - lo) / ANGLE_STEP) + 1;
     const int along = vertical ? h : w, across = vertical ? w : h;
-    const double maxShift = along * tan(maxDeg * M_PI / 180);
+    const double maxShift = along * tan(fmax(fabs(lo), fabs(hi)) * M_PI / 180);
     const int offsets = across + 2 * (int)ceil(maxShift) + 2;
     int32_t *acc = calloc((size_t)bins * offsets, sizeof(int32_t));
     double *tans = malloc(sizeof(double) * bins);
     if (!acc || !tans) { free(acc); free(tans); return 0; }
-    for (int k = 0; k < bins; k++) tans[k] = tan((-maxDeg + k * ANGLE_STEP) * M_PI / 180);
+    for (int k = 0; k < bins; k++) tans[k] = tan((lo + k * ANGLE_STEP) * M_PI / 180);
     const int spread = (int)lround(LOCAL_SPREAD / ANGLE_STEP);
 
     for (int y = 0; y < h; y++) {
@@ -51,7 +53,7 @@ static int hough(const int16_t *gx, const int16_t *gy, const uint8_t *edge, int 
             const double ga = vertical ? gy[p] : gx[p], gc = vertical ? gx[p] : gy[p];
             if (fabs(gc) < 2 * fabs(ga)) continue;          // this edge runs more than ~27° off the family
             const double local = atan(-ga / gc) * 180 / M_PI; // the edge's own slope angle
-            int k0 = (int)lround((local + maxDeg) / ANGLE_STEP) - spread, k1 = k0 + 2 * spread;
+            int k0 = (int)lround((local - lo) / ANGLE_STEP) - spread, k1 = k0 + 2 * spread;
             if (k0 < 0) k0 = 0;
             if (k1 >= bins) k1 = bins - 1;
             const double a = vertical ? y : x, c = vertical ? x : y;
@@ -71,8 +73,9 @@ static int hough(const int16_t *gx, const int16_t *gy, const uint8_t *edge, int 
             for (int o = 0; o < offsets; o++) if (row[o] > bestV) { bestV = row[o]; bestK = k; bestO = o; }
         }
         if (bestK < 0 || bestV == 0) break;
-        best[found].angle = -maxDeg + bestK * ANGLE_STEP;
+        best[found].angle = lo + bestK * ANGLE_STEP;
         best[found].votes = bestV;
+        best[found].position = (bestO - 1 - maxShift) + along / 2.0 * tans[bestK];
         found++;
         // Suppress that line and its near neighbors.
         for (int k = bestK - 8; k <= bestK + 8; k++) {
@@ -85,14 +88,12 @@ static int hough(const int16_t *gx, const int16_t *gy, const uint8_t *edge, int 
     return found;
 }
 
-int iv_estimate_tilt(const uint8_t *gray, int width, int height, double maxDegrees,
-                     double *degrees, double *strength, int *kind) {
-    if (!gray || width < 16 || height < 16 || !degrees || !strength || !kind) return 0;
-    const int w = width, h = height, n = w * h;
+/// Sobel gradients and the strong edges, thinned to their ridges. Returns 0 when out of memory (nothing to free).
+static int find_edges(const uint8_t *gray, int w, int h, int16_t **gxOut, int16_t **gyOut, uint8_t **edgeOut) {
+    const int n = w * h;
     int16_t *gx = calloc((size_t)n, sizeof(int16_t)), *gy = calloc((size_t)n, sizeof(int16_t));
     uint8_t *edge = calloc((size_t)n, 1);
-    int status = 0;
-    if (!gx || !gy || !edge) goto done;
+    if (!gx || !gy || !edge) { free(gx); free(gy); free(edge); return 0; }
 
     // Sobel, and the gradient magnitude's histogram for the edge threshold.
     int histogram[2048] = {0};
@@ -121,9 +122,89 @@ int iv_estimate_tilt(const uint8_t *gray, int width, int height, double maxDegre
             if (m >= abs(gx[q1]) + abs(gy[q1]) && m >= abs(gx[q2]) + abs(gy[q2])) edge[p] = 1;
         }
     }
+    *gxOut = gx;
+    *gyOut = gy;
+    *edgeOut = edge;
+    return 1;
+}
 
-    Line horizon, lines[5];
-    int found = hough(gx, gy, edge, w, h, maxDegrees, 0, &horizon, 1);
+/// The near-vertical lines' tilt, read at the middle of the picture: looking up or down, verticals lean apart
+/// (more the further they are from the middle), so the strong ones' (at least half the best one's length)
+/// angles are fitted against where they are across the picture and the fit is read at the center; with too
+/// few to fit, the one nearest the center is used. Returns their strength (the best one's length as a fraction
+/// of the height), 0 when there are none.
+static double vertical_tilt(const int16_t *gx, const int16_t *gy, const uint8_t *edge, int w, int h, double maxDegrees,
+                            double *degrees) {
+    Line lines[8];
+    const int found = hough(gx, gy, edge, w, h, -maxDegrees, maxDegrees, 1, lines, 8);
+    if (!found) return 0;
+    qsort(lines, (size_t)found, sizeof(Line), cmp_line_votes);
+    int strong = 0;
+    while (strong < found && lines[strong].votes * 2 >= lines[0].votes) strong++;
+    // Weighted least squares of angle against position (u: -0.5 left edge … 0.5 right edge).
+    double sw = 0, su = 0, sa = 0, suu = 0, sua = 0, lowest = 1e9, highest = -1e9;
+    int nearest = 0;
+    for (int i = 0; i < strong; i++) {
+        const double u = lines[i].position / w - 0.5, a = lines[i].angle, wt = lines[i].votes;
+        sw += wt; su += wt * u; sa += wt * a; suu += wt * u * u; sua += wt * u * a;
+        if (a < lowest) lowest = a;
+        if (a > highest) highest = a;
+        if (fabs(u) < fabs(lines[nearest].position / w - 0.5)) nearest = i;
+    }
+    const double meanU = su / sw, varU = suu / sw - meanU * meanU;
+    if (strong >= 3 && varU >= 0.15 * 0.15) {
+        const double slope = (sua / sw - meanU * (sa / sw)) / varU;
+        const double atCenter = sa / sw - slope * meanU;
+        // (Never past the angles seen: no extrapolating.)
+        *degrees = fmin(fmax(atCenter, lowest), highest);
+    } else {
+        *degrees = lines[nearest].angle;
+    }
+    return (double)lines[0].votes / h;
+}
+
+int iv_tilt_families(const uint8_t *gray, int width, int height, double maxDegrees,
+                     double *hDegrees, double *hStrength, double *vDegrees, double *vStrength) {
+    if (!gray || width < 16 || height < 16 || !hDegrees || !hStrength || !vDegrees || !vStrength) return 0;
+    int16_t *gx, *gy;
+    uint8_t *edge;
+    if (!find_edges(gray, width, height, &gx, &gy, &edge)) return 0;
+    Line horizon;
+    *hDegrees = 0;
+    *hStrength = 0;
+    if (hough(gx, gy, edge, width, height, -maxDegrees, maxDegrees, 0, &horizon, 1)) {
+        *hDegrees = -horizon.angle;   // y runs down: a line rising to the right has a negative slope
+        *hStrength = (double)horizon.votes / width;
+    }
+    *vDegrees = 0;
+    *vStrength = vertical_tilt(gx, gy, edge, width, height, maxDegrees, vDegrees);
+    free(gx); free(gy); free(edge);
+    return 1;
+}
+
+double iv_horizontal_strength_near(const uint8_t *gray, int width, int height, double degrees, double tolerance) {
+    if (!gray || width < 16 || height < 16) return 0;
+    int16_t *gx, *gy;
+    uint8_t *edge;
+    if (!find_edges(gray, width, height, &gx, &gy, &edge)) return 0;
+    Line line;
+    // (Lines' own angles run the other way: y runs down.)
+    const int found = hough(gx, gy, edge, width, height, -degrees - tolerance, -degrees + tolerance, 0, &line, 1);
+    free(gx); free(gy); free(edge);
+    return found ? (double)line.votes / width : 0;
+}
+
+int iv_estimate_tilt(const uint8_t *gray, int width, int height, double maxDegrees,
+                     double *degrees, double *strength, int *kind) {
+    if (!gray || width < 16 || height < 16 || !degrees || !strength || !kind) return 0;
+    const int w = width, h = height;
+    int16_t *gx, *gy;
+    uint8_t *edge;
+    if (!find_edges(gray, w, h, &gx, &gy, &edge)) return 0;
+    int status = 0;
+
+    Line horizon;
+    int found = hough(gx, gy, edge, w, h, -maxDegrees, maxDegrees, 0, &horizon, 1);
     const double horizontalStrength = found ? (double)horizon.votes / w : 0;
     if (found && horizontalStrength >= 0.3) {
         *degrees = -horizon.angle;   // y runs down: a line rising to the right has a negative slope
@@ -132,22 +213,14 @@ int iv_estimate_tilt(const uint8_t *gray, int width, int height, double maxDegre
         status = 1;
         goto done;
     }
-    found = hough(gx, gy, edge, w, h, maxDegrees, 1, lines, 5);
-    if (found) {
-        qsort(lines, (size_t)found, sizeof(Line), cmp_line_votes);
-        // The strong ones only (at least half the best one's length), and the middle of their angles.
-        double angles[5];
-        int strong = 0;
-        for (int i = 0; i < found; i++) if (lines[i].votes * 2 >= lines[0].votes) angles[strong++] = lines[i].angle;
-        qsort(angles, (size_t)strong, sizeof(double), cmp_double);
-        const double verticalStrength = (double)lines[0].votes / h;
-        if (verticalStrength >= 0.33 && verticalStrength > horizontalStrength) {
-            *degrees = angles[strong / 2];
-            *strength = verticalStrength;
-            *kind = 2;
-            status = 1;
-            goto done;
-        }
+    double vertical = 0;
+    const double verticalStrength = vertical_tilt(gx, gy, edge, w, h, maxDegrees, &vertical);
+    if (verticalStrength >= 0.33 && verticalStrength > horizontalStrength) {
+        *degrees = vertical;
+        *strength = verticalStrength;
+        *kind = 2;
+        status = 1;
+        goto done;
     }
     if (horizontalStrength >= 0.25) {   // a weaker horizon is still better than nothing
         *degrees = -horizon.angle;

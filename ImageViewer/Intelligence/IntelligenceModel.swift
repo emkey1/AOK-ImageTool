@@ -588,7 +588,7 @@ final class IntelligenceModel {
         withBusy("Finding the horizon…") { [weak self] in
             guard let self, let proxy = await beforeCropProxy(d, edits: edits),
                   let angle = await VisionServices.straightenAngle(proxy) else {
-                self?.viewer?.showToast("No horizon or straight lines found", systemImage: "level")
+                self?.viewer?.showToast("No clear horizon or upright lines to level by", systemImage: "level")
                 return
             }
             guard abs(angle) >= 0.15 else {
