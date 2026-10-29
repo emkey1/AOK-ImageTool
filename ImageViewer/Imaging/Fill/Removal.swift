@@ -76,7 +76,7 @@ nonisolated enum RemovalStore {
     static func save(_ image: CGImage) throws -> String {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
-        try ImageWriter.write(image, to: url, format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+        try ImageWriter.writeAsIs(image, to: url, format: .png, quality: 1)
         return url.path
     }
 

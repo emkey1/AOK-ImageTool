@@ -117,7 +117,7 @@ nonisolated enum ExtendFillStore {
     static func save(_ image: CGImage) throws -> String {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension("heic")
-        try ImageWriter.write(image, to: url, format: .heic, quality: 0.92, sourceProperties: [:], metadata: .removeAll)
+        try ImageWriter.writeAsIs(image, to: url, format: .heic, quality: 0.92)
         return url.path
     }
 

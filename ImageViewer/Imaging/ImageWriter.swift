@@ -63,8 +63,21 @@ nonisolated enum ImageWriter {
         var output = image
         var gainMap = false
         if ImageDecoder.isHDR(image) {
-            if format == .heic || format == .jpeg { gainMap = true } else { output = toneMappedToSDR(image) ?? image }
+            if format == .heic || format == .jpeg {
+                gainMap = true
+                // (Its encoder takes floating point only: not an 8-bit picture in an HDR space, say.)
+                if !output.bitmapInfo.contains(.floatComponents) { output = halfFloats(output) ?? output }
+            } else {
+                output = toneMappedToSDR(image) ?? image
+            }
         }
+        return (fitted(output, for: format, gainMap: gainMap), gainMap)
+    }
+
+    /// Whole numbers rather than half floats (unless it's for a gain map), an alpha channel only for real
+    /// transparency, and flattened onto white for formats without alpha.
+    private static func fitted(_ image: CGImage, for format: ExportFormat, gainMap: Bool) -> CGImage {
+        var output = image
         let transparent = hasAlpha(output) && ImageDecoder.containsTransparency(output)
         if transparent {
             if !format.supportsAlpha { output = flattened(output) ?? output }
@@ -72,7 +85,26 @@ nonisolated enum ImageWriter {
         } else if !gainMap {
             output = wholeNumbers(output, alpha: false) ?? output
         }
-        return (output, gainMap)
+        return output
+    }
+
+    /// Writes `image` as it is, for the app's own files (Remove Objects' patches, Extend's fills): its pixels in
+    /// its own color space, so an HDR photo's come back as they were, not tone mapped to SDR (or failing as a
+    /// gain map, which can't be made from 8 bits). No metadata.
+    static func writeAsIs(_ image: CGImage, to url: URL, format: ExportFormat, quality: Double) throws {
+        guard let dest = CGImageDestinationCreateWithURL(url as CFURL, format.utType.identifier as CFString, 1, nil) else {
+            throw ImageWriteError.cannotCreateDestination(format.displayName)
+        }
+        let props: [CFString: Any] = format.supportsQuality ? [kCGImageDestinationLossyCompressionQuality: quality] : [:]
+        CGImageDestinationAddImage(dest, fitted(image, for: format, gainMap: false), props as CFDictionary)
+        guard CGImageDestinationFinalize(dest) else { throw ImageWriteError.finalizeFailed }
+    }
+
+    /// The same picture as half floats, in its own color space.
+    static func halfFloats(_ image: CGImage) -> CGImage? {
+        guard let space = image.colorSpace else { return nil }
+        return ImageDecoder.ciContext.createCGImage(CIImage(cgImage: image), from: CGRect(x: 0, y: 0, width: image.width, height: image.height),
+                                                    format: .RGBAh, colorSpace: space)
     }
 
     /// HDR brought down to SDR (Display P3, 16 bits) for formats that can't hold it.

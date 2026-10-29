@@ -1286,6 +1286,36 @@ enum SelfTest {
                 let pngImage = CGImageSourceCreateWithURL(png as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
                 check(gainMap && pngImage.map { !ImageDecoder.isHDR($0) } == true, "HDR is written as a gain map (HEIC), tone mapped to SDR (PNG)")
             }
+            // 8 bits in an HDR photo's PQ space, as Remove Objects' patches and Extend's fills are made for one:
+            // pavement gray, and sunlit water at three times white, fading out at the right (a patch's edge).
+            let linear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+            let water = CIImage(color: CIColor(red: 3, green: 3, blue: 3, alpha: 1, colorSpace: linear)!).cropped(to: CGRect(x: 32, y: 0, width: 32, height: 48))
+            let ground = CIImage(color: CIColor(red: 0.18, green: 0.18, blue: 0.18, alpha: 1, colorSpace: linear)!).cropped(to: CGRect(x: 0, y: 0, width: 32, height: 48))
+            let pq = CGColorSpace(name: CGColorSpace.itur_2100_PQ)!
+            if let opaque = ImageDecoder.ciContext.createCGImage(water.composited(over: ground), from: CGRect(x: 0, y: 0, width: 64, height: 48), format: .RGBA8, colorSpace: pq),
+               let faded = ImageDecoder.ciContext.createCGImage(water.composited(over: ground).cropped(to: CGRect(x: 0, y: 0, width: 56, height: 48)),
+                                                                from: CGRect(x: 0, y: 0, width: 64, height: 48), format: .RGBA8, colorSpace: pq) {
+                func level(_ image: CGImage?, x: Int) -> Float {
+                    guard let image else { return -1 }
+                    var px = [Float](repeating: 0, count: 4)
+                    ImageDecoder.ciContext.render(CIImage(cgImage: image), toBitmap: &px, rowBytes: 16, bounds: CGRect(x: x, y: 24, width: 1, height: 1),
+                                                  format: .RGBAf, colorSpace: linear)
+                    return px[1]
+                }
+                let heic = out.appendingPathComponent("hdr8.heic")
+                let saved = (try? ImageWriter.write(opaque, to: heic, format: .heic, quality: 0.9, sourceProperties: [:], metadata: .removeAll)) != nil
+                let gainMap = CGImageSourceCreateWithURL(heic as CFURL, nil).flatMap { CGImageSourceCopyAuxiliaryDataInfoAtIndex($0, 0, kCGImageAuxiliaryDataTypeISOGainMap) } != nil
+                check(saved && gainMap, "an 8-bit picture in an HDR space is written as a gain map (HEIC)")
+                // Stored and read back as the renderer reads them: a patch at full size, a fill as a thumbnail.
+                let patch = (try? RemovalStore.save(faded)).flatMap { CGImageSourceCreateWithURL(URL(fileURLWithPath: $0) as CFURL, nil) }
+                    .flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+                let fill = (try? ExtendFillStore.save(opaque)).flatMap { CGImageSourceCreateWithURL(URL(fileURLWithPath: $0) as CFURL, nil) }
+                    .flatMap { CGImageSourceCreateThumbnailAtIndex($0, 0, [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 4096] as CFDictionary) }
+                let kept = [level(patch, x: 10), level(patch, x: 44), level(fill, x: 10), level(fill, x: 44)]
+                let clear = patch.map { ImageDecoder.containsTransparency($0) } == true
+                check(abs(kept[0] - 0.18) < 0.03 && abs(kept[1] - 3) < 0.3 && abs(kept[2] - 0.18) < 0.03 && abs(kept[3] - 3) < 0.3 && clear,
+                      "Remove Objects' patches and Extend's fills keep an HDR photo's highlights (\(kept.map { String(format: "%.2f", $0) }))")
+            }
             // A deep image → a 16-bit whole-number TIFF without an alpha channel.
             let deep = ImageDecoder.ciContext.createCGImage(CIImage(cgImage: image), from: CGRect(x: 0, y: 0, width: 64, height: 48),
                                                             format: .RGBAh, colorSpace: CGColorSpace(name: CGColorSpace.displayP3)!)
