@@ -29,6 +29,10 @@ nonisolated struct ImageItem: Identifiable, Hashable, Sendable {
     var dateTaken: Date?
     /// The file this one was made from (an upscaled, colorized… copy), by name, in the same folder.
     var source: String?
+    /// When the file was put in its folder (saved, copied or downloaded there).
+    var dateAdded: Date? = nil
+    /// Width × height, from the file's header; nil until read.
+    var pixelCount: Int? = nil
 
     var id: URL { url }
 
@@ -40,7 +44,7 @@ nonisolated struct ImageItem: Identifiable, Hashable, Sendable {
 }
 
 nonisolated enum SortKey: String, CaseIterable, Identifiable, Sendable {
-    case name, dateModified, dateCreated, dateTaken, size, kind, rating, quality, random
+    case name, dateModified, dateCreated, dateAdded, dateTaken, size, dimensions, kind, rating, quality, random
 
     var id: String { rawValue }
 
@@ -49,8 +53,10 @@ nonisolated enum SortKey: String, CaseIterable, Identifiable, Sendable {
         case .name: "Name"
         case .dateModified: "Date Modified"
         case .dateCreated: "Date Created"
+        case .dateAdded: "Date Added"
         case .dateTaken: "Date Taken"
         case .size: "File Size"
+        case .dimensions: "Dimensions"
         case .kind: "Kind"
         case .rating: "Rating"
         case .quality: "Best Shots (AI)"

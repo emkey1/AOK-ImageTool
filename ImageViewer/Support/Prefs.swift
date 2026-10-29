@@ -42,6 +42,7 @@ nonisolated enum PrefKey {
     static let sortKey = "sortKey"
     static let sortAscending = "sortAscending"
     static let stackCopies = "stackCopies"
+    static let stacksByOriginal = "stacksByOriginal"
     static let blackAndWhite = "blackAndWhite"
     static let fixBlur = "fixBlur"
     static let checkForUpdates = "CheckForUpdates"
@@ -128,6 +129,7 @@ nonisolated enum Prefs {
     static var showFilmstrip: Bool { bool(PrefKey.showFilmstrip, true) }
     static var autoDescribe: Bool { bool(PrefKey.autoDescribe, false) }
     static var stackCopies: Bool { bool(PrefKey.stackCopies, true) }
+    static var stacksByOriginal: Bool { bool(PrefKey.stacksByOriginal, true) }
     static func makesCopy(_ operation: CopyOperation) -> Bool { bool(operation.key, true) }
     /// What an upscaled animation is saved as.
     static var upscaledAnimationFormat: Animation.Container {

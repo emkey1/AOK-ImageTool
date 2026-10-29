@@ -149,6 +149,8 @@ struct ViewerCommands: Commands {
             }
             Toggle("Include Subfolders", isOn: Binding(get: { viewer?.includeSubfolders ?? false }, set: { viewer?.includeSubfolders = $0 }))
             Toggle("Stack Copies with Originals", isOn: Binding(get: { viewer?.stacksEnabled ?? true }, set: { viewer?.stacksEnabled = $0 }))
+            Toggle("Sort Stacks by Their Original", isOn: Binding(get: { viewer?.stacksByOriginal ?? true }, set: { viewer?.stacksByOriginal = $0 }))
+                .disabled(viewer?.stacksEnabled == false)
             Divider()
             Button(viewer?.isSlideshowRunning == true ? "Stop Slideshow" : "Start Slideshow") { viewer?.toggleSlideshow() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])

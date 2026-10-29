@@ -201,6 +201,14 @@ final class ViewerModel {
             applySortAndFilter()
         }
     }
+    /// A stack takes its original's place in the sort, not its newest copy's: an old photo edited today stays
+    /// with its day.
+    var stacksByOriginal: Bool = Prefs.stacksByOriginal {
+        didSet {
+            Prefs.setBool(stacksByOriginal, PrefKey.stacksByOriginal)
+            applySortAndFilter()
+        }
+    }
     /// The stacks in `items`, by their original: newest copy first, the original last.
     private(set) var stacks: [URL: [URL]] = [:]
     /// The stack (by its original) of each stacked item.
@@ -575,10 +583,12 @@ final class ViewerModel {
             var dates: [URL: Date] = [:]
             var previousModified: [URL: Date] = [:]
             var ratings: [URL: Double] = [:]
+            var pixels: [URL: Int] = [:]
             for item in allItems {
                 if let d = item.dateTaken { dates[item.url] = d }
                 if let m = item.modificationDate { previousModified[item.url] = m }
                 if let r = item.rating { ratings[item.url] = r }
+                if let n = item.pixelCount { pixels[item.url] = n }
             }
             // Files changed by another app: drop stale decodes/thumbnails.
             var currentChanged = false
@@ -595,12 +605,16 @@ final class ViewerModel {
                 var item = item
                 item.dateTaken = dates[item.url]
                 // (A file changed elsewhere is read again.)
-                if previousModified[item.url] == item.modificationDate { item.rating = ratings[item.url] }
+                if previousModified[item.url] == item.modificationDate {
+                    item.rating = ratings[item.url]
+                    item.pixelCount = pixels[item.url]
+                }
                 return item
             }
             // (The image now on screen: the user may have moved on while the folder was scanned.)
             applySortAndFilter(selecting: selecting ?? currentURL)
             if sortKey == .dateTaken { loadDatesTaken() }
+            if sortKey == .dimensions { loadPixelCounts() }
             loadRatings()
             intelligence.itemsDidChange()
         }
@@ -645,6 +659,7 @@ final class ViewerModel {
     private func sortKeyDidChange() {
         if sortKey == .dateTaken { loadDatesTaken() }
         if sortKey == .rating { loadRatings() }
+        if sortKey == .dimensions { loadPixelCounts() }
         if sortKey == .quality { intelligence.ensureIndexed(reason: .quality) }
         applySortAndFilter()
     }
@@ -670,6 +685,25 @@ final class ViewerModel {
                 return item
             }
             if sortKey == .dateTaken { applySortAndFilter() }
+        }
+    }
+
+    /// The sizes in pixels of the images not read yet, from their headers (in the background).
+    private func loadPixelCounts() {
+        let missing = allItems.filter { $0.pixelCount == nil }.map(\.url)
+        guard !missing.isEmpty else { return }
+        Task {
+            let counts = await Task.detached(priority: .utility) { () -> [URL: Int] in
+                var result: [URL: Int] = [:]
+                for url in missing { if let n = FolderScanner.pixelCount(for: url) { result[url] = n } }
+                return result
+            }.value
+            allItems = allItems.map { item in
+                var item = item
+                if item.pixelCount == nil { item.pixelCount = counts[item.url] }
+                return item
+            }
+            if sortKey == .dimensions { applySortAndFilter() }
         }
     }
 

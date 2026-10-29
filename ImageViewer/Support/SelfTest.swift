@@ -1062,7 +1062,7 @@ enum SelfTest {
         // The test drives real models, which save preferences shared with the user's copy of the app;
         // put them back afterwards.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
-                           PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies,
+                           PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies, PrefKey.stacksByOriginal,
                            CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, CopyOperation.cloneHeal.key, PrefKey.cloneHeals, PrefKey.confirmOverwrite,
                            PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
                            PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key, PrefKey.stackFronts]
@@ -1376,6 +1376,26 @@ enum SelfTest {
             let order = stacks.values.first?.map(\.name) ?? []
             check(stacks.count == 1 && order == ["Holiday.jpg", "Beach (Colorized) (2×).jpg", "Beach (Colorized).jpg", "Beach.jpg"],
                   "one stack, newest copy on top, original at the bottom (\(order.joined(separator: ", ")))")
+            check(scanned.allSatisfy { $0.dateAdded != nil }, "files' dates added to their folder are read")
+            if let n = FolderScanner.pixelCount(for: beach), let d = try? ImageDecoder.decode(url: beach, page: 0, allowHDR: false) {
+                check(n == Int(d.pixelSize.width * d.pixelSize.height), "a file's size in pixels is read from its header (\(n))")
+            }
+            // An old photo edited just now: newest first, its stack stays with the original's date.
+            let now = Date()
+            func listed(_ name: String, created: TimeInterval) -> ImageItem {
+                ImageItem(url: folder.appendingPathComponent("byoriginal").appendingPathComponent(name), name: name, contentType: .jpeg, fileSize: 1,
+                          creationDate: now.addingTimeInterval(created), modificationDate: nil, flag: .none, dateTaken: nil, source: nil)
+            }
+            let newestFirst = FolderScanner.sort([listed("Old.jpg", created: -86_400 * 400), listed("Old (Colorized).jpg", created: -60),
+                                                  listed("Recent.jpg", created: -86_400)], by: .dateCreated, ascending: false)
+            let byDate = ViewerModel()
+            byDate.stacksEnabled = true
+            byDate.stacksByOriginal = true
+            let byOriginal = byDate.stacked(newestFirst, keeping: nil).items.map(\.name)
+            byDate.stacksByOriginal = false
+            let byCopy = byDate.stacked(newestFirst, keeping: nil).items.map(\.name)
+            check(byOriginal == ["Recent.jpg", "Old (Colorized).jpg"] && byCopy == ["Old (Colorized).jpg", "Recent.jpg"],
+                  "a stack sorts by its original (\(byOriginal)), or by its newest copy (\(byCopy))")
 
             let model = ViewerModel()
             model.stacksEnabled = true

@@ -23,12 +23,15 @@ extension ViewerModel {
         }
         if let keep, let root = result.stackOf[keep] { stackFront[root] = keep }
         var placed: Set<URL> = []
+        // (A stack whose original is filtered out goes where its first copy is.)
+        let listed = stacksByOriginal ? Set(list.map(\.url)) : []
         result.items.reserveCapacity(list.count)
         for item in list {
             guard let root = result.stackOf[item.url] else {
                 result.items.append(item)
                 continue
             }
+            if item.url != root, listed.contains(root) { continue }   // its original places it
             guard placed.insert(root).inserted, let members = found[root] else { continue }
             if expandedStacks.contains(root) {
                 result.items.append(contentsOf: members)

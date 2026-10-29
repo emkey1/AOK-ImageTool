@@ -84,6 +84,8 @@ struct ViewerToolbar: ToolbarContent {
                 }
                 .pickerStyle(.inline)
                 Toggle("Reverse Order", isOn: Binding(get: { !model.sortAscending }, set: { model.sortAscending = !$0 }))
+                Toggle("Sort Stacks by Their Original", isOn: Binding(get: { model.stacksByOriginal }, set: { model.stacksByOriginal = $0 }))
+                    .disabled(!model.stacksEnabled)
                 Toggle("Include Subfolders", isOn: Binding(get: { model.includeSubfolders }, set: { model.includeSubfolders = $0 }))
             } label: {
                 Label("Sort & Filter", systemImage: model.flagFilter == .all ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")

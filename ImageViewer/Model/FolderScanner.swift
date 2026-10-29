@@ -4,7 +4,7 @@ import UniformTypeIdentifiers
 
 nonisolated enum FolderScanner {
     static let resourceKeys: [URLResourceKey] = [
-        .contentTypeKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey,
+        .contentTypeKey, .fileSizeKey, .creationDateKey, .contentModificationDateKey, .addedToDirectoryDateKey,
         .isHiddenKey, .isDirectoryKey, .isPackageKey, .labelNumberKey, .isRegularFileKey,
     ]
 
@@ -47,13 +47,23 @@ nonisolated enum FolderScanner {
             modificationDate: values.contentModificationDate,
             flag: Flag(labelNumber: values.labelNumber),
             dateTaken: nil,
-            source: ImageStacks.source(of: url)
+            source: ImageStacks.source(of: url),
+            dateAdded: values.addedToDirectoryDate
         )
     }
 
     static func isDirectory(_ url: URL) -> Bool {
         var isDir: ObjCBool = false
         return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir) && isDir.boolValue
+    }
+
+    /// Width × height, from the header (upright or not, the same). Cheap.
+    static func pixelCount(for url: URL) -> Int? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, [kCGImageSourceShouldCache: false] as CFDictionary),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, CGImageSourceGetPrimaryImageIndex(src), nil) as? [CFString: Any],
+              let w = props[kCGImagePropertyPixelWidth] as? Int, let h = props[kCGImagePropertyPixelHeight] as? Int
+        else { return nil }
+        return w * h
     }
 
     /// Reads the EXIF capture date (falls back to nil). Header-only read; cheap.
@@ -80,8 +90,14 @@ nonisolated enum FolderScanner {
             sorted = items.sorted {
                 ($0.dateTaken ?? $0.creationDate ?? .distantPast, $0.name) < ($1.dateTaken ?? $1.creationDate ?? .distantPast, $1.name)
             }
+        case .dateAdded:
+            sorted = items.sorted {
+                ($0.dateAdded ?? $0.creationDate ?? .distantPast, $0.name) < ($1.dateAdded ?? $1.creationDate ?? .distantPast, $1.name)
+            }
         case .size:
             sorted = items.sorted { ($0.fileSize, $0.name) < ($1.fileSize, $1.name) }
+        case .dimensions:
+            sorted = items.sorted { ($0.pixelCount ?? 0, $0.name) < ($1.pixelCount ?? 0, $1.name) }
         case .kind:
             sorted = items.sorted { ($0.kindDescription, $0.name) < ($1.kindDescription, $1.name) }
         case .rating:
