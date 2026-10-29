@@ -970,7 +970,8 @@ enum SelfTest {
     }
 
     /// Auto Straighten: a horizon's tilt measured; no false horizon in a photo without lines; a room's receding
-    /// lines don't tilt it; uprights leaning apart in perspective still show the camera's tilt.
+    /// lines don't tilt it; uprights leaning apart in perspective still show the camera's tilt; lines converging
+    /// in perspective aren't a horizon.
     /// (`AOK_SELFTEST_ONLY=straighten` runs just these.)
     private static func straightenChecks(decodedByName: [String: DecodedImage]) async {
         let w = 900, h = 600
@@ -1031,6 +1032,24 @@ enum SelfTest {
         check(level.map { abs($0) < 0.6 } ?? true, "a room's receding counter doesn't tilt it: its plumb door frames say level (\(String(describing: level)))")
         let rolled = await VisionServices.straightenAngle(room(roll: 2, keystone: 6, counter: nil))
         check(rolled.map { abs($0 - 2) < 0.6 } == true, "uprights leaning apart in perspective still show a 2° tilt (\(String(describing: rolled)))")
+        // A quay and a breakwater's waterline converging on a ship (one rising 4°, one falling 4°), a faint
+        // level horizon above them, and no uprights: perspective, not a tilted camera.
+        let harbor: CGImage = {
+            let w = 900, h = 700
+            let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.setFillColor(CGColor(gray: 0.8, alpha: 1)); ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            ctx.setStrokeColor(CGColor(gray: 0.3, alpha: 1))
+            ctx.setLineWidth(3)
+            ctx.move(to: CGPoint(x: 0, y: 400)); ctx.addLine(to: CGPoint(x: 500, y: 400)); ctx.strokePath()
+            ctx.setStrokeColor(CGColor(gray: 0.1, alpha: 1))
+            ctx.setLineWidth(10)
+            ctx.move(to: CGPoint(x: 0, y: 330)); ctx.addLine(to: CGPoint(x: 900, y: 330 + 900 * tan(4 * Double.pi / 180))); ctx.strokePath()
+            ctx.move(to: CGPoint(x: 0, y: 250)); ctx.addLine(to: CGPoint(x: 900, y: 250 - 900 * tan(4 * Double.pi / 180))); ctx.strokePath()
+            return ctx.makeImage()!
+        }()
+        let converging = await VisionServices.straightenAngle(harbor)
+        check(converging.map { abs($0) < 0.6 } ?? true, "lines converging in perspective (a quay, a breakwater) don't pass for a tilted horizon (\(String(describing: converging)))")
     }
 
     static func run() async {

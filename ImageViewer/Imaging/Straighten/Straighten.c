@@ -164,17 +164,26 @@ static double vertical_tilt(const int16_t *gx, const int16_t *gy, const uint8_t 
 }
 
 int iv_tilt_families(const uint8_t *gray, int width, int height, double maxDegrees,
-                     double *hDegrees, double *hStrength, double *vDegrees, double *vStrength) {
-    if (!gray || width < 16 || height < 16 || !hDegrees || !hStrength || !vDegrees || !vStrength) return 0;
+                     double *hDegrees, double *hStrength, double *hDisagreement, double *vDegrees, double *vStrength) {
+    if (!gray || width < 16 || height < 16 || !hDegrees || !hStrength || !hDisagreement || !vDegrees || !vStrength) return 0;
     int16_t *gx, *gy;
     uint8_t *edge;
     if (!find_edges(gray, width, height, &gx, &gy, &edge)) return 0;
-    Line horizon;
+    Line horizontals[8];
     *hDegrees = 0;
     *hStrength = 0;
-    if (hough(gx, gy, edge, width, height, -maxDegrees, maxDegrees, 0, &horizon, 1)) {
-        *hDegrees = -horizon.angle;   // y runs down: a line rising to the right has a negative slope
-        *hStrength = (double)horizon.votes / width;
+    *hDisagreement = 0;
+    const int found = hough(gx, gy, edge, width, height, -maxDegrees, maxDegrees, 0, horizontals, 8);
+    if (found) {
+        *hDegrees = -horizontals[0].angle;   // y runs down: a line rising to the right has a negative slope
+        *hStrength = (double)horizontals[0].votes / width;
+        // Other strong lines near level that tilt differently: lines receding in perspective (they converge),
+        // not a tilted camera (which tilts every line alike).
+        for (int i = 1; i < found; i++) {
+            if (horizontals[i].votes * 10 < horizontals[0].votes * 6 || fabs(horizontals[i].angle) > 8) continue;
+            const double apart = fabs(horizontals[i].angle - horizontals[0].angle);
+            if (apart > *hDisagreement) *hDisagreement = apart;
+        }
     }
     *vDegrees = 0;
     *vStrength = vertical_tilt(gx, gy, edge, width, height, maxDegrees, vDegrees);

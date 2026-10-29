@@ -253,7 +253,9 @@ nonisolated enum VisionServices {
     ///   recede (a counter, a facade, a railing seen at an angle) slant in perspective anyway. So where there
     ///   are uprights they decide, and horizontal lines only count when they agree with them; a picture with
     ///   none (an open horizon) goes by its horizontal lines.
-    /// - Weak lines may only make a small turn; a big one takes long, clear lines.
+    /// - Weak lines may only make a small turn; a big one takes long, clear lines. Strong horizontal lines that
+    ///   tilt different ways (a breakwater's waterline and a quay's edge, converging) are perspective too: then
+    ///   they don't count.
     /// - Vision's horizon only counts when a line in the picture backs it up (on its own it finds "horizons"
     ///   in portraits), by the same rule, and never against uprights.
     static func straightenAngle(_ image: CGImage) async -> Double? {
@@ -262,18 +264,20 @@ nonisolated enum VisionServices {
         guard let o = try? await DetectHorizonRequest().perform(on: image, orientation: nil) else { return nil }
         let vision = -atan2(Double(o.transform.b), Double(o.transform.a)) * 180 / .pi
         let support = gray.horizontalStrength(near: vision, tolerance: 1)
-        guard abs(vision) <= largestTurn(strength: support), !hasUprights(f) || abs(f.vertical - vision) <= 1.5 else { return nil }
+        // (Not when the horizontal lines disagree among themselves: they recede, and Vision follows one.)
+        guard abs(vision) <= largestTurn(strength: support), f.hDisagreement <= 2,
+              !hasUprights(f) || abs(f.vertical - vision) <= 1.5 else { return nil }
         return vision
     }
 
     /// Upright lines clear enough to judge by (if not to turn by).
-    private static func hasUprights(_ f: (horizontal: Double, hStrength: Double, vertical: Double, vStrength: Double)) -> Bool {
+    private static func hasUprights(_ f: (horizontal: Double, hStrength: Double, hDisagreement: Double, vertical: Double, vStrength: Double)) -> Bool {
         f.vStrength >= 0.2 && abs(f.vertical) <= 10
     }
 
     /// The tilt the lines make convincing (see `straightenAngle`), or nil.
-    static func lineTilt(_ f: (horizontal: Double, hStrength: Double, vertical: Double, vStrength: Double)) -> Double? {
-        let horizontal = f.hStrength >= 0.3 && abs(f.horizontal) <= largestTurn(strength: f.hStrength)
+    static func lineTilt(_ f: (horizontal: Double, hStrength: Double, hDisagreement: Double, vertical: Double, vStrength: Double)) -> Double? {
+        let horizontal = f.hStrength >= 0.3 && abs(f.horizontal) <= largestTurn(strength: f.hStrength) && f.hDisagreement <= 2
         let vertical = f.vStrength >= 0.3 && abs(f.vertical) <= largestTurn(strength: f.vStrength)
         guard hasUprights(f) else { return horizontal ? f.horizontal : nil }
         if horizontal, abs(f.horizontal - f.vertical) <= 1.5 { return f.hStrength > f.vStrength ? f.horizontal : f.vertical }
@@ -307,10 +311,10 @@ nonisolated enum VisionServices {
         }
 
         /// Both kinds of lines: the strongest near-horizontal one's tilt, and the near-vertical ones'.
-        func families(maxDegrees: Double = 20) -> (horizontal: Double, hStrength: Double, vertical: Double, vStrength: Double)? {
-            var h = 0.0, hs = 0.0, v = 0.0, vs = 0.0
-            guard iv_tilt_families(pixels, Int32(width), Int32(height), maxDegrees, &h, &hs, &v, &vs) == 1 else { return nil }
-            return (h, hs, v, vs)
+        func families(maxDegrees: Double = 20) -> (horizontal: Double, hStrength: Double, hDisagreement: Double, vertical: Double, vStrength: Double)? {
+            var h = 0.0, hs = 0.0, hd = 0.0, v = 0.0, vs = 0.0
+            guard iv_tilt_families(pixels, Int32(width), Int32(height), maxDegrees, &h, &hs, &hd, &v, &vs) == 1 else { return nil }
+            return (h, hs, hd, v, vs)
         }
 
         /// The strongest near-horizontal line tilted within `tolerance` of `degrees`.
