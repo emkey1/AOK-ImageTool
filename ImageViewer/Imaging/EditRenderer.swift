@@ -344,7 +344,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     }
 
     /// The image's alpha channel as an opaque grayscale mask (white = keep), like a cutout mask.
-    private static func alphaMask(of image: CIImage) -> CIImage {
+    static func alphaMask(of image: CIImage) -> CIImage {
         image.applyingFilter("CIColorMatrix", parameters: [
             "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 1),
             "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 1),
@@ -381,7 +381,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     /// what it falls on, so the subject is scaled per channel (blacks stay black): its exposure moves halfway (in
     /// stops) toward the background's, and it takes on part of the background's color cast. The background's
     /// light also wraps softly around the subject's edges.
-    private func lightMatched(_ base: CIImage, mask m: CIImage, behind: CIImage, strength: Double, key: String) -> CIImage {
+    func lightMatched(_ base: CIImage, mask m: CIImage, behind: CIImage, strength: Double, key: String) -> CIImage {
         let ext = base.extent
         let s = CGFloat(strength)
         var subject = base

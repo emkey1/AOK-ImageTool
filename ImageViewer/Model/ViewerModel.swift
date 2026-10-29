@@ -150,6 +150,7 @@ final class ViewerModel {
     // MARK: Sheets & alerts
     var showShortcuts = false
     var exportRequest: ExportRequest?
+    var combineRequest: CombineRequest?
     var renameTarget: ImageItem?
     var showPlayground = false
     var showBackgroundPlayground = false

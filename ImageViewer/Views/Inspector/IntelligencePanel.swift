@@ -235,6 +235,9 @@ struct IntelligencePanel: View {
                 ActionButton("Copy Subject", systemImage: "doc.on.clipboard") {
                     ai.copySubject()
                 }
+                ActionButton("Combine…", systemImage: "square.2.layers.3d") {
+                    model.beginCombine()
+                }
             }
             .disabled(!model.canEdit || ai.busy != nil)
             if model.hasFillableTransparency {

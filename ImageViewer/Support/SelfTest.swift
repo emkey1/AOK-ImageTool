@@ -860,6 +860,114 @@ enum SelfTest {
         reopened.edits.keys.forEach { reopened.setEditsDictionary($0, nil) }
     }
 
+    /// Combine Pictures: the subject placed, sized and flipped where the layout says, lit and shadowed; a
+    /// transparent picture's subject from its transparency, a photo's from Vision; the first placement where
+    /// it was; the copy saved beside the background and stacked with it. (`AOK_SELFTEST_ONLY=combine` runs
+    /// just these.)
+    private static func combineChecks(folder: URL, out: URL) async {
+        let fm = FileManager.default
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        func solid(_ w: Int, _ h: Int, _ r: Double, _ g: Double, _ b: Double, alpha: Bool = false) -> CGImage? {
+            guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: space,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+            ctx.setFillColor(CGColor(srgbRed: r, green: g, blue: b, alpha: 1))
+            if alpha {
+                // A disc with its right half lighter, on transparency.
+                ctx.fillEllipse(in: CGRect(x: 0, y: 0, width: w, height: h))
+                ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 0.4, alpha: 1))
+                ctx.fill(CGRect(x: w / 2 + w / 8, y: h / 3, width: w / 8, height: h / 3))
+            } else {
+                ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+            }
+            return ctx.makeImage()
+        }
+        func pixel(_ image: CGImage, _ x: Double, _ y: Double) -> (r: Int, g: Int, b: Int) {
+            var px = [UInt8](repeating: 0, count: 4)
+            let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4, space: space,
+                                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(image, in: CGRect(x: -x * Double(image.width), y: -(1 - y) * Double(image.height) + 1, width: Double(image.width), height: Double(image.height)))
+            return (Int(px[0]), Int(px[1]), Int(px[2]))
+        }
+        guard let blue = solid(800, 500, 0.1, 0.2, 0.9), let disc = solid(200, 200, 0.9, 0.1, 0.1, alpha: true) else {
+            return check(false, "test pictures")
+        }
+        do {
+            let subject = try await Combine.subject(of: disc, transparent: true)
+            check(abs(subject.rect.width - 1) < 0.02 && abs(subject.rect.height - 1) < 0.02, "a transparent picture's subject is what isn't transparent")
+            let layout = Combine.Layout(center: CGPoint(x: 0.3, y: 0.6), height: 0.4)
+            guard let made = Combine.compose(background: blue, subject: subject, layout: layout, matchLighting: 0, shadow: 0) else {
+                return check(false, "compose")
+            }
+            let center = pixel(made, 0.3, 0.6), corner = pixel(made, 0.95, 0.05)
+            let w = 0.4 * 500 / 800   // its width, as a fraction of the background's
+            check(made.width == 800 && made.height == 500 && center.r > 180 && center.b < 80 && corner.b > 180,
+                  "the subject sits where the layout puts it, on the background, at the background's size (\(center), \(corner))")
+            check(pixel(made, 0.3 + w * 0.6, 0.6).b > 150 && pixel(made, 0.3 + w * 0.45, 0.6).r > 180,
+                  "and at the size it says (its edge where it should be)")
+            let rightLight = pixel(made, 0.3 + w * 0.19, 0.6)
+            var flipped = layout
+            flipped.flipped = true
+            let mirrored = Combine.compose(background: blue, subject: subject, layout: flipped, matchLighting: 0, shadow: 0).map { pixel($0, 0.3 - w * 0.19, 0.6) }
+            check(rightLight.g > 200 && mirrored.map { $0.g > 200 } == true, "Flip mirrors it (its light patch moves to the other side)")
+            let lit = Combine.compose(background: blue, subject: subject, layout: layout, matchLighting: 1, shadow: 0).map { pixel($0, 0.3, 0.6) }
+            // (Light multiplies: a red subject in dark blue light gets darker, and bluer for its red.)
+            check(lit.map { $0.r < center.r - 20 && Double($0.b) / Double($0.r) > Double(center.b) / Double(center.r) } == true,
+                  "Match Lighting moves its light toward the background's (\(String(describing: lit)) from \(center))")
+            let below = (x: 0.3, y: 0.6 + 0.2 + 0.006)
+            let shaded = Combine.compose(background: blue, subject: subject, layout: layout, matchLighting: 0, shadow: 1).map { pixel($0, below.x, below.y) }
+            let plain = pixel(made, below.x, below.y)
+            check(shaded.map { $0.b < plain.b - 10 } == true, "Shadow darkens the background just outside it")
+            // Erase: a stroke across its middle takes it away there (the background shows), ⌥ puts back part of it.
+            let across = Combine.Stroke(points: [CGPoint(x: 0.2, y: 0.5), CGPoint(x: 0.8, y: 0.5)], radius: 0.06, restore: false)
+            let back = Combine.Stroke(points: [CGPoint(x: 0.25, y: 0.5)], radius: 0.05, restore: true)
+            let erased = Combine.erased(subject, by: [across]), restored = Combine.erased(subject, by: [across, back])
+            let gone = Combine.compose(background: blue, subject: erased, layout: layout, matchLighting: 0, shadow: 0).map { pixel($0, 0.3, 0.6) }
+            let kept = Combine.compose(background: blue, subject: erased, layout: layout, matchLighting: 0, shadow: 0).map { pixel($0, 0.3, 0.6 - 0.1) }
+            let putBack = Combine.compose(background: blue, subject: restored, layout: layout, matchLighting: 0, shadow: 0).map { pixel($0, 0.3 - w / 4, 0.6) }
+            check(gone.map { $0.b > 180 } == true && kept.map { $0.r > 180 } == true && putBack.map { $0.r > 180 } == true,
+                  "Erase takes away what's painted over (the rest kept), and ⌥ puts it back")
+            let initial = Combine.Layout.initial(for: Combine.Subject(image: subject.image, rect: CGRect(x: 0.5, y: 0.4, width: 0.3, height: 0.5)),
+                                                 on: CGSize(width: 800, height: 500))
+            check(abs(initial.height - 0.5) < 0.001 && abs(initial.center.y + initial.height / 2 - 0.9) < 0.001 && abs(initial.center.x - 0.65) < 0.001,
+                  "it starts where it was in its own picture, at the same height, its bottom where it was")
+        } catch {
+            check(false, "Combine: \(error.localizedDescription)")
+        }
+
+        // A photo's subject comes from Vision; Save makes a stacked copy of the background.
+        let fox = folder.appendingPathComponent("Red Fox.heic"), lake = folder.appendingPathComponent("Mountain Lake.heic")
+        guard fm.fileExists(atPath: fox.path), fm.fileExists(atPath: lake.path) else { return check(false, "Red Fox and Mountain Lake test images") }
+        let dir = out.appendingPathComponent("combine")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let background = dir.appendingPathComponent("Mountain Lake.heic")
+        try? fm.copyItem(at: lake, to: background)
+        let model = ViewerModel()
+        model.stacksEnabled = true
+        model.openFolder(dir, selecting: background)
+        for _ in 0..<100 where model.decoded?.url != background.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+        do {
+            let fg = try await model.combinePicture(fox)
+            let subject = try await Combine.subject(of: fg.picture, transparent: fg.transparent)
+            check(subject.rect.width > 0.1 && subject.rect.width < 0.95 && subject.rect.height > 0.2, "Vision lifts the fox from its photo (\(subject.rect))")
+            let bg = try await model.combinePicture(background)
+            let layout = Combine.Layout.initial(for: subject, on: CGSize(width: bg.picture.width, height: bg.picture.height))
+            if let made = Combine.compose(background: bg.picture, subject: subject, layout: layout, matchLighting: 0.6, shadow: 1) {
+                let edges = [(0.002, 0.5), (0.5, 0.002), (0.002, 0.998), (0.3, 0.998)]
+                check(edges.allSatisfy { pixel(made, $0.0, $0.1) == pixel(bg.picture, $0.0, $0.1) },
+                      "the background far from the subject is left as it was (shadow and lighting only near it)")
+            }
+            model.saveCombined(background: background, decoded: bg.decoded, subject: subject, layout: layout, matchLighting: 0.6, shadow: 0.3)
+            let copy = dir.appendingPathComponent("Mountain Lake (Combined).heic")
+            for _ in 0..<200 where !fm.fileExists(atPath: copy.path) { try? await Task.sleep(for: .milliseconds(100)) }
+            let size = (CGImageSourceCreateWithURL(copy as CFURL, nil)).flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [String: Any] }
+            let width = size?[kCGImagePropertyPixelWidth as String] as? Int
+            check(fm.fileExists(atPath: copy.path) && ImageStacks.source(of: copy) == "Mountain Lake.heic" && width == bg.picture.width,
+                  "Save makes “Mountain Lake (Combined)” at the background's size, stacked with it\(model.alert.map { " (\($0.title): \($0.message))" } ?? "")")
+        } catch {
+            check(false, "Combine with photos: \(error.localizedDescription)")
+        }
+    }
+
     static func run() async {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-selfTest"), i + 1 < args.count else {
@@ -933,8 +1041,11 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ["clone", "wb", "newimage", "tags"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
-            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "tags" {
+        if ["clone", "wb", "newimage", "tags", "combine"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "combine" {
+                print("\n[Combine Pictures]")
+                await combineChecks(folder: folder, out: out)
+            } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "tags" {
                 print("\n[Ratings, captions, Copy Edits]")
                 await tagsChecks(out: out)
             } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "clone" {
@@ -1871,6 +1982,8 @@ enum SelfTest {
         await newImageChecks(out: out)
         print("\n[Ratings, captions, Copy Edits]")
         await tagsChecks(out: out)
+        print("\n[Combine Pictures]")
+        await combineChecks(folder: folder, out: out)
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")

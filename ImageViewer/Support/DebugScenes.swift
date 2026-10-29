@@ -78,6 +78,11 @@ enum DebugScenes {
         case "newimage":
             model.newImageDescription = "a lighthouse on a rocky coast at sunset"
             model.showNewImage = true
+        case "combine":
+            // (The picture opened is the foreground; Mountain Lake, beside it, the background.)
+            if let folder = model.folderURL {
+                model.combineRequest = CombineRequest(background: folder.appendingPathComponent("Mountain Lake.heic"), foreground: model.currentURL)
+            }
         case "adjust":
             model.updateEdits("Adjust") {
                 $0.exposure = 0.2

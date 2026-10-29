@@ -347,6 +347,9 @@ struct ItemContextMenu: View {
             NSPasteboard.general.writeObjects(targets.map { $0 as NSURL })
         }
         Divider()
+        if targets.count == 2 {
+            Button("Combine These Pictures…") { model.beginCombine(targets) }
+        }
         Button("Copy Edits") { model.copyEdits(from: item.url) }
             .disabled(model.edits[item.url]?.adjustments.isIdentity ?? true)
         Button(targets.count > 1 ? "Paste Edits to \(targets.count) Images" : "Paste Edits") { model.pasteEdits(to: targets) }

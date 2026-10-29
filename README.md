@@ -37,6 +37,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   for the light (indoor lamps, shade, fluorescent).
 - **Clone & heal:** ⌥-click clean skin, sky or grass and paint it over a blemish, a wire or a bare patch; Heal
   blends it into the color and light where it goes.
+- **Combine pictures:** put the subject of one photo, its background removed for you, into another; move and size
+  it, match its lighting, add a soft shadow, and erase any of the old background that came along.
 - **Change objects:** click a shirt and say “blue”, or “a red plaid flannel shirt”: colors change in place keeping
   their shading, anything more is painted in by the generative model, on your Mac.
 - **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Fix Blur, Upscale with AI (animated

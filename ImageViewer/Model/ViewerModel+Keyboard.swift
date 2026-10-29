@@ -41,6 +41,7 @@ extension ViewerModel {
             Shortcut(keys: "\\", action: "Show original (before / after)"),
             Shortcut(keys: "⌘S  ·  ⇧⌘E", action: "Save / Export"),
             Shortcut(keys: "⇧⌘C  ·  ⇧⌘V", action: "Copy / paste edits"),
+            Shortcut(keys: "⌥⇧⌘B", action: "Combine pictures"),
             Shortcut(keys: "⌘V", action: "Paste a picture as a new image"),
         ]),
         ("View", [

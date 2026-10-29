@@ -295,6 +295,9 @@ struct ViewerCommands: Commands {
                 .disabled(viewer?.currentEdits.background?.isPicture != true)
             }
             .disabled(!(viewer?.canAddBackground ?? false))
+            Button("Combine Pictures…") { viewer?.beginCombine() }
+                .keyboardShortcut("b", modifiers: [.command, .option, .shift])
+                .disabled(viewer?.folderURL == nil)
             Button("Select Object…") { viewer?.viewMode = .viewer; viewer?.activeTool = .selectObject }
                 .disabled(!canEdit)
             Button("Remove Objects…") { viewer?.beginRemoveObjects() }
