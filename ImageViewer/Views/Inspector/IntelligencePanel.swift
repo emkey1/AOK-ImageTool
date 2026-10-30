@@ -68,6 +68,11 @@ struct IntelligencePanel: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(d.title).font(.title3.weight(.semibold)).textSelection(.enabled)
                     Text(d.caption).textSelection(.enabled)
+                    if let place = d.place {
+                        Label(place, systemImage: "mappin.and.ellipse")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .help("Where it was taken, from the photo's location (Apple Maps\(Prefs.wikipediaNotes ? " and Wikipedia" : ""))")
+                    }
                     FlowLayout(spacing: 6) {
                         ForEach(d.keywords, id: \.self) { keyword in
                             Button(keyword) { model.searchText = keyword }

@@ -30,6 +30,8 @@ nonisolated enum PrefKey {
     static let showFilmstrip = "showFilmstrip"
     static let showGridLabels = "showGridLabels"
     static let autoDescribe = "autoDescribe"
+    static let lookUpPlaces = "lookUpPlaces"
+    static let wikipediaNotes = "wikipediaNotes"
     static let recentFolders = "recentFolders"
     static let lastViewedFiles = "lastViewedFiles"
     static let stackFronts = "stackFronts"
@@ -128,6 +130,10 @@ nonisolated enum Prefs {
     static var reopenWindows: Bool { bool(PrefKey.reopenWindows, true) }
     static var showFilmstrip: Bool { bool(PrefKey.showFilmstrip, true) }
     static var autoDescribe: Bool { bool(PrefKey.autoDescribe, false) }
+    /// Where a photo was taken is named from its GPS by Apple Maps (Info, Describe).
+    static var lookUpPlaces: Bool { bool(PrefKey.lookUpPlaces, true) }
+    /// Describe also reads Wikipedia's first lines about places near it.
+    static var wikipediaNotes: Bool { bool(PrefKey.wikipediaNotes, false) }
     static var stackCopies: Bool { bool(PrefKey.stackCopies, true) }
     static var stacksByOriginal: Bool { bool(PrefKey.stacksByOriginal, true) }
     static func makesCopy(_ operation: CopyOperation) -> Bool { bool(operation.key, true) }

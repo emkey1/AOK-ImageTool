@@ -56,6 +56,13 @@ nonisolated enum MetadataFormatting {
         return CLLocationCoordinate2DIsValid(c) && !(lat == 0 && lon == 0) ? c : nil
     }
 
+    /// Which way the camera faced, degrees from north (true or magnetic: near enough), when the photo says.
+    static func gpsHeading(_ props: [String: Any]) -> Double? {
+        let gps = dict(props, kCGImagePropertyGPSDictionary)
+        guard let heading = gps[kCGImagePropertyGPSImgDirection as String] as? Double, heading.isFinite, heading >= 0 else { return nil }
+        return heading.truncatingRemainder(dividingBy: 360)
+    }
+
     static func dateTaken(_ props: [String: Any]) -> Date? {
         let exif = dict(props, kCGImagePropertyExifDictionary)
         let tiff = dict(props, kCGImagePropertyTIFFDictionary)

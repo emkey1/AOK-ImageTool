@@ -1,4 +1,5 @@
 import AppKit
+import CoreLocation
 import Observation
 import SwiftUI
 import VisionKit
@@ -340,13 +341,16 @@ final class IntelligenceModel {
         let image = d.cgImage
         let knownText = recognizedText[url]
         let modDate = viewer.currentItem?.modificationDate
+        let coordinate = Prefs.lookUpPlaces ? MetadataFormatting.gpsCoordinate(d.properties) : nil
+        let heading = MetadataFormatting.gpsHeading(d.properties)
         describeTask = Task {
+            async let surroundings = Self.surroundings(coordinate, heading: heading)
             let small = await VisionServices.downscaled(image, maxDimension: 1024)
             let labels = await VisionServices.classify(small)
             let text: String
             if let knownText { text = knownText } else { text = await VisionServices.recognizeText(small, fast: true) }
             do {
-                let description = try await ImageDescriber.describe(small, labels: labels, text: text)
+                let description = try await ImageDescriber.describe(small, labels: labels, text: text, place: await surroundings)
                 guard !Task.isCancelled else { return }
                 descriptions[url] = description
                 var entry = index[url] ?? IndexEntry(modDate: modDate)
@@ -359,6 +363,12 @@ final class IntelligenceModel {
             }
             isDescribing = false
         }
+    }
+
+    /// Where a photo was taken and what's near it, for Describe (nil without a location).
+    private static func surroundings(_ coordinate: CLLocationCoordinate2D?, heading: Double?) async -> PlaceInfo? {
+        guard let coordinate else { return nil }
+        return await PlaceLookup.surroundings(at: coordinate, heading: heading, wikipedia: Prefs.wikipediaNotes)
     }
 
     func applyKeywordsAsTags() {

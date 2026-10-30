@@ -128,9 +128,17 @@ struct InfoPanel: View {
 
 struct LocationSection: View {
     let coordinate: CLLocationCoordinate2D
+    @AppStorage(PrefKey.lookUpPlaces) private var lookUpPlaces = true
+    @State private var place: PlaceInfo?
 
     var body: some View {
         PanelSection(title: "Location", systemImage: "location") {
+            if let place {
+                Text(place.name)
+                    .font(.callout)
+                    .textSelection(.enabled)
+                    .help(place.address ?? place.name)
+            }
             Map(initialPosition: .region(MKCoordinateRegion(center: coordinate, latitudinalMeters: 3000, longitudinalMeters: 3000))) {
                 Marker("", coordinate: coordinate)
             }
@@ -149,6 +157,14 @@ struct LocationSection: View {
                 }
                 .controlSize(.small)
             }
+        }
+        .task(id: "\(coordinate.latitude),\(coordinate.longitude),\(lookUpPlaces)") {
+            place = nil
+            guard lookUpPlaces else { return }
+            // (Not for every picture flicked past.)
+            try? await Task.sleep(for: .milliseconds(400))
+            guard !Task.isCancelled else { return }
+            place = await PlaceLookup.place(at: coordinate)
         }
     }
 }

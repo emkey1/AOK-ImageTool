@@ -22,6 +22,23 @@ nonisolated struct GeneratedDescription {
     var fileName: String
 }
 
+/// A description of a photo whose location is known (see `PlaceInfo`).
+@available(macOS 26, *)
+@Generable
+nonisolated struct GeneratedPlacedDescription {
+    @Guide(description: "A short, specific title for the image, 2 to 6 words, no ending punctuation; it may name the place")
+    var title: String
+
+    @Guide(description: "One or two factual sentences describing the image for someone who cannot see it, saying where it was taken")
+    var caption: String
+
+    @Guide(description: "Lowercase search keywords covering subjects, setting, colors and mood, and the town and country", .count(4...12))
+    var keywords: [String]
+
+    @Guide(description: "A descriptive file name of 2 to 6 lowercase words separated by hyphens, without a file extension")
+    var fileName: String
+}
+
 @available(macOS 26, *)
 @Generable
 nonisolated struct GeneratedSetting {
@@ -49,6 +66,8 @@ nonisolated struct ImageDescription: Codable, Equatable, Sendable {
     var fileName: String
     /// True when the model looked at the pixels; false when it only saw Vision labels and OCR text.
     var fromPixels: Bool
+    /// Where it was taken, named from its GPS ("Getxo, Bizkaia, Spain"), when that was used.
+    var place: String? = nil
 }
 
 nonisolated enum ModelSupport: Equatable, Sendable {
@@ -101,18 +120,55 @@ nonisolated enum ImageDescriber {
         }
     }
 
-    static func describe(_ image: CGImage, labels: [String], text: String) async throws -> ImageDescription {
+    /// `place`: where it was taken, from its GPS (see `PlaceLookup`), for the caption and keywords to name.
+    static func describe(_ image: CGImage, labels: [String], text: String, place: PlaceInfo? = nil) async throws -> ImageDescription {
         guard #available(macOS 26, *) else { throw DescribeError.unavailable(needsNewerSystem) }
-        return try await describeWithModel(image, labels: labels, text: text)
+        var description = try await describeWithModel(image, labels: labels, text: text, place: place)
+        if let place {
+            description.place = place.name
+            // (The model sometimes leaves them out.)
+            for k in [place.town, place.country].compactMap({ $0?.lowercased() }) where !description.keywords.contains(k) {
+                description.keywords.append(k)
+            }
+            description.keywords.sort()
+            // (Its own capitals: the model sometimes writes it as it writes keywords.)
+            for part in [place.name, place.town, place.country].compactMap({ $0 }) {
+                description.caption = description.caption.replacingOccurrences(of: part, with: part, options: .caseInsensitive)
+            }
+            let named = [place.town, place.country].compactMap { $0 }.contains { description.caption.localizedCaseInsensitiveContains($0) }
+            if !named, !description.caption.isEmpty {
+                let ended = description.caption.last.map { ".!?".contains($0) } == true
+                description.caption += (ended ? " " : ". ") + "Taken in \(place.name)."
+            }
+        }
+        return description
     }
 
+    /// With a place, the model may name it although it isn't visible.
+    static let placeInstructions = instructions + """
+         \
+        A location given with a photo comes from its GPS and is reliable: say in the caption where the photo was taken, \
+        and add the town or city and the country as keywords. Name a place near it only if the photo clearly shows it.
+        """
+
     @available(macOS 26, *)
-    private static func describeWithModel(_ image: CGImage, labels: [String], text: String) async throws -> ImageDescription {
+    private static func describeWithModel(_ image: CGImage, labels: [String], text: String, place: PlaceInfo?) async throws -> ImageDescription {
         let support = self.support
         if case .unavailable(let reason) = support { throw DescribeError.unavailable(reason) }
-        let session = LanguageModelSession(instructions: instructions)
+        let session = LanguageModelSession(instructions: place == nil ? instructions : placeInstructions)
         let ocr = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if #available(macOS 27, *), support == .vision {
+            if let place {
+                let response = try await session.respond(generating: GeneratedPlacedDescription.self) {
+                    place.promptContext
+                    "Describe this image."
+                    if !ocr.isEmpty {
+                        "For reference, text detected in the image: \(String(ocr.prefix(400)))"
+                    }
+                    Attachment(image)
+                }
+                return ImageDescription(response.content, fromPixels: true)
+            }
             let response = try await session.respond(generating: GeneratedDescription.self) {
                 "Describe this image."
                 if !ocr.isEmpty {
@@ -125,8 +181,12 @@ nonisolated enum ImageDescriber {
         let prompt = """
             An image classifier analyzed a photo. Detected labels, most confident first: \(labels.prefix(12).joined(separator: ", ")).
             \(ocr.isEmpty ? "" : "Text detected in the image: \(ocr.prefix(400))")
+            \(place?.promptContext ?? "")
             Describe the most likely image based only on this evidence.
             """
+        if place != nil {
+            return ImageDescription(try await session.respond(to: prompt, generating: GeneratedPlacedDescription.self).content, fromPixels: false)
+        }
         let response = try await session.respond(to: prompt, generating: GeneratedDescription.self)
         return ImageDescription(response.content, fromPixels: false)
     }
@@ -281,16 +341,25 @@ nonisolated final class ImageChat: @unchecked Sendable {
 @available(macOS 26, *)
 nonisolated extension ImageDescription {
     init(_ generated: GeneratedDescription, fromPixels: Bool) {
-        title = generated.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        caption = generated.caption.trimmingCharacters(in: .whitespacesAndNewlines)
-        keywords = Array(Set(generated.keywords.map { $0.lowercased().trimmingCharacters(in: .whitespaces) }))
+        self.init(title: generated.title, caption: generated.caption, keywords: generated.keywords, fileName: generated.fileName, fromPixels: fromPixels)
+    }
+
+    init(_ generated: GeneratedPlacedDescription, fromPixels: Bool) {
+        self.init(title: generated.title, caption: generated.caption, keywords: generated.keywords, fileName: generated.fileName, fromPixels: fromPixels)
+    }
+
+    /// Tidied: trimmed, keywords lowercase and once each, the file name a short slug.
+    private init(title: String, caption: String, keywords: [String], fileName: String, fromPixels: Bool) {
+        self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.caption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.keywords = Array(Set(keywords.map { $0.lowercased().trimmingCharacters(in: .whitespaces) }))
             .filter { !$0.isEmpty }
             .sorted()
         let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-"))
-        let slug = generated.fileName.lowercased()
+        let slug = fileName.lowercased()
             .replacingOccurrences(of: " ", with: "-")
             .unicodeScalars.filter { allowed.contains($0) }
-        fileName = String(String.UnicodeScalarView(slug))
+        self.fileName = String(String.UnicodeScalarView(slug))
             .split(separator: "-", omittingEmptySubsequences: true)
             .prefix(8)
             .joined(separator: "-")

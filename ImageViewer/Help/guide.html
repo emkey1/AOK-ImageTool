@@ -101,7 +101,7 @@
   <li><b>Live Text.</b> Select and copy text right on the image, and click the Look Up button for plants, pets, landmarks and more.</li>
   <li><b>Grid</b> (<kbd>G</kbd>, or <kbd>⌘2</kbd>) shows the folder as thumbnails; the slider in the toolbar sets their size. <kbd>Return</kbd> or a double-click opens the selected image (a double-click on a closed stack spreads it out instead). <kbd>⌘1</kbd> goes back to the viewer.</li>
   <li><b>Filmstrip</b> (<kbd>T</kbd>), <b>full screen</b> (<kbd>F</kbd>) and <b>slideshow</b> (<kbd>S</kbd>; <kbd>Space</kbd> pauses it, <kbd>Esc</kbd> stops it). The time per slide is in <a href="#settings">Settings</a>.</li>
-  <li><b>Info</b> (<kbd>I</kbd>) shows a histogram, the camera and lens, exposure, dates, size and color details, a map for photos that know where they were taken, and every bit of metadata under <b>All Metadata</b>. At the bottom, the folder's totals: how many images, picks and rejects.</li>
+  <li><b>Info</b> (<kbd>I</kbd>) shows a histogram, the camera and lens, exposure, dates, size and color details, a map and the name of the town for photos that know where they were taken, and every bit of metadata under <b>All Metadata</b>. At the bottom, the folder's totals: how many images, picks and rejects.</li>
   <li><b>Canvas background.</b> <b>View › Background</b> chooses black, dark gray, gray, light gray, white or the window color. Transparent images show over a checkerboard.</li>
 </ul>
 <picture>
@@ -316,6 +316,7 @@
 <p>Everything here runs on this Mac. The Intelligence panel (<kbd>A</kbd>, or <kbd>⌘J</kbd>) gathers it; most of it is also in the Intelligence menu.</p>
 <ul>
   <li><b>Describe Image</b> <kbd>⇧⌘D</kbd> writes a title, an alt-text caption and keywords. <b>Copy Alt Text</b> for a website or document; <b>Add Finder Tags</b> makes the keywords Finder tags, which Spotlight finds; <b>Save in File</b> writes the title, caption (also as the picture's alt text) and keywords into the file's metadata (a sidecar for RAW), where Spotlight, Photos (when it imports the file) and Lightroom find them, adding to any keywords it has; <b>Rename to “…”</b> takes the suggested file name. Settings can describe each image automatically while the panel is open.</li>
+  <li><b>Where it was taken.</b> For a photo with a location, the description says where (“at the harbor in Getxo, Spain”) and adds the town and country as keywords, from Apple Maps, along with sights near it that the photo may show: landmarks, museums, parks, marinas, in the direction the camera faced when the photo records that. Turn on <b>Add Wikipedia's notes on places nearby</b> in <b>Settings › Apple Intelligence</b> and it also reads Wikipedia's first lines about them, so a bridge or a castle can be named. The camera's position isn't always what's pictured, so a place is named only when the photo looks like it. Only the coordinates are sent.</li>
   <li><b>Ask About This Image.</b> Type a question (“What breed is this?”, “Where could this be?”) or click a suggestion. Follow-up questions remember the conversation.</li>
   <li><b>Text in Image.</b> <b>Read Text</b> finds all the text in a photo (signs, receipts, slides) to copy or <b>Translate…</b>.</li>
   <li><b>Smart Fixes:</b> Auto Enhance, Straighten (levels the horizon or upright lines), Smart Crop, Fix Document, and, with their models installed, Generative Extend and Colorize.</li>
@@ -435,7 +436,7 @@
 </ul>
 
 <h2 id="privacy">Privacy</h2>
-<p>Your pictures never leave your Mac. Descriptions, questions, search analysis, background removal, upscaling, colorizing, generated fills and backgrounds all run on this Mac. The app goes online only to download the generative fill and colorizing models when you ask for them, and to check GitHub for updates (once a day, unless you turn it off); macOS downloads Apple's upscaling model itself, the first time you use it. Search analysis is kept in <code>~/Library/Caches/com.oneopa.AOK-ImageTool</code>; unsaved edits, backgrounds you choose and Extend fills in <code>~/Library/Application Support/com.oneopa.AOK-ImageTool</code>.</p>
+<p>Your pictures never leave your Mac. Descriptions, questions, search analysis, background removal, upscaling, colorizing, generated fills and backgrounds all run on this Mac. The app goes online only to download the generative fill and colorizing models when you ask for them, to check GitHub for updates (once a day, unless you turn it off), and for a photo's location: the Info panel's map and the name of the place come from Apple Maps, and descriptions read Wikipedia about places nearby if you turn that on (only the coordinates, and the direction the camera faced, are sent; <b>Settings › Apple Intelligence › Places</b> turns it off); macOS downloads Apple's upscaling model itself, the first time you use it. Search analysis is kept in <code>~/Library/Caches/com.oneopa.AOK-ImageTool</code>; unsaved edits, backgrounds you choose and Extend fills in <code>~/Library/Application Support/com.oneopa.AOK-ImageTool</code>.</p>
 
 </main>
 </body>

@@ -292,6 +292,8 @@ private struct ModelSettings: View {
 private struct IntelligenceSettings: View {
     @AppStorage(PrefKey.liveTextEnabled) private var liveText = true
     @AppStorage(PrefKey.autoDescribe) private var autoDescribe = false
+    @AppStorage(PrefKey.lookUpPlaces) private var lookUpPlaces = true
+    @AppStorage(PrefKey.wikipediaNotes) private var wikipediaNotes = false
     @State private var support = ImageDescriber.support
 
     var body: some View {
@@ -306,6 +308,16 @@ private struct IntelligenceSettings: View {
                 }
                 Toggle("Describe images automatically when the Intelligence panel is open", isOn: $autoDescribe)
                     .disabled(!support.isAvailable)
+            }
+            Section {
+                Toggle("Name where photos were taken, with Apple Maps", isOn: $lookUpPlaces)
+                Toggle("Add Wikipedia's notes on places nearby to descriptions", isOn: $wikipediaNotes)
+                    .disabled(!lookUpPlaces)
+            } header: {
+                Text("Places")
+            } footer: {
+                Text("From a photo's location: its town in Info, and in descriptions, the place and sights near it (in the direction the camera faced, when the photo records that). Only the coordinates are sent, to Apple Maps (which the Info panel's map uses anyway) and, if you turn that on, to Wikipedia.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             Section {
                 Toggle("Live Text & Visual Look Up on images", isOn: $liveText)

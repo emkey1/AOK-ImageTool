@@ -138,8 +138,10 @@ fingerprint before installing it. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTIC
 ## Privacy
 
 Descriptions, questions, search, background removal, upscaling, colorizing and generated fills all run on your Mac.
-The app goes online only to download the models when you ask for them and to check for updates (once a day, or
-never if you turn it off in Settings).
+The app goes online only to download the models when you ask for them, to check for updates (once a day, or
+never if you turn it off in Settings), and for a photo's location: the map in Info and the name of the place come
+from Apple Maps, and descriptions can read Wikipedia's notes on places nearby if you turn that on. Only the
+coordinates (and the direction the camera faced) are sent; Settings ▸ Apple Intelligence ▸ Places turns it off.
 
 ## Build from source
 

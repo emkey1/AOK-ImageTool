@@ -969,6 +969,63 @@ enum SelfTest {
         }
     }
 
+    /// Places: what's near where a photo was taken, from Wikipedia's answer and Apple Maps', by which way it faced,
+    /// and a description that says where. (`AOK_SELFTEST_ONLY=places` runs just these.)
+    private static func placesChecks(decodedByName: [String: DecodedImage]) async {
+        let bridge = CLLocationCoordinate2D(latitude: 43.3231, longitude: -3.0172)
+        let answer = Data("""
+            {"batchcomplete":"","query":{"pages":{
+            "1":{"pageid":1,"title":"Vizcaya Bridge","coordinates":[{"lat":43.3233,"lon":-3.0172,"dist":24}],"extract":"The Vizcaya Bridge is a transporter bridge. \(String(repeating: "It is old. ", count: 40))"},
+            "2":{"pageid":2,"title":"2008 Getxo bombing","coordinates":[{"lat":43.3270,"lon":-3.0150,"dist":545}],"extract":"A van bomb went off."},
+            "3":{"pageid":3,"title":"Portugalete","coordinates":[{"lat":43.3203,"lon":-3.0200,"dist":445}],"extract":"Portugalete is a town."},
+            "4":{"pageid":4,"title":"Somewhere without coordinates","extract":"Nothing."}}}}
+            """.utf8)
+        let articles = PlaceLookup.parseWikipedia(answer, from: bridge).sorted { $0.meters < $1.meters }
+        check(articles.map(\.name) == ["Vizcaya Bridge", "Portugalete"] && articles[0].meters == 24 && (articles[0].summary?.count ?? 0) <= 321
+              && articles[1].bearing > 180 && articles[1].bearing < 270,
+              "Wikipedia's nearby articles are read, without events, with short summaries and which way they are (\(articles.map { "\($0.name) \(Int($0.bearing))°" }))")
+        func sight(_ name: String, _ meters: Int, _ bearing: Double) -> PlaceInfo.Nearby {
+            PlaceInfo.Nearby(name: name, kind: "landmark", meters: meters, bearing: bearing)
+        }
+        let around = [sight("Behind", 100, 180), sight("Ahead", 800, 10), sight("Aside", 800, 90), sight("Far ahead", 2000, 355),
+                      sight("ahead", 900, 15)]
+        check(PlaceLookup.inView(around, heading: 0).map(\.name) == ["Behind", "Ahead"]
+              && PlaceLookup.inView(around, heading: nil).map(\.name) == ["Behind"]
+              && PlaceLookup.inView(around, heading: 80).map(\.name) == ["Behind", "Aside"],
+              "sights are what's close by, or in front of the camera when the photo says which way it faced")
+        check(abs(PlaceLookup.bearing(from: bridge, to: CLLocationCoordinate2D(latitude: 44.3231, longitude: -3.0172))) < 0.01
+              && abs(PlaceLookup.bearing(from: bridge, to: CLLocationCoordinate2D(latitude: 43.3231, longitude: -2.0172)) - 90) < 1
+              && PlaceLookup.kindName("MKPOICategoryNationalPark") == "national park", "bearings and kinds of place")
+        let props: [String: Any] = [kCGImagePropertyGPSDictionary as String: [kCGImagePropertyGPSImgDirection as String: 370.5]]
+        check(MetadataFormatting.gpsHeading(props) == 10.5 && MetadataFormatting.gpsHeading([:]) == nil, "the direction a photo was taken in is read")
+        let place = PlaceInfo(name: "Getxo, Bizkaia, Spain", nearby: [sight("Vizcaya Bridge", 24, 0), sight("Las Arenas", 1200, 5)])
+        check(place.promptContext.contains("taken in Getxo, Bizkaia, Spain") && place.town == "Getxo" && place.country == "Spain" && place.promptContext.contains("- Vizcaya Bridge (landmark, 24 m)")
+              && place.promptContext.contains("(landmark, 1.2 km)"), "Describe is told where, and what's near")
+        // `AOK_SELFTEST_LIVE=1`: ask Apple Maps and Wikipedia themselves.
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_LIVE"] == "1" {
+            let found = await PlaceLookup.surroundings(at: bridge, heading: 0, wikipedia: true)
+            print("  • \(found?.name ?? "nothing"); \(found?.nearby.map { "\($0.name) (\($0.kind ?? "wikipedia"), \($0.meters) m)" } ?? [])")
+            check(found?.name.contains("Spain") == true && found?.nearby.contains { $0.name.contains("Vizcaya") || $0.name.contains("Bizkaia") } == true,
+                  "Apple Maps names the place and Wikipedia the bridge")
+        }
+        // Where it was taken goes into its caption or keywords.
+        if ImageDescriber.support.isAvailable, let lighthouse = decodedByName["Lighthouse.heic"] {
+            let small = VisionServices.downscaledSync(lighthouse.cgImage, maxDimension: 1024)
+            let labels = ImageDescriber.support == .vision ? [] : await VisionServices.classify(small)
+            let place = PlaceInfo(name: "Peggys Cove, Nova Scotia, Canada",
+                                  nearby: [PlaceInfo.Nearby(name: "Peggys Point Lighthouse", kind: "landmark", meters: 60, bearing: 0)])
+            do {
+                let desc = try await ImageDescriber.describe(small, labels: labels, text: "", place: place)
+                print("  • with a place: \(desc.title) — \(desc.caption) \(desc.keywords)")
+                let said = desc.title + " " + desc.caption
+                check(desc.place == place.name && ["Peggy", "Nova Scotia", "Canada"].contains { said.localizedCaseInsensitiveContains($0) }
+                      && desc.keywords.contains("canada"), "a description says where the photo was taken, and has its country as a keyword")
+            } catch {
+                check(false, "describe with a place: \(ImageDescriber.friendlyError(error))")
+            }
+        }
+    }
+
     /// Auto Straighten: a horizon's tilt measured; no false horizon in a photo without lines; a room's receding
     /// lines don't tilt it; uprights leaning apart in perspective still show the camera's tilt; lines converging
     /// in perspective aren't a horizon.
@@ -1121,6 +1178,13 @@ enum SelfTest {
             for (key, value) in savedPrefs {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "places" {
+            print("\n[Places]")
+            await placesChecks(decodedByName: decodedByName)
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
@@ -2323,6 +2387,8 @@ enum SelfTest {
                 check(false, "AI upscale: \(error.localizedDescription)")
             }
         }
+        print("\n[Places]")
+        await placesChecks(decodedByName: decodedByName)
         if ImageDescriber.support.isAvailable, let lighthouse = decodedByName["Lighthouse.heic"] {
             let small = VisionServices.downscaledSync(lighthouse.cgImage, maxDimension: 1024)
             let labels = ImageDescriber.support == .vision ? [] : await VisionServices.classify(small)
