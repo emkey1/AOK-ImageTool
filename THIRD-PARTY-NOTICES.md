@@ -7,7 +7,7 @@ apply to them.
 
 ## Optional models
 
-### Stable Diffusion 1.5 Inpainting (Generate: Extend and Generate a Background)
+### Stable Diffusion 1.5 Inpainting (Generate: New Image from Description, Extend, Generate a Background, Remove and Change Objects)
 
 - Source: [stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting),
   converted to Core ML (fp16) with [scripts/convert-inpainting-model.sh](scripts/convert-inpainting-model.sh).

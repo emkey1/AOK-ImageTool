@@ -326,18 +326,19 @@ struct CombineSheet: View {
     }
 
     private var controls: some View {
-        HStack(spacing: 18) {
+        // (In a small window the sliders give up the room, not the words.)
+        HStack(spacing: 14) {
             HStack(spacing: 6) {
-                Text("Size")
+                Text("Size").fixedSize()
                 Slider(value: Binding(get: { layout?.height ?? 0.5 }, set: { layout?.height = $0 }), in: 0.05...1.5)
-                    .frame(width: 140)
+                    .frame(minWidth: 60, maxWidth: 140)
             }
             Button { layout?.flipped.toggle() } label: { Label("Flip", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right") }
             Toggle(isOn: $erasing) { Label("Erase", systemImage: "eraser") }
                 .toggleStyle(.button)
                 .help("Paint over parts of the subject to take them away (⌥ to put them back)")
             if erasing {
-                Slider(value: $brush, in: 0.01...0.15).frame(width: 80)
+                Slider(value: $brush, in: 0.01...0.15).frame(minWidth: 50, maxWidth: 80)
                     .help("Brush size")
                 Button("Reset") {
                     strokes = []
@@ -347,13 +348,13 @@ struct CombineSheet: View {
                 .disabled(strokes.isEmpty)
             }
             HStack(spacing: 6) {
-                Text("Match Lighting")
-                Slider(value: $matchLighting, in: 0...1).frame(width: 120)
+                Text("Match Lighting").fixedSize()
+                Slider(value: $matchLighting, in: 0...1).frame(minWidth: 50, maxWidth: 120)
             }
             .help("Move the subject's brightness and color toward the background's, and let its light wrap the edges")
             HStack(spacing: 6) {
-                Text("Shadow")
-                Slider(value: $shadow, in: 0...1).frame(width: 100)
+                Text("Shadow").fixedSize()
+                Slider(value: $shadow, in: 0...1).frame(minWidth: 50, maxWidth: 100)
             }
             .help("A soft shadow under the subject")
             Spacer()

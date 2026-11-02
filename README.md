@@ -124,20 +124,26 @@ The Guide has the details.
 
 ## The optional image models
 
-Two features use image models that run on your Mac but aren't built into the app, because they're large. The app
+Some features use image models that run on your Mac but aren't built into the app, because they're large. The app
 offers to download each one the first time you use the feature, or you can get them in **Settings ▸ Editing**:
 
-- **Generate** (Extend, and Generate a Background) uses [Stable Diffusion 1.5 Inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting),
+- **Generate** (New Image from Description, Extend, Generate a Background, and painting in Remove and Change Objects)
+  uses [Stable Diffusion 1.5 Inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting),
   about 2 GB. Its license, [CreativeML Open RAIL-M](https://huggingface.co/spaces/CompVis/stable-diffusion-license),
   limits how the model may be used, so the app asks you to accept it first.
 - **Colorize** uses [DDColor](https://github.com/piddnad/DDColor), about 425 MB, under the Apache 2.0 license.
+- **Erase** (Remove Objects) uses [LaMa](https://github.com/advimman/lama), about 190 MB, under the Apache 2.0 license.
+- **Fix Blur** uses [Restormer](https://github.com/swz30/Restormer), about 100 MB, under the MIT license, for focus and
+  camera shake, and [GFPGAN](https://github.com/TencentARC/GFPGAN), about 315 MB, under the Apache 2.0 license with the
+  exceptions in the notices below, for faces.
 
-Both are converted to Core ML and hosted on this repository's releases; the app checks each download against a
+All are converted to Core ML and hosted on this repository's releases; the app checks each download against a
 fingerprint before installing it. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Privacy
 
-Descriptions, questions, search, background removal, upscaling, colorizing and generated fills all run on your Mac.
+Descriptions, questions, search, background removal, upscaling, colorizing, sharpening, retouching and generated
+pictures all run on your Mac.
 The app goes online only to download the models when you ask for them, to check for updates (once a day, or
 never if you turn it off in Settings), and for a photo's location: the map in Info and the name of the place come
 from Apple Maps, and descriptions can read Wikipedia's notes on places nearby if you turn that on. Only the

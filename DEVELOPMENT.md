@@ -170,7 +170,8 @@ edges, as much as the strength says.
 
 Conversions are checked against the original PyTorch models: LaMa and GFPGAN must run in full precision (half
 precision gives noise or a flat color), Restormer is fine in half precision on the GPU but not on the Neural Engine, so
-`ImageModel` runs on CPU and GPU. NAFNet was tried for camera shake and dropped (colored noise on some pictures, even
+`ImageModel` runs on CPU and GPU. (On the CPU alone it's wrong too. Core ML can't use a virtual machine's GPU, so
+the self-test's Out of Focus and Camera Shake checks fail in a VM; Macs always have a GPU.) NAFNet was tried for camera shake and dropped (colored noise on some pictures, even
 in its own code).
 
 ## Releasing

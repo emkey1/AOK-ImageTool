@@ -2145,7 +2145,8 @@ enum SelfTest {
                 other.extendSeed = 77
                 model.applyEdits(other, to: lighthouse.url, undoName: nil, previous: .identity)
                 var sawDraft = false
-                for _ in 0..<1800 where model.edits[lighthouse.url]?.needsExtendFill == true {
+                // (Up to 15 minutes: a virtual machine has no GPU for it.)
+                for _ in 0..<9000 where model.edits[lighthouse.url]?.needsExtendFill == true {
                     if model.edits[lighthouse.url]?.extendFill?.isDraft == true { sawDraft = true }
                     try? await Task.sleep(for: .milliseconds(100))
                 }
