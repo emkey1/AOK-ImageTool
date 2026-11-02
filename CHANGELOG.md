@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
 - **New Image from Description** (File ▸ New Image from Description…, ⇧⌘N, or the Intelligence panel's Create section): describe a picture and choose a shape (Square, 3:2, 2:3, 16:9); four previews are painted on this Mac, one after another, with Stable Diffusion; keep as many as you like (⌘-click or a preview's circle chooses several, and a double-click on one of them keeps them all; the sheet stays open, and previews still to be painted wait): each is painted again at twice the size for detail (keeping the preview's color and light, so its windows don't show) and enlarged to 2048 px, then saved as a new image named after the description. Illustration, Animation or Sketch… hands the description to Image Playground instead.
 - **Fix Blur shows any part of the picture**: drag or scroll the Before and After pictures to choose what to judge it on, or click the small picture beside them to go straight there. The result follows when you stop moving.
