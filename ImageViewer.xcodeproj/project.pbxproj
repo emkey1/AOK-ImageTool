@@ -217,7 +217,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.2.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.oneopa.AOK-ImageTool";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.oneopa.AOK-ImageTool.debug";
 				PRODUCT_MODULE_NAME = ImageViewer;
 				PRODUCT_NAME = "AOK-ImageTool";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;

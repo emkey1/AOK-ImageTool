@@ -1115,9 +1115,14 @@ enum SelfTest {
             print("usage: -selfTest <folder>")
             exit(2)
         }
+        // The test changes preferences as it goes, and is only there to put them back if it gets to the end: never
+        // in the installed app's. (Debug builds have a bundle ID of their own for this.)
+        guard Bundle.main.bundleIdentifier != Updater.releasedID else {
+            print("The self-test doesn't run under \(Updater.releasedID): it would change the installed app's settings.")
+            exit(2)
+        }
         let folder = URL(fileURLWithPath: args[i + 1]).standardizedFileURL
-        // The test drives real models, which save preferences shared with the user's copy of the app;
-        // put them back afterwards.
+        // The test drives real models, which save preferences; put them back afterwards, so each run starts alike.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies, PrefKey.stacksByOriginal,
                            CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, CopyOperation.cloneHeal.key, PrefKey.cloneHeals, PrefKey.confirmOverwrite,
