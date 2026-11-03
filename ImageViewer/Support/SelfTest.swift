@@ -1656,6 +1656,11 @@ enum SelfTest {
             let model = ViewerModel()
             model.openFolder(folder, selecting: seed)
             for _ in 0..<100 where model.decoded?.url != seed.standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+            // Generate a Background on a transparent picture: its subject is what isn't transparent, in a mask the picture's size.
+            let source = await model.backgroundSource()
+            let found = source.flatMap { VisionServices.maskBounds($0.subject, imageSize: CGSize(width: $0.photo.width, height: $0.photo.height)) }
+            check(source?.subject.extent == source.map { CGRect(x: 0, y: 0, width: $0.photo.width, height: $0.photo.height) } && found?.isEmpty == false,
+                  "a transparent picture's own transparency says what a background goes behind (\(found.map { "\($0)" } ?? "no subject"))")
             let pb = NSPasteboard(name: NSPasteboard.Name("AOK-ImageTool self-test"))
             defer { pb.releaseGlobally() }
             // A picture (here TIFF data, as many apps copy): a PNG with its transparency.

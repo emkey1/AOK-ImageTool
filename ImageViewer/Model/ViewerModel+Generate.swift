@@ -18,12 +18,10 @@ extension ViewerModel {
         if let cutout = e.cutout {
             mask = MaskStore.shared.mask(for: cutout, url: d.url)
         } else if d.hasTransparentPixels {
-            // The file's own transparency: its alpha as a mask.
-            mask = CIImage(cgImage: photo).applyingFilter("CIColorMatrix", parameters: [
-                "inputRVector": CIVector(x: 0, y: 0, z: 0, w: 1), "inputGVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-                "inputBVector": CIVector(x: 0, y: 0, z: 0, w: 1), "inputAVector": CIVector(x: 0, y: 0, z: 0, w: 0),
-                "inputBiasVector": CIVector(x: 0, y: 0, z: 0, w: 1),
-            ])
+            // The file's own transparency: its alpha as a mask. (Cropped: the mask's filter fills the whole
+            // plane around the picture.)
+            let base = CIImage(cgImage: photo)
+            mask = EditRenderer.alphaMask(of: base).cropped(to: base.extent)
         }
         guard let mask else { return nil }
         var subjectOnly = EditState()

@@ -16,8 +16,10 @@ enum ExtendLab {
             let photo = await VisionServices.downscaled(d.cgImage, maxDimension: 1536)
             let t0 = Date()
             do {
-                let mask = try await VisionServices.subjectMask(for: photo)
-                let cutout = CIImage(cgImage: photo).applyingFilter("CIBlendWithMask", parameters: [
+                // (A file's own transparency is the subject, as in the app.)
+                let base = CIImage(cgImage: photo)
+                let mask = d.hasTransparentPixels ? EditRenderer.alphaMask(of: base).cropped(to: base.extent) : try await VisionServices.subjectMask(for: photo)
+                let cutout = base.applyingFilter("CIBlendWithMask", parameters: [
                     kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: CGRect(x: 0, y: 0, width: photo.width, height: photo.height)),
                     kCIInputMaskImageKey: mask.transformed(by: CGAffineTransform(scaleX: CGFloat(photo.width) / mask.extent.width,
                                                                                  y: CGFloat(photo.height) / mask.extent.height)),
