@@ -201,7 +201,7 @@ and notarized. `scripts/make-dmg.sh --build` makes a locally signed installer fo
 
 Debug builds have their own bundle ID (`com.oneopa.AOK-ImageTool.debug`), so their settings never mix with an installed
 copy's: the self-test turns off things like moving originals to the Trash while it runs, and a run that's interrupted
-can't put them back. It refuses to run under the released ID. Installed models are still shared (and so get their
+can't put them back (the next run starts from the defaults). It refuses to run under the released ID. Installed models are still shared (and so get their
 corrected programs, as they would from the app).
 
 Runs every non-UI pipeline headlessly against a folder of images and prints a pass/fail report:

@@ -36,7 +36,8 @@ private struct GeneratedPreview: View {
 }
 
 /// Intelligence ▸ Background ▸ Generate on This Mac: a scene painted around the cut-out subject, from a
-/// description of the scene and of the subject (which Apple Intelligence suggests), so the scene suits it.
+/// description of the scene and of the subject (which Apple Intelligence suggests, or else the image classifier
+/// names), so the scene suits it.
 struct GenerateBackgroundSheet: View {
     @Environment(ViewerModel.self) private var model
     @Environment(\.dismiss) private var dismiss
@@ -107,7 +108,10 @@ struct GenerateBackgroundSheet: View {
             guard let cutout = source?.cutout, subject.isEmpty else { return }
             describing = true
             let labels = ImageDescriber.support == .vision ? [] : await VisionServices.classify(cutout)
-            let described = await ImageDescriber.describeSubject(cutout, labels: labels)
+            var described = await ImageDescriber.describeSubject(cutout, labels: labels)
+            if described == nil {
+                described = ImageDescriber.subjectName(fromLabels: labels.isEmpty ? await VisionServices.classify(cutout) : labels)
+            }
             describing = false
             if subject.isEmpty, let described { subject = described }
         }

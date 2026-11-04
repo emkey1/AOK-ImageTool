@@ -238,6 +238,26 @@ nonisolated enum ImageDescriber {
         return try? await describeSubjectWithModel(image, labels: labels)
     }
 
+    /// The classifier's labels that are categories of other labels (each comes with its categories at about the same
+    /// confidence): "animal" and "mammal" alongside "fox".
+    private static let categoryLabels: Set<String> = [
+        "adult", "animal", "appliance", "art", "arthropods", "baked goods", "bird", "building", "canine", "clothing", "conveyance",
+        "consumer electronics", "container", "decoration", "drink", "feline", "fish", "food", "footwear", "fruit", "furniture", "games",
+        "headgear", "housewares", "insect", "land", "light", "liquid", "machine", "mammal", "material", "media", "mollusk", "music",
+        "musical instrument", "optical equipment", "outdoor", "people", "plant", "poultry", "recreation", "reptile", "rodent", "sky",
+        "structure", "tableware", "tool", "utensil", "vehicle", "water",
+    ]
+
+    /// The subject's likely name from the classifier's labels (most confident first), where Apple Intelligence can't
+    /// describe it: "a fox". A background painted around a subject nobody named often gets a second one beside it,
+    /// or the subject grown past its edges, so even this much helps.
+    static func subjectName(fromLabels labels: [String]) -> String? {
+        if labels.contains("people") { return "a person" }
+        guard let label = labels.first(where: { !categoryLabels.contains($0) }) ?? labels.first else { return nil }
+        if label.hasSuffix("s") { return label }
+        return (label.first.map { "aeiou".contains($0) } == true ? "an " : "a ") + label
+    }
+
     @available(macOS 26, *)
     private static func describeSubjectWithModel(_ image: CGImage, labels: [String]) async throws -> String? {
         let support = self.support

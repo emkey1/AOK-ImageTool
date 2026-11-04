@@ -1206,6 +1206,9 @@ enum SelfTest {
                            CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, CopyOperation.cloneHeal.key, PrefKey.cloneHeals, PrefKey.confirmOverwrite,
                            PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
                            PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key, PrefKey.stackFronts]
+        // From the defaults: a run that's interrupted leaves its settings behind (in the Debug build's own domain),
+        // and they'd fail this run's checks and leave a Debug copy that overwrites originals.
+        for key in touchedKeys { UserDefaults.standard.removeObject(forKey: key) }
         let savedPrefs = touchedKeys.map { ($0, UserDefaults.standard.object(forKey: $0)) }
         let out = FileManager.default.temporaryDirectory.appendingPathComponent("ImageViewerSelfTest-\(UUID().uuidString.prefix(6))")
         try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
@@ -2161,6 +2164,13 @@ enum SelfTest {
         await modelFixChecks(decodedByName["Harbor Village.heic"])
 
         print("\n[Generative fill]")
+        // A subject named from the image classifier's labels, where Apple Intelligence can't describe it.
+        check(ImageDescriber.subjectName(fromLabels: ["animal", "canine", "fox", "mammal"]) == "a fox"
+              && ImageDescriber.subjectName(fromLabels: ["adult", "people"]) == "a person"
+              && ImageDescriber.subjectName(fromLabels: ["tableware", "utensil", "cup", "coffee"]) == "a cup"
+              && ImageDescriber.subjectName(fromLabels: ["animal"]) == "an animal"
+              && ImageDescriber.subjectName(fromLabels: ["shoes"]) == "shoes"
+              && ImageDescriber.subjectName(fromLabels: []) == nil, "a subject is named from the image classifier's labels")
         do {
             var scheduler = DPMSolverMultistepScheduler(steps: 20)
             check(scheduler.timesteps.count == 20 && scheduler.timesteps.first == 999 && scheduler.timesteps.last == 50,
