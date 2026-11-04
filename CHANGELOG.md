@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.1
 
 - **Generate a Background on a picture with its own transparency** (a transparent PNG, or a saved cutout): it always failed with “The image couldn't be extended”, because the picture's transparency was read into a mask with no edges, which left no subject to paint around. Cutouts made in the app weren't affected.
 
