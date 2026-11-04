@@ -24,16 +24,19 @@ nonisolated final class ImageModel: @unchecked Sendable {
     let modelName: String
     /// The width and height it takes.
     let side: Int
+    /// A correction to its program, made before it loads.
+    private let fix: ModelFix?
 
     private let queue: DispatchQueue
     private var model: MLModel?    // queue only
     private var jobs = 0           // queue only
 
-    init(purpose: String, folder: String, modelName: String, side: Int) {
+    init(purpose: String, folder: String, modelName: String, side: Int, fix: ModelFix? = nil) {
         self.purpose = purpose
         self.folder = folder
         self.modelName = modelName
         self.side = side
+        self.fix = fix
         queue = DispatchQueue(label: "ImageModel.\(folder)", qos: .userInitiated)
     }
 
@@ -70,6 +73,7 @@ nonisolated final class ImageModel: @unchecked Sendable {
             queue.async {
                 do {
                     if self.model == nil {
+                        self.fix?.apply(to: self.directory.appendingPathComponent(self.modelName))
                         let config = MLModelConfiguration()
                         config.computeUnits = .cpuAndGPU
                         self.model = try MLModel(contentsOf: self.directory.appendingPathComponent(self.modelName), configuration: config)

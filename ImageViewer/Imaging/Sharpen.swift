@@ -69,8 +69,8 @@ nonisolated enum BlurFixer {
         }
     }
 
-    static let shakeModel = ImageModel(purpose: "camera shake", folder: "Shake", modelName: "Shake.mlmodelc", side: 384)
-    static let focusModel = ImageModel(purpose: "focus", folder: "Focus", modelName: "Focus.mlmodelc", side: 384)
+    static let shakeModel = ImageModel(purpose: "camera shake", folder: "Shake", modelName: "Shake.mlmodelc", side: 384, fix: .shake)
+    static let focusModel = ImageModel(purpose: "focus", folder: "Focus", modelName: "Focus.mlmodelc", side: 384, fix: .focus)
     static let faceModel = ImageModel(purpose: "face restoration", folder: "Faces", modelName: "Faces.mlmodelc", side: 512)
     static let blurModelName = "Restormer"
     static let facesModelName = "GFPGAN"

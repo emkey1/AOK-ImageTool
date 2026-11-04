@@ -60,6 +60,8 @@ nonisolated final class StableDiffusionInpainter: @unchecked Sendable {
     /// Loading compiles the models for this Mac the first time (Core ML caches that), which can take a minute.
     init(directory: URL, computeUnits: MLComputeUnits = .cpuAndGPU) throws {
         guard Self.isComplete(directory) else { throw Failure.missingModel }
+        ModelFix.vaeEncoder.apply(to: directory.appendingPathComponent("VAEEncoder.mlmodelc"))
+        ModelFix.vaeDecoder.apply(to: directory.appendingPathComponent("VAEDecoder.mlmodelc"))
         func load(_ name: String, _ units: MLComputeUnits) throws -> MLModel {
             let config = MLModelConfiguration()
             config.computeUnits = units
@@ -154,6 +156,28 @@ nonisolated final class StableDiffusionInpainter: @unchecked Sendable {
         _ = progress(1)
         return rgba
     }
+
+    #if DEBUG
+    /// `size` × `size` RGBA through the VAE and back, for the self-test: a picture should come back much as it was.
+    func roundTrip(_ rgba: [UInt8]) throws -> [UInt8] {
+        let n = Self.size, ln = Self.latentSize
+        var pixels = [Float](repeating: 0, count: 3 * n * n)
+        for i in 0..<(n * n) { for c in 0..<3 { pixels[c * n * n + i] = Float(rgba[i * 4 + c]) / 127.5 - 1 } }
+        let moments = try floats(vaeEncoder.prediction(from: MLDictionaryFeatureProvider(dictionary: [
+            "x": MLFeatureValue(multiArray: Self.half(pixels, shape: [1, 3, n, n])),
+        ])), "latent")
+        guard moments.count == 8 * ln * ln else { throw Failure.badOutput }
+        let decoded = try floats(vaeDecoder.prediction(from: MLDictionaryFeatureProvider(dictionary: [
+            "z": MLFeatureValue(multiArray: Self.half(Array(moments[0..<(4 * ln * ln)]), shape: [1, 4, ln, ln])),
+        ])), "image")
+        guard decoded.count == 3 * n * n else { throw Failure.badOutput }
+        var result = [UInt8](repeating: 255, count: n * n * 4)
+        for i in 0..<(n * n) {
+            for c in 0..<3 { result[i * 4 + c] = UInt8(Float.minimum(Float.maximum((decoded[c * n * n + i] + 1) * 127.5, 0), 255).rounded()) }
+        }
+        return result
+    }
+    #endif
 
     /// CLIP's last hidden state, laid out [768, 1, 77] as the UNet takes it.
     private func encode(_ text: String) throws -> [Float] {

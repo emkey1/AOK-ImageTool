@@ -542,6 +542,57 @@ enum SelfTest {
               "presets: Indoor Lamps cools, Shade warms, Fluorescent takes green out")
     }
 
+    /// The corrected model programs: each is in the app as recorded; one replaces only the program it was made for;
+    /// and with the real models, a picture comes through the VAE as it went in (at half precision it can come back flat
+    /// gray, which checks of sizes and flow don't notice). (`AOK_SELFTEST_ONLY=fixes` runs just these.)
+    private static func modelFixChecks(_ photo: DecodedImage?) async {
+        check(ModelFix.all.allSatisfy { $0.program != nil }, "the corrected model programs are in the app, as recorded")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("ModelFix-\(UUID().uuidString).mlmodelc")
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appendingPathComponent("model.mil")
+        try? Data("a program we shipped".utf8).write(to: file)
+        if let shipped = try? ModelDownloads.sha256(of: file) {
+            let fix = ModelFix(resource: ModelFix.focus.resource, shipped: shipped, fixed: ModelFix.focus.fixed)
+            fix.apply(to: folder)
+            check((try? ModelDownloads.sha256(of: file)) == fix.fixed, "a program we shipped is replaced by its corrected one")
+            fix.apply(to: folder)
+            check((try? ModelDownloads.sha256(of: file)) == fix.fixed, "a corrected program stays as it is")
+            let other = Data("a program converted some other way".utf8)
+            try? other.write(to: file)
+            fix.apply(to: folder)
+            check((try? Data(contentsOf: file)) == other, "a program we didn't ship is left alone")
+        }
+        let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+        if GenerativeModel.isInstalled, let photo {
+            let side = StableDiffusionInpainter.size
+            var bitmap = RGBABitmap(width: side, height: side)
+            bitmap.draw(photo.cgImage, topLeftRect: CGRect(x: 0, y: 0, width: side, height: side), space: sRGB, quality: .high)
+            let pixels = bitmap.pixels
+            do {
+                let back = try await GenerativeEngine.shared.run { try $0.roundTrip(pixels) }
+                var total = 0
+                for i in 0..<(side * side) { for c in 0..<3 { total += abs(Int(back[i * 4 + c]) - Int(pixels[i * 4 + c])) } }
+                let difference = Double(total) / Double(3 * side * side)
+                // (A busy photo comes back about 9 off; the flat gray of a broken VAE, about 80.)
+                check(difference < 25, String(format: "a picture comes through the VAE as it went in (off by %.1f of 255)", difference))
+            } catch {
+                check(false, "the VAE: \(error.localizedDescription)")
+            }
+            for (fix, name) in [(ModelFix.vaeDecoder, "VAEDecoder"), (ModelFix.vaeEncoder, "VAEEncoder")] {
+                let installed = try? ModelDownloads.sha256(of: GenerativeModel.directory.appendingPathComponent("\(name).mlmodelc/model.mil"))
+                check(installed == fix.fixed, "\(name) has its corrected program once it's loaded")
+            }
+        }
+        if let photo {
+            for (model, fix) in [(BlurFixer.focusModel, ModelFix.focus), (BlurFixer.shakeModel, ModelFix.shake)] where model.isInstalled {
+                _ = try? await model.predict(photo.cgImage, space: sRGB)
+                let installed = try? ModelDownloads.sha256(of: model.directory.appendingPathComponent(model.modelName + "/model.mil"))
+                check(installed == fix.fixed, "\(model.modelName) has its corrected program once it's loaded")
+            }
+        }
+    }
+
     /// New Image from Description: titles and prompts; a preview in each shape's proportions, and the one kept
     /// finished at 2048 px (when the model is installed); saved into the folder under its title.
     /// (`AOK_SELFTEST_ONLY=newimage` runs just these.)
@@ -681,9 +732,36 @@ enum SelfTest {
             for i in stride(from: 0, to: pa.count, by: 4) { for c in 0..<3 { total += abs(Int(pa[i + c]) - Int(pb[i + c])) } }
             return Double(total) / Double(pa.count / 4 * 3)
         }
+        /// Camera shake by hand: Core Image's motion blur differs between macOS versions, and this checks the model.
+        func shaken(reach: Int, angle: Double) -> CGImage? {
+            let w = sharp.width, h = sharp.height
+            var p = [UInt8](repeating: 0, count: w * h * 4)
+            let c = CGContext(data: &p, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                              space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)
+            c?.draw(sharp, in: rect)
+            let offsets = (-reach...reach).map { (x: Int((Double($0) * cos(angle)).rounded()), y: Int((Double($0) * sin(angle)).rounded())) }
+            var blurred = p
+            for y in 0..<h {
+                for x in 0..<w {
+                    var sum = (0, 0, 0)
+                    for o in offsets {
+                        let i = (min(max(y + o.y, 0), h - 1) * w + min(max(x + o.x, 0), w - 1)) * 4
+                        sum = (sum.0 + Int(p[i]), sum.1 + Int(p[i + 1]), sum.2 + Int(p[i + 2]))
+                    }
+                    let i = (y * w + x) * 4
+                    blurred[i] = UInt8(sum.0 / offsets.count)
+                    blurred[i + 1] = UInt8(sum.1 / offsets.count)
+                    blurred[i + 2] = UInt8(sum.2 / offsets.count)
+                }
+            }
+            return blurred.withUnsafeMutableBytes { buffer in
+                CGContext(data: buffer.baseAddress, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                          space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)?.makeImage()
+            }
+        }
         let cases: [(BlurFixer.Blur, String, CGImage?)] = [
             (.focus, "soft focus", degraded("CIGaussianBlur", [kCIInputRadiusKey: 1.6])),
-            (.shake, "camera shake", degraded("CIMotionBlur", [kCIInputRadiusKey: 3, kCIInputAngleKey: 0.35])),
+            (.shake, "camera shake", shaken(reach: 3, angle: 0.35)),
         ]
         for (blur, title, input) in cases {
             guard let input else { check(false, title); continue }
@@ -1163,6 +1241,13 @@ enum SelfTest {
                       "\(model.archives[0].file) downloads, matches its checksum and installs in \(Int(Date().timeIntervalSince(started))) s"
                       + (ModelDownloads.shared.failure[model.id].map { " (\($0))" } ?? ""))
             }
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "fixes" {
+            print("\n[Model fixes]")
+            await modelFixChecks(decodedByName["Harbor Village.heic"])
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
@@ -2072,6 +2157,9 @@ enum SelfTest {
         }
 
         // 6c. Generative fill: the scheduler and tokenizer always; a real generation when the model is installed.
+        print("\n[Model fixes]")
+        await modelFixChecks(decodedByName["Harbor Village.heic"])
+
         print("\n[Generative fill]")
         do {
             var scheduler = DPMSolverMultistepScheduler(steps: 20)

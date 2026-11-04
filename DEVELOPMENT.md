@@ -89,6 +89,14 @@ Each script uses a throwaway Python environment inside the folder you name and p
 model's LICENSE.txt and a NOTICE.txt), upload them to a new `models-N` prerelease, and update the URL, sizes and
 checksums in `ModelDownloads.swift`.
 
+**Corrected programs.** Half precision can't hold some of the normalization arithmetic: squares over 256 overflow in the
+Stable Diffusion VAEs' group norms, and Restormer's attention sums 147,456 of them. What that does depends on how Core ML
+runs the program. macOS 15's CPU really computes it, so the VAEs give flat gray and generated pictures come out as a blur;
+any Mac's CPU gets Restormer's colors wrong. The app therefore carries corrected programs (`Support/ModelFixes/`, made by
+`scripts/fix-model-programs.py`) that do that arithmetic at full precision, with the same weights, and `Support/ModelFix.swift`
+puts each in place of the `model.mil` it was made for just before the model loads, so nothing has to be downloaded again.
+A new conversion has a different program, which is left alone: run the script on it and update the checksums in `ModelFix.swift`.
+
 ## How a generated fill is made
 
 The code is in `Imaging/Fill/`.
@@ -170,8 +178,7 @@ edges, as much as the strength says.
 
 Conversions are checked against the original PyTorch models: LaMa and GFPGAN must run in full precision (half
 precision gives noise or a flat color), Restormer is fine in half precision on the GPU but not on the Neural Engine, so
-`ImageModel` runs on CPU and GPU. (On the CPU alone it's wrong too. Core ML can't use a virtual machine's GPU, so
-the self-test's Out of Focus and Camera Shake checks fail in a VM; Macs always have a GPU.) NAFNet was tried for camera shake and dropped (colored noise on some pictures, even
+`ImageModel` runs on CPU and GPU. NAFNet was tried for camera shake and dropped (colored noise on some pictures, even
 in its own code).
 
 ## Releasing
@@ -194,7 +201,8 @@ and notarized. `scripts/make-dmg.sh --build` makes a locally signed installer fo
 
 Debug builds have their own bundle ID (`com.oneopa.AOK-ImageTool.debug`), so their settings never mix with an installed
 copy's: the self-test turns off things like moving originals to the Trash while it runs, and a run that's interrupted
-can't put them back. It refuses to run under the released ID. Installed models are still shared.
+can't put them back. It refuses to run under the released ID. Installed models are still shared (and so get their
+corrected programs, as they would from the app).
 
 Runs every non-UI pipeline headlessly against a folder of images and prints a pass/fail report:
 

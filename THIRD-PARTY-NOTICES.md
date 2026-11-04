@@ -11,7 +11,9 @@ apply to them.
 
 - Source: [stable-diffusion-v1-5/stable-diffusion-inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting),
   converted to Core ML (fp16) with [scripts/convert-inpainting-model.sh](scripts/convert-inpainting-model.sh).
-  The conversion changes the files' format, not the model.
+  The conversion changes the files' format, not the model. The app then changes the VAE's program (see
+  [scripts/fix-model-programs.py](scripts/fix-model-programs.py)) so its normalization is computed at full precision; the
+  weights stay as they were.
 - License: [CreativeML Open RAIL-M](https://huggingface.co/spaces/CompVis/stable-diffusion-license),
   Copyright (c) 2022 Robin Rombach and Patrick Esser and contributors. The license comes with the download
   (LICENSE.txt and NOTICE.txt in each archive).
@@ -43,7 +45,9 @@ apply to them.
 
 - Source: [swz30/Restormer](https://github.com/swz30/Restormer) (Zamir et al., *Restormer: Efficient Transformer for
   High-Resolution Image Restoration*, CVPR 2022), the v1.0 release's single-image defocus and motion deblurring
-  weights, converted to Core ML with [scripts/convert-sharpen-models.sh](scripts/convert-sharpen-models.sh).
+  weights, converted to Core ML with [scripts/convert-sharpen-models.sh](scripts/convert-sharpen-models.sh). The app
+  then changes the program (see [scripts/fix-model-programs.py](scripts/fix-model-programs.py)) so its normalization and
+  attention are computed at full precision; the weights stay as they were.
 - License: [MIT](https://github.com/swz30/Restormer/blob/main/LICENSE.md), Copyright (c) 2022 Syed Waqas Zamir and
   contributors. The license comes with the download (LICENSE.txt and NOTICE.txt in the archive).
 

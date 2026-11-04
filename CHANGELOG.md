@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Generated pictures and Fix Blur on a Mac running their models on its CPU**: part of Stable Diffusion's and Restormer's arithmetic overflows at the precision they were converted at. On macOS 15 running without a usable GPU, every generated picture came out as a blur with no scene; Fix Blur's colors were wrong on any Mac's CPU. Each model's program is now corrected the next time it's used: there's nothing to download, and results on the GPU stay the same to within a rounding step or two. Testing could only reach macOS 15's CPU (in a virtual machine), so whether any real macOS 15 Mac showed this isn't known.
+
 ## 1.2.1
 
 - **Generate a Background on a picture with its own transparency** (a transparent PNG, or a saved cutout): it always failed with “The image couldn't be extended”, because the picture's transparency was read into a mask with no edges, which left no subject to paint around. Cutouts made in the app weren't affected.
