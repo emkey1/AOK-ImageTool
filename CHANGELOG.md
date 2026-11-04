@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.3
 
 - **Generate a Background names the subject on every Mac**: without Apple Intelligence (so on every Mac on macOS 15) the Subject field stayed empty, and a background painted around a subject nobody named often got a second one beside it, or the subject grown past its edges. The field now starts with what the image classifier sees (“a fox”), which you can change.
 
