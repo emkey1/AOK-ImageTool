@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.4
 
 - **Select Object and Remove Objects work on the picture as it's shown**: with a cutout, a background, a crop, straightening or a document fix on the picture, they showed it without them (Select Object without any edits at all), so on an edited copy in a stack they looked like the picture before it was cut out. Both now show it as it is on screen; what's marked there lands in the right place on the image, and Copy and Save as PNG take the selection from the picture as shown.
 
