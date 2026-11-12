@@ -359,45 +359,14 @@ nonisolated enum ObjectRemover {
                                                 width: rect.width / full.width, height: rect.height / full.height))
     }
 
-    /// A point on the image as `e` turns and flips it (`p` in pixels of a picture `shown` big, Core Image's y up),
-    /// in the image's own pixel space (`size`), as `sourceMask` maps masks.
+    /// A point on the picture as `e` shows it (see `EditRenderer.sourcePoint`).
     static func sourcePoint(_ p: CGPoint, shownWith e: EditState, shown: CGSize, size: CGSize) -> CGPoint {
-        var frame = CGRect(origin: .zero, size: shown), q = p
-        func orient(_ o: CGImagePropertyOrientation) {
-            let t = CIImage(color: .black).cropped(to: frame).orientationTransform(for: o)
-            let moved = frame.applying(t)
-            q = q.applying(t)
-            q = CGPoint(x: q.x - moved.minX, y: q.y - moved.minY)
-            frame = CGRect(origin: .zero, size: moved.size)
-        }
-        switch ((e.quarterTurns % 4) + 4) % 4 {
-        case 1: orient(.left)
-        case 2: orient(.down)
-        case 3: orient(.right)
-        default: break
-        }
-        if e.flipVertical { orient(.downMirrored) }
-        if e.flipHorizontal { orient(.upMirrored) }
-        guard frame.width > 0, frame.height > 0 else { return q }
-        return CGPoint(x: q.x * size.width / frame.width, y: q.y * size.height / frame.height)
+        EditRenderer.shared.sourcePoint(p, shownWith: e, shown: shown, size: size)
     }
 
-    /// A mask drawn over the image as `e` turns and flips it, in the image's own pixel space (`size`): the turn
-    /// undone, then the flips (the pipeline flips first, then turns).
+    /// A mask drawn over the picture as `e` shows it, on the image's own pixels (see `EditRenderer.sourceMask`).
     static func sourceMask(_ mask: CIImage, shownWith e: EditState, size: CGSize) -> CIImage {
-        func origin(_ m: CIImage) -> CIImage { m.transformed(by: CGAffineTransform(translationX: -m.extent.minX, y: -m.extent.minY)) }
-        var m = origin(mask)
-        switch ((e.quarterTurns % 4) + 4) % 4 {
-        case 1: m = origin(m.oriented(.left))
-        case 2: m = origin(m.oriented(.down))
-        case 3: m = origin(m.oriented(.right))
-        default: break
-        }
-        if e.flipVertical { m = origin(m.oriented(.downMirrored)) }
-        if e.flipHorizontal { m = origin(m.oriented(.upMirrored)) }
-        guard m.extent.width > 0, m.extent.height > 0 else { return m }
-        return m.transformed(by: CGAffineTransform(scaleX: size.width / m.extent.width, y: size.height / m.extent.height))
-            .cropped(to: CGRect(origin: .zero, size: size))
+        EditRenderer.shared.sourceMask(mask, shownWith: e, size: size)
     }
 
     // MARK: Fills (all `width` × `height` RGBA, rows top-down; `hole` 1 = fill)

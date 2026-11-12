@@ -620,24 +620,13 @@ struct RemoveObjectsEditor: View {
         Prefs.set(brush, PrefKey.removalBrush)
     }
 
-    /// The edits the tool shows: the image turned and adjusted as it is, but whole (no crop, straightening or
-    /// document fix, whose areas a removal shouldn't depend on) and without a cutout.
-    private var shownEdits: EditState {
-        var e = start
-        e.crop = nil
-        e.straighten = 0
-        e.perspective = nil
-        e.extendFill = nil
-        e.vignette = 0
-        e.removeCutout()
-        return e
-    }
-
     private var allRemovals: [Removal] { (start.removals ?? []) + removals }
 
+    /// The picture as it is on screen, with the removals so far (marks on it are taken back to the image's own
+    /// pixels, where removals live: see `sourceMask`).
     private func render(initial: Bool = false) async {
         guard let d = model.decoded else { return }
-        var e = shownEdits
+        var e = start
         e.removals = allRemovals.isEmpty ? nil : allRemovals
         // (The latest wins, when the strength slider starts several.)
         renderGeneration += 1
@@ -849,7 +838,7 @@ struct RemoveObjectsEditor: View {
         let size = CGSize(width: w, height: h)
         let soft = CIImage(cgImage: painted, options: [.colorSpace: NSNull()]).clampedToExtent()
             .applyingGaussianBlur(sigma: max(1, diameter * 0.08)).cropped(to: CGRect(origin: .zero, size: size))
-        // How far away it's copied from, in the image's own pixels (turned and flipped as it's shown).
+        // How far away it's copied from, in the image's own pixels.
         let to = CGPoint(x: first.x * w, y: (1 - first.y) * h)
         let from = CGPoint(x: (first.x + offset.width) * w, y: (1 - first.y - offset.height) * h)
         let a = ObjectRemover.sourcePoint(to, shownWith: start, shown: size, size: d.pixelSize)
@@ -1014,6 +1003,7 @@ struct RemoveObjectsEditor: View {
 
     // MARK: Marks
 
+    /// A mark on the picture as shown, on the image's own pixels.
     private func sourceMask(_ mask: CIImage) -> CIImage {
         ObjectRemover.sourceMask(mask, shownWith: start, size: model.decoded?.pixelSize ?? mask.extent.size)
     }

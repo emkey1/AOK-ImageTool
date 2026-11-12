@@ -2,10 +2,13 @@ import CoreImage
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Click-to-select objects (Vision interactive segmentation), then cut out, copy or save them.
+/// Click-to-select objects (Vision interactive segmentation) on the picture as it is on screen, then cut out,
+/// copy or save them.
 struct ObjectSelectEditor: View {
     @Environment(ViewerModel.self) private var model
     @State private var proxy: CGImage?
+    /// The edits the picture is shown with.
+    @State private var shown = EditState.identity
     @State private var included: [CGPoint] = []   // normalized, lower-left origin
     @State private var excluded: [CGPoint] = []
     @State private var mask: CIImage?
@@ -64,8 +67,13 @@ struct ObjectSelectEditor: View {
             controls
         }
         .task {
-            guard let d = model.decoded else { return }
-            proxy = await VisionServices.downscaled(d.cgImage, maxDimension: 1600)
+            // (The image may still be loading, just after moving to it.)
+            for _ in 0..<200 where model.decoded?.url != model.currentURL { try? await Task.sleep(for: .milliseconds(50)) }
+            guard let d = model.decoded, d.url == model.currentURL else { return }
+            let e = model.currentEdits
+            try? await MaskStore.shared.prepare(e, for: d)
+            shown = e
+            proxy = await EditRenderer.shared.render(d, edits: e, maxDimension: 1600, stage: .full)?.image
         }
         .onReceive(NotificationCenter.default.publisher(for: .toolCommit)) { note in
             if note.object as AnyObject? === model, mask != nil { cutOut() }
@@ -167,17 +175,26 @@ struct ObjectSelectEditor: View {
     }
 
     private func cutOut() {
-        guard let mask else { return }
-        let id = MaskStore.shared.addObjectMask(mask)
+        guard let mask, let d = model.decoded else { return }
+        // (A cutout lives on the image's own pixels, whatever the picture's turned, straightened or cropped to.)
+        let id = MaskStore.shared.addObjectMask(EditRenderer.shared.sourceMask(mask, shownWith: shown, size: d.pixelSize))
         model.updateEdits("Cut Out Object") { $0.cutout = .object(id) }
         model.activeTool = nil
+    }
+
+    /// The picture as shown, at full size (what Copy and Save as PNG cut the selection from).
+    private func shownPicture(_ d: DecodedImage) async throws -> CGImage {
+        guard let picture = await EditRenderer.shared.render(d, edits: shown, maxDimension: nil, stage: .full)?.image else {
+            throw VisionError.noSubject
+        }
+        return picture
     }
 
     private func copy() {
         guard let mask, let d = model.decoded else { return }
         Task {
             do {
-                try await model.intelligence.copyCutout(of: d, mask: mask)
+                try await model.intelligence.copyCutout(of: shownPicture(d), mask: mask)
                 model.showToast("Copied object", systemImage: "doc.on.clipboard")
             } catch {
                 message = error.localizedDescription
@@ -195,7 +212,7 @@ struct ObjectSelectEditor: View {
             guard response == .OK, let url = panel.url else { return }
             Task {
                 do {
-                    let data = try await model.intelligence.cutoutPNG(of: d, mask: mask)
+                    let data = try await model.intelligence.cutoutPNG(of: shownPicture(d), mask: mask)
                     try data.write(to: url)
                     if url.deletingLastPathComponent().standardizedFileURL == model.folderURL, let item = FolderScanner.item(for: url) {
                         model.insertItem(item, select: false)

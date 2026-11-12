@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Select Object and Remove Objects work on the picture as it's shown**: with a cutout, a background, a crop, straightening or a document fix on the picture, they showed it without them (Select Object without any edits at all), so on an edited copy in a stack they looked like the picture before it was cut out. Both now show it as it is on screen; what's marked there lands in the right place on the image, and Copy and Save as PNG take the selection from the picture as shown.
+
 ## 1.2.3
 
 - **Generate a Background names the subject on every Mac**: without Apple Intelligence (so on every Mac on macOS 15) the Subject field stayed empty, and a background painted around a subject nobody named often got a second one beside it, or the subject grown past its edges. The field now starts with what the image classifier sees (“a fox”), which you can change.

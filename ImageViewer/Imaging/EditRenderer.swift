@@ -219,6 +219,110 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         return vignetted(img, e.vignette)
     }
 
+    // MARK: From the picture as shown back to the image
+
+    /// How the picture as `e` shows it in full (`makeImage`'s `.full` stage, `shown` big at full size) maps back
+    /// onto the image's own pixels (`size` big): `affine` undoes the crop, the straightening and the turns and
+    /// flips, onto the image as its document correction leaves it (`corrected` big), and `quad` (when there's
+    /// one) is where that correction took it from.
+    struct ShownGeometry {
+        let shown: CGSize
+        let affine: CGAffineTransform
+        let corrected: CGSize
+        let quad: Quad?
+        let size: CGSize
+    }
+
+    /// (Step for step as `makeImage` changes the picture's shape, on a stand-in the image's size.)
+    func shownGeometry(_ e: EditState, size: CGSize) -> ShownGeometry {
+        var standIn = CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: size))
+        if let q = e.perspective { standIn = perspectiveCorrected(standIn, q) }
+        let corrected = standIn.extent.size
+        var rect = CGRect(origin: .zero, size: corrected)
+        var forward = CGAffineTransform.identity
+        func orient(_ o: CGImagePropertyOrientation) {
+            let t = CIImage(color: .black).cropped(to: rect).orientationTransform(for: o)
+            let moved = rect.applying(t)
+            forward = forward.concatenating(t).concatenating(CGAffineTransform(translationX: -moved.minX, y: -moved.minY))
+            rect = CGRect(origin: .zero, size: moved.size)
+        }
+        if e.flipHorizontal { orient(.upMirrored) }
+        if e.flipVertical { orient(.downMirrored) }
+        switch ((e.quarterTurns % 4) + 4) % 4 {
+        case 1: orient(.right)
+        case 2: orient(.down)
+        case 3: orient(.left)
+        default: break
+        }
+        if e.straighten != 0 {
+            let center = CGPoint(x: rect.midX, y: rect.midY)
+            let rotation = CGAffineTransform(translationX: center.x, y: center.y)
+                .rotated(by: -e.straighten * .pi / 180)
+                .translatedBy(x: -center.x, y: -center.y)
+            let scale = Self.inscribedScale(size: rect.size, degrees: e.straighten)
+            let w = rect.width * scale, h = rect.height * scale
+            let kept = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h).integral
+            forward = forward.concatenating(rotation).concatenating(CGAffineTransform(translationX: -kept.minX, y: -kept.minY))
+            rect = CGRect(origin: .zero, size: kept.size)
+        }
+        if let c = e.crop {
+            // (Past the image's edges onto an Extend fill, or within them.)
+            var kept = Self.pixelRect(c, in: rect).integral
+            if !e.cropExtendsBeyondImage { kept = kept.intersection(rect) }
+            if kept.width >= 1, kept.height >= 1 {
+                forward = forward.concatenating(CGAffineTransform(translationX: -kept.minX, y: -kept.minY))
+                rect = CGRect(origin: .zero, size: kept.size)
+            }
+        }
+        return ShownGeometry(shown: rect.size, affine: forward.inverted(), corrected: corrected, quad: e.perspective, size: size)
+    }
+
+    /// `mask`, drawn over the picture as `e` shows it in full (at any scale), on the image's own pixels (`size`
+    /// big), where removals and cutouts live. What has none of the image under it (an Extend fill) is dropped.
+    func sourceMask(_ mask: CIImage, shownWith e: EditState, size: CGSize) -> CIImage {
+        let g = shownGeometry(e, size: size)
+        let ext = mask.extent
+        guard ext.width > 0, ext.height > 0, g.shown.width > 0, g.shown.height > 0 else { return mask }
+        let corrected = CGRect(origin: .zero, size: g.corrected)
+        var m = mask.transformed(by: CGAffineTransform(translationX: -ext.minX, y: -ext.minY))
+            .transformed(by: CGAffineTransform(scaleX: g.shown.width / ext.width, y: g.shown.height / ext.height))
+            .transformed(by: g.affine)
+            .cropped(to: corrected)
+            // (Exactly the corrected image's size: the perspective below maps its corners.)
+            .composited(over: CIImage(color: .black).cropped(to: corrected))
+        if let q = g.quad {
+            func p(_ n: CGPoint) -> CIVector { CIVector(x: n.x * size.width, y: n.y * size.height) }
+            m = m.applyingFilter("CIPerspectiveTransform", parameters: [
+                "inputTopLeft": p(q.topLeft), "inputTopRight": p(q.topRight),
+                "inputBottomRight": p(q.bottomRight), "inputBottomLeft": p(q.bottomLeft),
+            ])
+        }
+        // (Exactly the image's size too: a mask is stretched over the picture by its extent.)
+        let source = CGRect(origin: .zero, size: size)
+        return m.cropped(to: source).composited(over: CIImage(color: .black).cropped(to: source))
+    }
+
+    /// A point on the picture as `e` shows it in full (`p` in pixels of a picture `shown` big, Core Image's y
+    /// up), on the image's own pixels (`size` big), as `sourceMask` maps masks.
+    func sourcePoint(_ p: CGPoint, shownWith e: EditState, shown: CGSize, size: CGSize) -> CGPoint {
+        let g = shownGeometry(e, size: size)
+        guard shown.width > 0, shown.height > 0 else { return p }
+        let q = CGPoint(x: p.x * g.shown.width / shown.width, y: p.y * g.shown.height / shown.height).applying(g.affine)
+        guard let quad = g.quad, g.corrected.width > 0, g.corrected.height > 0 else { return q }
+        // The document correction undone: the unit square onto the quad (Heckbert's projective mapping), with
+        // its corners (0, 0), (1, 0), (1, 1) and (0, 1) at the bottom left, bottom right, top right and top left.
+        let u = Double(q.x / g.corrected.width), v = Double(q.y / g.corrected.height)
+        let c = [quad.bottomLeft, quad.bottomRight, quad.topRight, quad.topLeft].map { (Double($0.x * size.width), Double($0.y * size.height)) }
+        let dx1 = c[1].0 - c[2].0, dx2 = c[3].0 - c[2].0, dx3 = c[0].0 - c[1].0 + c[2].0 - c[3].0
+        let dy1 = c[1].1 - c[2].1, dy2 = c[3].1 - c[2].1, dy3 = c[0].1 - c[1].1 + c[2].1 - c[3].1
+        let det = dx1 * dy2 - dx2 * dy1
+        let g1 = det == 0 ? 0 : (dx3 * dy2 - dx2 * dy3) / det, h1 = det == 0 ? 0 : (dx1 * dy3 - dx3 * dy1) / det
+        let a = c[1].0 - c[0].0 + g1 * c[1].0, b = c[3].0 - c[0].0 + h1 * c[3].0
+        let d = c[1].1 - c[0].1 + g1 * c[1].1, f = c[3].1 - c[0].1 + h1 * c[3].1
+        let w = g1 * u + h1 * v + 1
+        return CGPoint(x: (a * u + b * v + c[0].0) / w, y: (d * u + f * v + c[0].1) / w)
+    }
+
     /// The picture as white balance sees it: turned and straightened, with Auto enhance, before light and color
     /// (and uncropped, so a spot is found by where it is before the crop). For the eyedropper and Auto.
     func whiteBalanceInput(_ decoded: DecodedImage, edits e: EditState, maxDimension: CGFloat?) -> CIImage {

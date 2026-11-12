@@ -554,7 +554,12 @@ final class IntelligenceModel {
 
     /// Renders `d` with `mask` applied, cropped to the mask, and puts a PNG on the pasteboard.
     func copyCutout(of d: DecodedImage, mask: CIImage) async throws {
-        let png = try await cutoutPNG(of: d, mask: mask)
+        try await copyCutout(of: d.cgImage, mask: mask)
+    }
+
+    /// `picture` with `mask` applied, cropped to the mask, as a PNG on the pasteboard.
+    func copyCutout(of picture: CGImage, mask: CIImage) async throws {
+        let png = try await cutoutPNG(of: picture, mask: mask)
         let pb = NSPasteboard.general
         pb.clearContents()
         let item = NSPasteboardItem()
@@ -565,16 +570,23 @@ final class IntelligenceModel {
 
     /// PNG of `d` with `mask` applied (transparent elsewhere), cropped to the masked area.
     func cutoutPNG(of d: DecodedImage, mask: CIImage) async throws -> Data {
+        try await cutoutPNG(of: d.cgImage, mask: mask)
+    }
+
+    /// PNG of `picture` with `mask` (any size, stretched over it) applied, transparent elsewhere, cropped to the
+    /// masked area.
+    func cutoutPNG(of picture: CGImage, mask: CIImage) async throws -> Data {
         try await Task.detached(priority: .userInitiated) { () throws -> Data in
-            let ext = CGRect(origin: .zero, size: d.pixelSize)
+            let size = CGSize(width: picture.width, height: picture.height)
+            let ext = CGRect(origin: .zero, size: size)
             let m = mask
                 .transformed(by: CGAffineTransform(translationX: -mask.extent.minX, y: -mask.extent.minY))
                 .transformed(by: CGAffineTransform(scaleX: ext.width / mask.extent.width, y: ext.height / mask.extent.height))
-            var cut = CIImage(cgImage: d.cgImage).applyingFilter("CIBlendWithMask", parameters: [
+            var cut = CIImage(cgImage: picture).applyingFilter("CIBlendWithMask", parameters: [
                 kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: ext),
                 kCIInputMaskImageKey: m,
             ])
-            if let bounds = VisionServices.maskBounds(m, imageSize: d.pixelSize) { cut = cut.cropped(to: bounds) }
+            if let bounds = VisionServices.maskBounds(m, imageSize: size) { cut = cut.cropped(to: bounds) }
             let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
             guard let data = ImageDecoder.ciContext.pngRepresentation(of: cut, format: .RGBA8, colorSpace: sRGB) else {
                 throw VisionError.noSubject

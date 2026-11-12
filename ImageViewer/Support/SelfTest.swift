@@ -126,23 +126,51 @@ enum SelfTest {
                 print("  • generative model not installed; skipping Generate")
             }
         }
-        // A mark drawn over the image turned and flipped lands where it was drawn on the image itself.
+        // A mark drawn over the picture as it's shown (turned, flipped, straightened, cropped, document-corrected,
+        // extended) lands where it was drawn on the image itself; so does a point.
         if let maskImage = ImageDecoder.ciContext.createCGImage(mask, from: frame) {
             let maskDecoded = DecodedImage(url: out.appendingPathComponent("mask.png"), cgImage: maskImage, isHDR: false, isAnimated: false,
                                            pageCount: 1, pageIndex: 0, typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
-            var ok = true
+            var cases: [(String, EditState)] = []
             for (turns, flip) in [(1, true), (2, false), (3, false), (0, true)] {
                 var turned = EditState()
                 turned.quarterTurns = turns
                 turned.flipHorizontal = flip
-                let shown = EditRenderer.shared.makeImage(maskDecoded, edits: turned, maxDimension: 1024, stage: .full)
-                let back = ObjectRemover.sourceMask(shown, shownWith: turned, size: size)
-                guard let b = VisionServices.maskBounds(back, imageSize: size) else { ok = false; continue }
-                let tolerance = size.width * 0.012
-                if abs(b.minX - marked.minX) > tolerance || abs(b.maxX - marked.maxX) > tolerance
-                    || abs(b.minY - marked.minY) > tolerance || abs(b.maxY - marked.maxY) > tolerance { ok = false }
+                cases.append(("turned \(turns)\(flip ? " and flipped" : "")", turned))
             }
-            check(ok, "marks made on a turned or flipped image map back onto it")
+            var straightened = EditState()
+            straightened.straighten = 4
+            var cropped = EditState()
+            cropped.crop = CGRect(x: 0.3, y: 0.3, width: 0.65, height: 0.6)
+            var document = EditState()
+            document.perspective = Quad(topLeft: CGPoint(x: 0.05, y: 0.95), topRight: CGPoint(x: 0.96, y: 0.9),
+                                        bottomRight: CGPoint(x: 0.98, y: 0.04), bottomLeft: CGPoint(x: 0.02, y: 0.08))
+            var extended = EditState()
+            extended.crop = CGRect(x: -0.2, y: 0, width: 1.4, height: 1)
+            var everything = document
+            everything.quarterTurns = 1
+            everything.flipVertical = true
+            everything.straighten = -3
+            everything.crop = CGRect(x: 0.05, y: 0.05, width: 0.9, height: 0.9)   // (keeping all of the mark in view)
+            cases += [("straightened", straightened), ("cropped", cropped), ("document-corrected", document), ("extended", extended),
+                      ("all of them", everything)]
+            var wrong: [String] = []
+            for (name, e) in cases {
+                let shown = EditRenderer.shared.makeImage(maskDecoded, edits: e, maxDimension: 1024, stage: .full)
+                let back = ObjectRemover.sourceMask(shown, shownWith: e, size: size)
+                let tolerance = size.width * 0.012
+                guard let b = VisionServices.maskBounds(back, imageSize: size),
+                      abs(b.minX - marked.minX) <= tolerance, abs(b.maxX - marked.maxX) <= tolerance,
+                      abs(b.minY - marked.minY) <= tolerance, abs(b.maxY - marked.maxY) <= tolerance else {
+                    wrong.append("\(name) (mark at \(VisionServices.maskBounds(back, imageSize: size).map { "\($0.integral)" } ?? "nothing"), not \(marked))")
+                    continue
+                }
+                // The middle of the mark as shown (a document correction bends a rectangle a little, so it's near).
+                guard let m = VisionServices.maskBounds(shown, imageSize: shown.extent.size) else { wrong.append("\(name) (shown)"); continue }
+                let q = ObjectRemover.sourcePoint(CGPoint(x: m.midX, y: m.midY), shownWith: e, shown: shown.extent.size, size: size)
+                if hypot(q.x - marked.midX, q.y - marked.midY) > size.width * 0.02 { wrong.append("\(name) (point)") }
+            }
+            check(wrong.isEmpty, "marks and points on the picture as shown map back onto the image" + (wrong.isEmpty ? "" : ": not \(wrong.joined(separator: ", "))"))
         }
         // Done: a copy stacked on the original, or (copies off) an edit.
         let fm = FileManager.default
