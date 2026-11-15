@@ -76,7 +76,7 @@ final class PendingEdits {
             if case .object = edits.cutout { edits.removeCutout() }
             // A missing Extend fill is simply made again (same seed, same result).
             if let fill = edits.extendFill, !FileManager.default.fileExists(atPath: fill.path) { edits.extendFill = nil }
-            if case .image(let picture) = edits.background, !FileManager.default.fileExists(atPath: picture) {
+            if case .image(let picture, _) = edits.background, !FileManager.default.fileExists(atPath: picture) {
                 edits.background = nil
                 edits.matchLighting = nil
             }
@@ -93,7 +93,7 @@ final class PendingEdits {
     /// Background pictures that pending edits draw behind cutouts.
     var backdropPaths: Set<String> {
         Set(entries.values.compactMap { entry in
-            if case .image(let path) = entry.edits.background { path } else { nil }
+            if case .image(let path, _) = entry.edits.background { path } else { nil }
         })
     }
 

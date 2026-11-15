@@ -220,7 +220,7 @@ final class PhotosLibrary {
     nonisolated static func keepFiles(of e: EditState) {
         var paths = e.removals?.map(\.path) ?? []
         if let path = e.extendFill?.path { paths.append(path) }
-        if case .image(let path) = e.background { paths.append(path) }
+        if case .image(let path, _) = e.background { paths.append(path) }
         guard !paths.isEmpty else { return }
         Prefs.set(keptFiles.union(paths).sorted(), PrefKey.photosEditFiles)
     }

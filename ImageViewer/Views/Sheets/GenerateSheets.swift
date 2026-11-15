@@ -92,7 +92,7 @@ struct GenerateBackgroundSheet: View {
                     .disabled(scene.trimmingCharacters(in: .whitespaces).isEmpty || source == nil || progress.value != nil)
                 if let result {
                     Button("Use Background") {
-                        model.useGeneratedBackground(result)
+                        model.useGeneratedBackground(result, frame: source?.frame)
                         close()
                     }
                     .prominentButtonStyle()

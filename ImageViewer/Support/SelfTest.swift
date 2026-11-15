@@ -1780,6 +1780,23 @@ enum SelfTest {
             let found = source.flatMap { VisionServices.maskBounds($0.subject, imageSize: CGSize(width: $0.photo.width, height: $0.photo.height)) }
             check(source?.subject.extent == source.map { CGRect(x: 0, y: 0, width: $0.photo.width, height: $0.photo.height) } && found?.isEmpty == false,
                   "a transparent picture's own transparency says what a background goes behind (\(found.map { "\($0)" } ?? "no subject"))")
+            // Turned and cropped, it's painted around the picture as it's shown, and put behind that.
+            model.updateEdits("Crop") {
+                $0.rotate(clockwise: true)
+                $0.crop = CGRect(x: 0.1, y: 0.05, width: 0.6, height: 0.9)
+            }
+            if let turned = await model.backgroundSource(), let size = model.decoded?.pixelSize {
+                let shown = EditRenderer.shared.shownGeometry(model.currentEdits, size: size).shown
+                let (ratio, expected) = (Double(turned.photo.width) / Double(turned.photo.height), shown.width / shown.height)
+                check(abs(ratio - expected) < 0.02 && turned.frame == model.currentEdits.backdropFrame && turned.frame != nil
+                      && turned.subject.extent == CGRect(x: 0, y: 0, width: turned.photo.width, height: turned.photo.height)
+                      && turned.cutout.map { $0.width == turned.photo.width } == true,
+                      String(format: "Generate a Background paints around the picture as it's shown, turned and cropped (%d×%d for %.0f×%.0f)",
+                             turned.photo.width, turned.photo.height, shown.width, shown.height))
+            } else {
+                check(false, "Generate a Background on a turned, cropped picture")
+            }
+            model.updateEdits("Revert") { $0 = .identity }
             let pb = NSPasteboard(name: NSPasteboard.Name("AOK-ImageTool self-test"))
             defer { pb.releaseGlobally() }
             // A picture (here TIFF data, as many apps copy): a PNG with its transparency.
@@ -1936,6 +1953,107 @@ enum SelfTest {
             try? ImageWriter.write(ctx.makeImage()!, to: picture, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)
             let blue = corner(.image(path: picture.path))
             check(blue.count == 4 && blue[2] > 235 && blue[0] < 25 && blue[3] == 255, "picture background fills the frame \(blue)")
+
+            // A background put behind a turned, flipped, straightened, corrected or cropped picture fills what's shown,
+            // upright; one painted for it (Generate a Background) lies exactly under the subject it was painted around.
+            check(EditState().backdropFrame == nil && { var e = EditState(); e.crop = CGRect(x: 0, y: 0, width: 1, height: 1); return e }().backdropFrame == nil,
+                  "a picture shown as it was taken gives a background no frame (it fills the image, as before)")
+            func drawn(_ w: Int, _ h: Int, _ draw: (CGContext) -> Void) -> CGImage? {
+                guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                          bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+                draw(ctx)
+                return ctx.makeImage()
+            }
+            func rgba(_ image: CGImage) -> [UInt8] {
+                var px = [UInt8](repeating: 0, count: image.width * image.height * 4)
+                let ctx = CGContext(data: &px, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                    space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+                ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+                return px
+            }
+            // A see-through picture with an off-center, lopsided subject (so a turn or flip the wrong way shows), and a
+            // background picture with a different color in each quarter (top left red, top right green, bottom left
+            // blue, bottom right yellow; Core Graphics counts from the bottom).
+            let subjectFile = out.appendingPathComponent("framed-subject.png"), quarters = out.appendingPathComponent("framed-quarters.png")
+            if let subject = drawn(300, 200, { ctx in
+                   ctx.setFillColor(CGColor(srgbRed: 0.5, green: 0.5, blue: 0.5, alpha: 1)); ctx.fill(CGRect(x: 60, y: 100, width: 90, height: 60))
+                   ctx.setFillColor(CGColor(srgbRed: 0.15, green: 0.1, blue: 0.3, alpha: 1)); ctx.fill(CGRect(x: 200, y: 30, width: 30, height: 40))
+               }), let picture = drawn(64, 48, { ctx in
+                   for (rect, c) in [(CGRect(x: 0, y: 24, width: 32, height: 24), (1.0, 0.0, 0.0)), (CGRect(x: 32, y: 24, width: 32, height: 24), (0, 1, 0)),
+                                     (CGRect(x: 0, y: 0, width: 32, height: 24), (0, 0, 1)), (CGRect(x: 32, y: 0, width: 32, height: 24), (1, 1, 0))] {
+                       ctx.setFillColor(CGColor(srgbRed: c.0, green: c.1, blue: c.2, alpha: 1))
+                       ctx.fill(rect)
+                   }
+               }),
+               (try? ImageWriter.write(subject, to: subjectFile, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)) != nil,
+               (try? ImageWriter.write(picture, to: quarters, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)) != nil,
+               let d = try? ImageDecoder.decode(url: subjectFile, page: 0, allowHDR: false) {
+                func color(_ p: [UInt8]) -> String {
+                    guard p.count == 4, p[3] > 240 else { return "clear" }
+                    switch (p[0] > 200, p[1] > 200, p[2] > 200, p[0] < 60, p[1] < 60, p[2] < 60) {
+                    case (true, _, _, _, true, true): return "red"
+                    case (_, true, _, true, _, true): return "green"
+                    case (_, _, true, true, true, _): return "blue"
+                    case (true, true, _, _, _, true): return "yellow"
+                    default: return "\(p)"
+                    }
+                }
+                let quad = Quad(topLeft: CGPoint(x: 0.05, y: 0.95), topRight: CGPoint(x: 0.9, y: 0.97),
+                                bottomRight: CGPoint(x: 0.95, y: 0.08), bottomLeft: CGPoint(x: 0.02, y: 0.03))
+                let shapes: [(String, (inout EditState) -> Void)] = [
+                    ("turned right and cropped", { $0.quarterTurns = 1; $0.crop = CGRect(x: 0.05, y: 0.05, width: 0.9, height: 0.8) }),
+                    ("turned left, flipped and cropped", { $0.quarterTurns = 3; $0.flipHorizontal = true; $0.crop = CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.85) }),
+                    ("straightened and cropped", { $0.straighten = 8; $0.crop = CGRect(x: 0.05, y: 0.1, width: 0.85, height: 0.8) }),
+                    ("corrected, turned over and cropped", { $0.perspective = quad; $0.quarterTurns = 2; $0.crop = CGRect(x: 0.05, y: 0.05, width: 0.9, height: 0.9) }),
+                ]
+                for (index, (name, shape)) in shapes.enumerated() {
+                    var e = EditState()
+                    shape(&e)
+                    e.background = .image(path: quarters.path, frame: e.backdropFrame)
+                    if let shown = EditRenderer.shared.renderSync(d, edits: e, maxDimension: nil)?.image {
+                        let (w, h) = (shown.width - 4, shown.height - 4)
+                        let corners = [pixel(shown, 3, 3), pixel(shown, w, 3), pixel(shown, 3, h), pixel(shown, w, h)].map(color)
+                        check(corners == ["red", "green", "blue", "yellow"], "a picture behind a picture \(name) is upright and fills it \(corners)")
+                    } else {
+                        check(false, "render a background behind a picture \(name)")
+                    }
+                    // A painted background keeps a copy of the subject where it was shown; it must sit exactly under it.
+                    var bare = EditState()
+                    shape(&bare)
+                    let painted = out.appendingPathComponent("framed-painted-\(index).png")   // (pictures are kept by path)
+                    guard let cut = EditRenderer.shared.renderSync(d, edits: bare, maxDimension: nil)?.image,
+                          let fake = drawn(cut.width, cut.height, { ctx in
+                              ctx.setFillColor(CGColor(srgbRed: 0.2, green: 0.8, blue: 0.3, alpha: 1))
+                              ctx.fill(CGRect(x: 0, y: 0, width: cut.width, height: cut.height))
+                              ctx.draw(cut, in: CGRect(x: 0, y: 0, width: cut.width, height: cut.height))
+                          }),
+                          (try? ImageWriter.write(fake, to: painted, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)) != nil
+                    else { check(false, "paint a stand-in background for a picture \(name)"); continue }
+                    var placed = bare
+                    placed.background = .image(path: painted.path, frame: bare.backdropFrame)
+                    if let result = EditRenderer.shared.renderSync(d, edits: placed, maxDimension: nil)?.image,
+                       result.width == fake.width, result.height == fake.height {
+                        let (a, b) = (rgba(result), rgba(fake))
+                        var off = 0
+                        for i in stride(from: 0, to: a.count, by: 4) where (0..<3).contains(where: { abs(Int(a[i + $0]) - Int(b[i + $0])) > 40 }) { off += 1 }
+                        let fraction = Double(off) / Double(a.count / 4)
+                        check(fraction < 0.005, String(format: "a background painted for a picture \(name) lies under its subject (%.2f%% of pixels off)", fraction * 100))
+                    } else {
+                        check(false, "render a painted background behind a picture \(name)")
+                    }
+                }
+                // Without a frame (backgrounds from before), a picture fills the image as it was taken and turns with it.
+                var old = EditState()
+                old.quarterTurns = 1
+                old.background = .image(path: quarters.path)
+                if let shown = EditRenderer.shared.renderSync(d, edits: old, maxDimension: nil)?.image {
+                    let corners = [pixel(shown, 3, 3), pixel(shown, shown.width - 4, 3)].map(color)
+                    check(corners == ["blue", "red"], "a background without a frame still turns with the picture \(corners)")
+                }
+            } else {
+                check(false, "make the pictures for framed backgrounds")
+            }
+
             var opaque = EditState()
             opaque.cutout = .subject
             opaque.background = .color(red: 1, green: 1, blue: 1, alpha: 1)

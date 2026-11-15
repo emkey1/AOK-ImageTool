@@ -68,7 +68,7 @@ extension ViewerModel {
         let handler: (NSApplication.ModalResponse) -> Void = { [weak self] response in
             guard response == .OK, let url = panel.url, let self else { return }
             do {
-                setBackground(.image(path: try BackdropStore.importPicture(url)), actionName: "Background Picture")
+                setBackground(.image(path: try BackdropStore.importPicture(url), frame: currentEdits.backdropFrame), actionName: "Background Picture")
             } catch {
                 showError("Couldn't use “\(url.lastPathComponent)” as a background", error)
             }
@@ -80,7 +80,7 @@ extension ViewerModel {
     func useGeneratedBackground(from url: URL) {
         guard hasFillableTransparency else { return }
         do {
-            setBackground(.image(path: try BackdropStore.importPicture(url)), actionName: "Generated Background")
+            setBackground(.image(path: try BackdropStore.importPicture(url), frame: currentEdits.backdropFrame), actionName: "Generated Background")
         } catch {
             showError("Couldn't use the Image Playground image as a background", error)
         }

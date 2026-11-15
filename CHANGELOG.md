@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Photos' keyboard shortcuts**: **⌘R rotates left and ⌥⌘R right**, as in Photos (⌘R used to rotate right and ⌘L left), and Option-clicking the toolbar's Rotate button (or the Crop tool's) rotates right; its icon turns while Option is held. Rename… moves from ⌥⌘R to **⌥↩**, Photos' key for editing a title. Also from Photos: **⌥1–⌥5 and ⌥0** rate, and **⌥] ⌥[** add or take away a star; **hold M** to see the original until you let go; **⌥S** shows or hides the filmstrip; **⌘↓** opens the picture selected in the grid; **⇧⌘I** is Import from Photos…. R, ⇧R and the other single keys are unchanged.
+- **Backgrounds fit the picture as it's shown**: a background went behind the photo as it was taken, before its turn, crop, straightening or document fix. So Generate a Background showed and painted around the whole uncropped photo (its scene composed for that, and only the cropped part of it kept, at a lower resolution), and on a turned photo any background picture, chosen or generated, came out sideways. Now Generate shows and paints around the picture as it's shown, and every picture background fills that, upright. From then on the background is part of the photo and turns and crops with it, as before. Backgrounds already put behind a photo are unchanged.
 
 ## 1.2.4
 

@@ -40,8 +40,8 @@ nonisolated enum Backdrop: Codable, Equatable, Hashable, Sendable {
     case color(red: Double, green: Double, blue: Double, alpha: Double)
     /// The image's own original pixels, blurred; `amount` 0...1.
     case blur(amount: Double)
-    /// A picture kept by `BackdropStore`, drawn to fill the frame.
-    case image(path: String)
+    /// A picture kept by `BackdropStore`, drawn to fill the picture as `frame` showed it (see `BackdropFrame`).
+    case image(path: String, frame: BackdropFrame? = nil)
 
     var isOpaque: Bool {
         if case .color(_, _, _, let alpha) = self { return alpha >= 1 }
@@ -52,6 +52,32 @@ nonisolated enum Backdrop: Codable, Equatable, Hashable, Sendable {
     var isPicture: Bool {
         if case .image = self { return true }
         return false
+    }
+}
+
+/// Where a background picture goes: the picture as it was shown when the background was put behind it (turned,
+/// flipped, straightened, cropped, corrected). The background fills that upright, so a picture chosen or painted
+/// for a turned or cropped photo fits what was on screen; from then on it's part of the photo, and turns and crops
+/// with it. A background put behind a photo shown as it was taken has none, and fills the image itself, as do
+/// backgrounds from before frames were kept.
+nonisolated struct BackdropFrame: Codable, Equatable, Hashable, Sendable {
+    var quarterTurns = 0
+    var flipHorizontal = false
+    var flipVertical = false
+    var straighten: Double = 0
+    var crop: CGRect?
+    var perspective: Quad?
+
+    /// Edits that change the picture's shape this way, and nothing else.
+    var edits: EditState {
+        var e = EditState()
+        e.quarterTurns = quarterTurns
+        e.flipHorizontal = flipHorizontal
+        e.flipVertical = flipVertical
+        e.straighten = straighten
+        e.crop = crop
+        e.perspective = perspective
+        return e
     }
 }
 
@@ -187,7 +213,7 @@ nonisolated struct BlackAndWhite: Codable, Equatable, Hashable, Sendable {
 }
 
 /// Four corners in normalized, lower-left-origin coordinates (Vision / Core Image convention).
-nonisolated struct Quad: Codable, Equatable, Sendable {
+nonisolated struct Quad: Codable, Equatable, Hashable, Sendable {
     var topLeft: CGPoint
     var topRight: CGPoint
     var bottomRight: CGPoint
@@ -312,6 +338,15 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         quarterTurns % 4 != 0 || flipHorizontal || flipVertical || straighten != 0 || crop != nil || perspective != nil
     }
 
+    /// Where a background put behind the picture now goes (see `BackdropFrame`): nil when it shows the image as
+    /// it was taken.
+    var backdropFrame: BackdropFrame? {
+        let s = shown
+        guard s.hasGeometryChange else { return nil }
+        return BackdropFrame(quarterTurns: s.quarterTurns, flipHorizontal: s.flipHorizontal, flipVertical: s.flipVertical,
+                             straighten: s.straighten, crop: s.crop, perspective: s.perspective)
+    }
+
     var hasAdjustments: Bool {
         var copy = self
         copy.quarterTurns = 0
@@ -406,7 +441,7 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     var referencedFilesExist: Bool {
         var paths = (removals ?? []).map(\.path)
         if let fill = extendFill { paths.append(fill.path) }
-        if case .image(let path) = background { paths.append(path) }
+        if case .image(let path, _) = background { paths.append(path) }
         return paths.allSatisfy { FileManager.default.fileExists(atPath: $0) }
     }
 

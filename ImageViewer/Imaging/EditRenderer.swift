@@ -155,9 +155,9 @@ nonisolated final class EditRenderer: @unchecked Sendable {
                 layer = (base.unpremultiplyingAlpha().settingAlphaOne(in: base.extent), Self.alphaMask(of: base))
             }
             if let layer, let behind = backdropImage(backdrop, base: base) {
-                if case .image(let path) = backdrop, let strength = e.matchLighting, strength > 0 {
+                if case .image(let path, let frame) = backdrop, let strength = e.matchLighting, strength > 0 {
                     let source = e.cutout.map { "\($0)" } ?? "alpha"
-                    let key = "\(decoded.url.path)|\(ObjectIdentifier(decoded).hashValue)|\(source)|\(path)"
+                    let key = "\(decoded.url.path)|\(ObjectIdentifier(decoded).hashValue)|\(source)|\(path)|\(frame.map { "\($0)" } ?? "")"
                     img = lightMatched(layer.subject, mask: layer.mask, behind: behind, strength: strength, key: key)
                 } else {
                     img = img.composited(over: behind)
@@ -283,23 +283,47 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         let g = shownGeometry(e, size: size)
         let ext = mask.extent
         guard ext.width > 0, ext.height > 0, g.shown.width > 0, g.shown.height > 0 else { return mask }
-        let corrected = CGRect(origin: .zero, size: g.corrected)
-        var m = mask.transformed(by: CGAffineTransform(translationX: -ext.minX, y: -ext.minY))
+        let shown = mask.transformed(by: CGAffineTransform(translationX: -ext.minX, y: -ext.minY))
             .transformed(by: CGAffineTransform(scaleX: g.shown.width / ext.width, y: g.shown.height / ext.height))
-            .transformed(by: g.affine)
-            .cropped(to: corrected)
-            // (Exactly the corrected image's size: the perspective below maps its corners.)
-            .composited(over: CIImage(color: .black).cropped(to: corrected))
+        // (Exactly the image's size: a mask is stretched over the picture by its extent.)
+        return carriedToSource(shown, g, under: CIImage(color: .black))
+    }
+
+    /// A background picture filling the picture as `frame` showed it (scaled to fill, centered, upright), on the
+    /// image's own pixels (`size` big), so that after the frame's turns and crop it's upright and fills what was
+    /// shown. Past what was shown its edges are drawn out (seen only if the crop is widened later).
+    func framedBackdrop(_ picture: CIImage, frame: BackdropFrame, size: CGSize) -> CIImage {
+        let g = shownGeometry(frame.edits, size: size)
+        let p = picture.extent
+        guard p.width > 0, p.height > 0, g.shown.width > 0, g.shown.height > 0 else { return picture }
+        let fill = max(g.shown.width / p.width, g.shown.height / p.height)
+        // Clamped before scaling, so resampling at the edges never blends in transparency.
+        let shown = picture.clampedToExtent()
+            .transformed(by: CGAffineTransform(translationX: -p.minX, y: -p.minY))
+            .transformed(by: CGAffineTransform(scaleX: fill, y: fill))
+            .transformed(by: CGAffineTransform(translationX: (g.shown.width - p.width * fill) / 2, y: (g.shown.height - p.height * fill) / 2))
+        return carriedToSource(shown, g, under: nil)
+    }
+
+    /// `image`, over the picture as shown (`g.shown` big at the origin), on the image's own pixels: the crop, the
+    /// straightening and the turns and flips undone, then the document correction. `under` fills what it doesn't
+    /// cover, so the result is exactly the image's size.
+    private func carriedToSource(_ image: CIImage, _ g: ShownGeometry, under: CIImage?) -> CIImage {
+        let corrected = CGRect(origin: .zero, size: g.corrected)
+        // (Exactly the corrected image's size: the perspective below maps its corners.)
+        var m = image.transformed(by: g.affine).cropped(to: corrected)
+        if let under { m = m.composited(over: under.cropped(to: corrected)) }
         if let q = g.quad {
-            func p(_ n: CGPoint) -> CIVector { CIVector(x: n.x * size.width, y: n.y * size.height) }
+            func p(_ n: CGPoint) -> CIVector { CIVector(x: n.x * g.size.width, y: n.y * g.size.height) }
             m = m.applyingFilter("CIPerspectiveTransform", parameters: [
                 "inputTopLeft": p(q.topLeft), "inputTopRight": p(q.topRight),
                 "inputBottomRight": p(q.bottomRight), "inputBottomLeft": p(q.bottomLeft),
             ])
         }
-        // (Exactly the image's size too: a mask is stretched over the picture by its extent.)
-        let source = CGRect(origin: .zero, size: size)
-        return m.cropped(to: source).composited(over: CIImage(color: .black).cropped(to: source))
+        let source = CGRect(origin: .zero, size: g.size)
+        m = m.cropped(to: source)
+        if let under { m = m.composited(over: under.cropped(to: source)) }
+        return m
     }
 
     /// A point on the picture as `e` shows it in full (`p` in pixels of a picture `shown` big, Core Image's y
@@ -458,7 +482,8 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         ])
     }
 
-    /// A backdrop filling `base`'s extent: a color, `base` blurred, or a picture scaled to fill.
+    /// A backdrop filling `base`'s extent: a color, `base` blurred, or a picture scaled to fill (the picture as its
+    /// frame showed it, when it has one).
     private func backdropImage(_ backdrop: Backdrop, base: CIImage) -> CIImage? {
         let ext = base.extent
         switch backdrop {
@@ -470,8 +495,12 @@ nonisolated final class EditRenderer: @unchecked Sendable {
             // Relative to the image size, so proxies and full renders match.
             let sigma = max(1, amount * 0.04 * max(ext.width, ext.height))
             return base.clampedToExtent().applyingGaussianBlur(sigma: sigma).cropped(to: ext)
-        case .image(let path):
+        case .image(let path, let frame):
             guard let picture = backdropPicture(path) else { return nil }
+            if let frame {
+                return framedBackdrop(picture, frame: frame, size: ext.size)
+                    .transformed(by: CGAffineTransform(translationX: ext.minX, y: ext.minY))
+            }
             let size = picture.extent.size
             let fill = max(ext.width / size.width, ext.height / size.height)
             return picture
