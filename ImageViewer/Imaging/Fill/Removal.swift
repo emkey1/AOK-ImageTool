@@ -168,13 +168,20 @@ nonisolated enum ObjectRemover {
         }
 
         // The fill where the mark is and the photo around it, fading from one to the other just past the mark.
-        guard let fillImage = image(filled, width: w, height: h, space: space) else { throw RemovalError.failed }
+        // Blended by exactly the area that was filled (`hole`), all of it: a selected object's mask is soft (and
+        // Core Image takes a gray mask's values as gray levels, making them lower), so blended by the mark itself
+        // the fill covered a person at 50–90% and the rest showed through as a ghost.
+        guard let fillImage = image(filled, width: w, height: h, space: space),
+              let area = maskImage(hole.map { $0 * 255 }, width: w, height: h)?
+                  .transformed(by: CGAffineTransform(translationX: region.minX, y: region.minY))
+                  .composited(over: CIImage(color: .black))
+        else { throw RemovalError.failed }
         let fill = CIImage(cgImage: fillImage).transformed(by: CGAffineTransform(translationX: region.minX, y: region.minY))
         let patch = fill
-            .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: source, kCIInputMaskImageKey: grown])
+            .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: source, kCIInputMaskImageKey: area])
             .applyingFilter("CIBlendWithMask", parameters: [
                 kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: patchRect),
-                kCIInputMaskImageKey: grown.clampedToExtent().applyingGaussianBlur(sigma: feather),
+                kCIInputMaskImageKey: area.applyingGaussianBlur(sigma: feather),
             ])
             .cropped(to: patchRect)
         guard let picture = renderer.context.createCGImage(patch, from: patchRect, format: .RGBA8, colorSpace: space) else {

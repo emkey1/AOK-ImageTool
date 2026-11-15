@@ -74,6 +74,17 @@ enum SelfTest {
                     let patch = EditRenderer.pixelRect(removal.rect, in: frame)
                     check(after < 0.01 && corner(removed) == corner(plain) && patch.contains(marked) && e.referencedFilesExist,
                           "\(method.title) removes the boat (blue \(percent(before)) → \(percent(after))) in \(String(format: "%.1f", seconds)) s; the rest is untouched")
+                    // A soft mark (a selected object's mask is soft) removes as completely as a hard one. The fill used
+                    // to be blended by the mark itself, so 30–50% of a selected person showed through as a ghost. (85%
+                    // gray: Core Image makes it about 69%, still filled, as anything over half is.)
+                    let softMask = CIImage(color: CIColor(red: 0.85, green: 0.85, blue: 0.85)).cropped(to: marked)
+                        .composited(over: CIImage(color: .black).cropped(to: frame))
+                    var softly = EditState()
+                    softly.removals = [try await ObjectRemover.remove(boat, after: [], mask: softMask, grow: 6, method: method, seed: 7)]
+                    let area = CGRect(x: marked.minX, y: size.height - marked.maxY, width: marked.width, height: marked.height)
+                    let soft = render(softly)?.cropping(to: area).map(rgbaPixels) ?? [], hard = removed.cropping(to: area).map(rgbaPixels) ?? []
+                    let worst = soft.count == hard.count ? zip(soft, hard).map { abs(Int($0) - Int($1)) }.max() ?? 255 : 255
+                    check(!soft.isEmpty && worst <= 3, "\(method.title) removes a softly marked object as completely as a hard mark (largest difference \(worst))")
                     if method == .match {
                         // A second removal builds on the first; undoing (dropping it) leaves the first.
                         let top = CGRect(x: size.width * 0.1, y: size.height * 0.8, width: size.width * 0.1, height: size.height * 0.08).integral
