@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Photos' keyboard shortcuts**: **⌘R rotates left and ⌥⌘R right**, as in Photos (⌘R used to rotate right and ⌘L left), and Option-clicking the toolbar's Rotate button (or the Crop tool's) rotates right; its icon turns while Option is held. Rename… moves from ⌥⌘R to **⌥↩**, Photos' key for editing a title. Also from Photos: **⌥1–⌥5 and ⌥0** rate, and **⌥] ⌥[** add or take away a star; **hold M** to see the original until you let go; **⌥S** shows or hides the filmstrip; **⌘↓** opens the picture selected in the grid; **⇧⌘I** is Import from Photos…. R, ⇧R and the other single keys are unchanged.
+
 ## 1.2.4
 
 - **Select Object and Remove Objects work on the picture as it's shown**: with a cutout, a background, a crop, straightening or a document fix on the picture, they showed it without them (Select Object without any edits at all), so on an edited copy in a stack they looked like the picture before it was cut out. Both now show it as it is on screen; what's marked there lands in the right place on the image, and Copy and Save as PNG take the selection from the picture as shown.

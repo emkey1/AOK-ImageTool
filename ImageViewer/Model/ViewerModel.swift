@@ -252,6 +252,10 @@ final class ViewerModel {
     @ObservationIgnored private var lastNavigation = Date.distantPast
     @ObservationIgnored private var navigationDirection = 1
     @ObservationIgnored var keyMonitor: Any?
+    /// Option is held in this window (the toolbar's Rotate button then turns right).
+    var optionKeyDown = false
+    /// M is held: the original shows until it's let go.
+    @ObservationIgnored var holdingOriginalKey = false
     @ObservationIgnored private var windowObservers: [NSObjectProtocol] = []
     @ObservationIgnored private var pendingOpenURLs: [URL] = []
     /// Where a window being reopened goes, once it has its window.
@@ -353,6 +357,17 @@ final class ViewerModel {
             },
             nc.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.windowWillClose() }
+            },
+            // Keys let go of in another window or app: the toolbar turns left again, the edits come back.
+            nc.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    guard let self else { return }
+                    self.optionKeyDown = false
+                    if self.holdingOriginalKey {
+                        self.holdingOriginalKey = false
+                        self.showOriginal = false
+                    }
+                }
             },
         ]
     }
@@ -904,6 +919,9 @@ final class ViewerModel {
         }
         if DebugHooks.extendOnLaunch, activeTool == nil { activeTool = .crop }
         if DebugHooks.scene != nil { DebugScenes.apply(to: self) }
+        #if DEBUG
+        if DebugHooks.keyTestFolder != nil { KeyTest.start(self) }
+        #endif
         schedulePrefetch()
         intelligence.imageDidChange()
     }

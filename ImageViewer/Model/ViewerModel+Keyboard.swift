@@ -18,7 +18,7 @@ extension ViewerModel {
             Shortcut(keys: "Home  End", action: "First / last image"),
             Shortcut(keys: "Page Up / Down", action: "Previous / next page"),
             Shortcut(keys: "Swipe  ·  Scroll wheel", action: "Previous / next (when image fits)"),
-            Shortcut(keys: "G  ·  Return", action: "Toggle grid / open image"),
+            Shortcut(keys: "G  ·  Return  ·  ⌘↓", action: "Toggle grid / open image"),
         ]),
         ("Zoom", [
             Shortcut(keys: "Z  ·  Double-click", action: "Toggle fit / actual size"),
@@ -32,13 +32,16 @@ extension ViewerModel {
             Shortcut(keys: "X", action: "Reject (red label)"),
             Shortcut(keys: "U", action: "Unflag"),
             Shortcut(keys: "1–5  ·  0", action: "Stars (again for ½) / none"),
+            Shortcut(keys: "⌥1–⌥5  ·  ⌥0  ·  ⌥[ ⌥]", action: "The same, as in Photos / a star less, more"),
             Shortcut(keys: "⌘⌫", action: "Move to Trash (undoable)"),
         ]),
         ("Edit", [
+            Shortcut(keys: "⌘R  ·  ⌥⌘R", action: "Rotate left / right (as in Photos)"),
             Shortcut(keys: "R  ·  ⇧R", action: "Rotate right / left"),
             Shortcut(keys: "C", action: "Crop & straighten"),
             Shortcut(keys: "⇧⌘X", action: "Remove objects ([ ] brush, ⌘+ ⌘− ⌘0 zoom)"),
-            Shortcut(keys: "\\", action: "Show original (before / after)"),
+            Shortcut(keys: "\\  ·  Hold M", action: "Show original (before / after)"),
+            Shortcut(keys: "⌥↩", action: "Rename"),
             Shortcut(keys: "⌘S  ·  ⇧⌘E", action: "Save / Export"),
             Shortcut(keys: "⇧⌘C  ·  ⇧⌘V", action: "Copy / paste edits"),
             Shortcut(keys: "⌥⇧⌘B", action: "Combine pictures"),
@@ -48,7 +51,7 @@ extension ViewerModel {
             Shortcut(keys: "F", action: "Full screen"),
             Shortcut(keys: "S", action: "Slideshow (Space pauses)"),
             Shortcut(keys: "I  ·  E  ·  A", action: "Info / Adjust / Intelligence panel"),
-            Shortcut(keys: "T", action: "Show / hide filmstrip"),
+            Shortcut(keys: "T  ·  ⌥S", action: "Show / hide filmstrip"),
             Shortcut(keys: "Esc", action: "Exit tool, slideshow or full screen"),
             Shortcut(keys: "⌘N  ·  ⌥⌘O", action: "New window / open in a new window"),
             Shortcut(keys: "⌥⌘N", action: "New folder, opened"),
@@ -59,10 +62,30 @@ extension ViewerModel {
 
     func installKeyMonitor() {
         guard keyMonitor == nil else { return }
-        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
             guard let self else { return event }
-            return self.handleKeyDown(event) ? nil : event
+            switch event.type {
+            case .keyDown: return self.handleKeyDown(event) ? nil : event
+            case .keyUp: return self.handleKeyUp(event) ? nil : event
+            default:
+                // Option held: the toolbar's Rotate button turns right instead, as in Photos.
+                if event.window === self.window { self.optionKeyDown = event.modifierFlags.contains(.option) }
+                return event
+            }
         }
+    }
+
+    /// Letting go of M puts the edited picture back.
+    private func handleKeyUp(_ event: NSEvent) -> Bool {
+        guard holdingOriginalKey, event.charactersIgnoringModifiers?.lowercased() == "m" else { return false }
+        holdingOriginalKey = false
+        showOriginal = false
+        return true
+    }
+
+    /// ⌥] and ⌥[ (as in Photos): one whole star more or less, from a half star to the whole one past it.
+    nonisolated static func steppedRating(_ rating: Double, up: Bool) -> Double {
+        up ? min(5, rating.rounded(.down) + 1) : max(0, rating.rounded(.up) - 1)
     }
 
     func removeKeyMonitor() {
@@ -95,12 +118,13 @@ extension ViewerModel {
     }
 
     func handleKeyDown(_ event: NSEvent) -> Bool {
-        // ⌘⌫ and ⌘-arrows in a text field (here or in one of this window's sheets) edit the text; as menu
-        // shortcuts they'd move the image to the Trash or open the enclosing folder.
+        // ⌘⌫ and ⌘-arrows in a text field (here or in one of this window's sheets) edit the text, and so does
+        // ⌥↩; as menu shortcuts they'd move the image to the Trash, open the enclosing folder or rename.
+        let held = event.modifierFlags.intersection([.command, .control, .option])
         if let eventWindow = event.window, eventWindow === window || eventWindow.sheetParent === window,
-           event.modifierFlags.intersection([.command, .control, .option]) == .command,
            let text = eventWindow.firstResponder as? NSTextView, text.isEditable,
-           [.delete, .deleteForward, .upArrow, .downArrow, .leftArrow, .rightArrow].contains(event.specialKey) {
+           held == .command && [.delete, .deleteForward, .upArrow, .downArrow, .leftArrow, .rightArrow].contains(event.specialKey)
+            || held == .option && [.carriageReturn, .enter].contains(event.specialKey) {
             text.keyDown(with: event)
             return true
         }
@@ -143,8 +167,24 @@ extension ViewerModel {
                 stepInStack(1)
                 return true
             default:
-                return false
+                // Photos' keys: ⌥0–⌥5 stars, ⌥] ⌥[ a star more or less, ⌥S thumbnails (the filmstrip).
+                switch event.charactersIgnoringModifiers {
+                case let key? where key.count == 1 && "012345".contains(key):
+                    rateKey(Int(key) ?? 0)
+                case "]", "[":
+                    setRating(Self.steppedRating(currentItem?.rating ?? 0, up: event.charactersIgnoringModifiers == "]"))
+                case "s", "S":
+                    showFilmstrip.toggle()
+                default:
+                    return false
+                }
+                return true
             }
+        }
+        // ⌘↓ opens the selected picture from the grid, as in Photos and the Finder.
+        if mods == .command, event.specialKey == .downArrow, activeTool == nil, viewMode == .grid, currentItem != nil {
+            viewMode = .viewer
+            return true
         }
         guard mods.isEmpty else { return false }
         let shift = event.modifierFlags.contains(.shift)
@@ -232,6 +272,13 @@ extension ViewerModel {
             viewMode = .viewer
             activeTool = .crop
         case "\\": if !currentEdits.isIdentity { showOriginal.toggle() }
+        case "m", "M":
+            // Held, as in Photos: the original until it's let go.
+            guard viewMode == .viewer, !currentEdits.isIdentity || holdingOriginalKey else { return false }
+            if !event.isARepeat {
+                holdingOriginalKey = true
+                showOriginal = true
+            }
         case "z", "Z": toggleFitActual()
         case "+", "=": zoomIn()
         case "-", "_": zoomOut()

@@ -116,7 +116,7 @@
 </picture>
 <ul>
   <li><b>Flag as you go.</b> <kbd>P</kbd> picks, <kbd>X</kbd> rejects, <kbd>U</kbd> unflags, and the next image comes up (you can turn that off in Settings). Flags are Finder color labels, green and red, so Finder and other apps see them too.</li>
-  <li><b>Rate with stars.</b> <kbd>1</kbd> to <kbd>5</kbd> give that many stars, and the same number again adds a half (<kbd>3</kbd>, then <kbd>3</kbd> again, is 3½); <kbd>0</kbd> takes the rating off. Or click the stars in the Info panel (the left half of one for a half star), or right-click ▸ Rating. Ratings are written where other apps read them: into the file's own metadata for JPEG, HEIC, PNG and TIFF (only the metadata changes, never the picture), and into a sidecar next to it (“IMG_0001.xmp”) for camera RAW, DNG and other formats, as Lightroom, Bridge and Capture One do. Lightroom and Bridge show whole stars. Photos doesn't keep ratings, so photos from Photos can't be rated.</li>
+  <li><b>Rate with stars.</b> <kbd>1</kbd> to <kbd>5</kbd> give that many stars, and the same number again adds a half (<kbd>3</kbd>, then <kbd>3</kbd> again, is 3½); <kbd>0</kbd> takes the rating off. Photos' keys work too: <kbd>⌥1</kbd> to <kbd>⌥5</kbd> and <kbd>⌥0</kbd> the same way, and <kbd>⌥]</kbd> <kbd>⌥[</kbd> a star more or less. Or click the stars in the Info panel (the left half of one for a half star), or right-click ▸ Rating. Ratings are written where other apps read them: into the file's own metadata for JPEG, HEIC, PNG and TIFF (only the metadata changes, never the picture), and into a sidecar next to it (“IMG_0001.xmp”) for camera RAW, DNG and other formats, as Lightroom, Bridge and Capture One do. Lightroom and Bridge show whole stars. Photos doesn't keep ratings, so photos from Photos can't be rated.</li>
   <li><b>Filter.</b> The Sort &amp; Filter button in the toolbar (or <b>View › Show</b>) shows only picks, only rejects, only unflagged images, or those rated at least one to five stars.</li>
   <li><b>Move Rejects to Trash</b> (<b>Image › Flag</b>, or the Info panel) clears them out in one go. Moving to the Trash can be undone.</li>
   <li><b>Sort</b> by name, date taken, date created, modified or added (when the file arrived in the folder), file size, dimensions (pixels), kind, rating (best first), at random, or <b>Best Shots</b>: Apple's on-device judgment of how good each photo is. <b>Reverse Order</b> flips any of them.</li>
@@ -171,8 +171,8 @@
   <li><b>Fix Blur…</b> (<b>Image › Fix Blur…</b>, <b>Copies</b> in Adjust, or the Intelligence panel) sharpens a blurry photo and saves the result next to it, as “… (Sharpened)”. Choose the kind of blur: <b>Out of Focus</b> for soft pictures and scans of prints, <b>Camera Shake</b> for pictures smeared by a moving camera, or <b>None</b>. <b>Restore Faces</b> also redraws blurry faces: clearer eyes, mouths and hair. Before and after show one spot at full size, starting around the biggest face, if there is one. Drag or scroll the pictures to see any other part, or click the small picture beside them to go straight there; the After side catches up when you stop. A <b>Strength</b> slider for each sets how much. It all runs on this Mac with two optional downloads (see <a href="#model">the models</a>), and a large photo takes up to a minute. The models make up detail that wasn't captured: a face can come out looking a little different, so check it; on a sharp face Restore Faces mostly smooths the skin. A badly blurred photo can't be rescued.</li>
   <li><b>Colorize</b> (<b>Image › Colorize</b>, <b>Copies</b> in Adjust, or the Intelligence panel) turns a black and white photo to color and saves the result next to it, as “… (Colorized)”. The colors come from DDColor, a model made for colorizing that runs on this Mac; the first time, the app offers to download it (about 425 MB, see <a href="#model">the models</a>). All the light and detail are the original's, so faces and textures stay exactly as they were. The colors are a well-informed guess: a sweater may come out a different color than it was.</li>
   <li><b>Auto</b> enhances the photo in one click (<kbd>⌥⌘E</kbd>). Click it again to take it off.</li>
-  <li><b>Before and after.</b> Click the eye button, or press <kbd>\</kbd>, to see the original; again to go back.</li>
-  <li><b>Rotate and flip.</b> <kbd>R</kbd> and <kbd>⇧R</kbd> rotate (also <kbd>]</kbd> <kbd>[</kbd>, <kbd>⌘R</kbd> <kbd>⌘L</kbd>); flips are in the Image menu.</li>
+  <li><b>Before and after.</b> Click the eye button, or press <kbd>\</kbd>, to see the original; again to go back. Or hold <kbd>M</kbd>, as in Photos: the original until you let go.</li>
+  <li><b>Rotate and flip.</b> <kbd>⌘R</kbd> rotates left and <kbd>⌥⌘R</kbd> right, as in Photos; Option-click the toolbar's Rotate button to rotate right. <kbd>R</kbd> and <kbd>⇧R</kbd> rotate right and left too (also <kbd>]</kbd> <kbd>[</kbd>). Flips are in the Image menu.</li>
   <li><b>Crop and straighten</b> (<kbd>C</kbd> or <kbd>⌘K</kbd>). Drag the corners and edges, or pick an aspect (Square, 16:9, 4:3…; the button beside it swaps portrait and landscape). The slider straightens (as does Straighten in Adjust); <b>Auto</b> levels it for you, from upright lines such as walls, door frames and posts where there are some (lines that recede, like a counter or a railing seen at an angle, or a quay and a breakwater converging, slant in perspective and don't count), or else from the horizon. It only turns a picture as far as the lines clearly show, so a portrait or a close-up with nothing to go by is left as it is. <b>Smart Crop</b> frames the subject. <kbd>Return</kbd> applies, <kbd>Esc</kbd> cancels.</li>
   <li><b>Straighten Document</b> (Intelligence menu) finds a page, sign or whiteboard and squares it up.</li>
   <li><b>Revert to Original</b> (File menu) drops every edit; <b>Reset Adjustments</b> in the panel keeps the crop and drops the rest.</li>
@@ -325,7 +325,7 @@
     <b>Animations</b> (GIF, animated PNG, WebP or HEIC) are upscaled frame by frame, keeping their timing and looping, and saved as a GIF, or as an animated PNG in full color: choose under <b>Save Animation As</b> in the Upscale menu. GIFs have 256 colors a frame, so some of the new detail turns into fine dithering, and files grow quickly: 2× is usually plenty. For an animation the menu shows how big each scale would be, and leaves out any that would be too large (over about 35 MB as GIF, 45 MB as animated PNG, which is about four times bigger than GIF for the same animation). Turns, crops and color adjustments apply to every frame; a removed background or Extend doesn't.</li>
   <li><b>Shot Quality</b> scores the photo; <b>Best Shots</b> sorts the folder by that score (after <b>Analyze Folder</b>). In a folder you've analyzed, pictures added later, such as copies you make, are scored by themselves, so a stack ranks by its newest copy.</li>
   <li><b>This Folder:</b> Analyze Folder (for search), Best Shots, Find Similar and Duplicates.</li>
-  <li><b>Rename…</b> <kbd>⌥⌘R</kbd> (File menu) has <b>Suggest a Name</b>, from what's in the picture.</li>
+  <li><b>Rename…</b> <kbd>⌥↩</kbd> (File menu) has <b>Suggest a Name</b>, from what's in the picture.</li>
 </ul>
 <p class="note">Describe, Ask and naming need Apple Intelligence turned on, on a Mac that has it (macOS 26 or later). Image Playground needs it too. Everything else in the panel uses Vision, which every Mac has. See <a href="#macos">Which macOS has what</a>.</p>
 
@@ -334,7 +334,7 @@
   <li><b>Save</b> <kbd>⌘S</kbd> writes your edits into the file, in the same format, keeping its metadata. Before it does, it asks (you can turn that off), and the original goes to the Trash, so you can always get it back. If the format can't be written (RAW, PDF, or JPEG with see-through areas), use Export.</li>
   <li><b>Export…</b> <kbd>⇧⌘E</kbd> saves a copy as JPEG, HEIC, AVIF (on macOS 26 and later), PNG, TIFF, GIF, BMP or JPEG 2000, with a quality setting and an optional size limit. <b>Metadata</b>: keep everything, <b>remove the location</b> (good for posting online), or remove it all. With several images selected in the grid, they're all exported at once.</li>
   <li><b>Unsaved edits</b> survive quitting, and come back when you open their folder; the image shows an “Edited” badge. To see them all, choose <b>View › Show › Edited Images</b> (or the same in the toolbar's Sort &amp; Filter menu); save each with <kbd>⌘S</kbd>, or take them all off with <b>File › Revert All Edited Images…</b> (<kbd>⌘Z</kbd> puts them back). Quitting with unsaved edits names the images and offers <b>Show Them</b>; for edits that are kept anyway, the reminder can be turned off there, or in <b>Settings › Editing</b>.</li>
-  <li><b>File menu:</b> Rename… (<kbd>⌥⌘R</kbd>), Move To…, Copy To…, Show in Finder (<kbd>⇧⌘R</kbd>), Set as Desktop Picture, Print… (<kbd>⌘P</kbd>) and Move to Trash (<kbd>⌘⌫</kbd>, undoable).</li>
+  <li><b>File menu:</b> Rename… (<kbd>⌥↩</kbd>), Move To…, Copy To…, Show in Finder (<kbd>⇧⌘R</kbd>), Set as Desktop Picture, Print… (<kbd>⌘P</kbd>) and Move to Trash (<kbd>⌘⌫</kbd>, undoable).</li>
   <li><b>Edit menu:</b> Copy Image (with your edits), Copy Subject, Copy File Path. <b>Share</b> is in the toolbar.</li>
   <li><b>Paste a picture</b> with <kbd>⌘V</kbd> (or <b>Edit › Paste as New Image</b>) while the image or grid has the focus: a screenshot, a picture copied from a web page or another app becomes a new file in the folder, named like “Pasted Image 2026-10-23 at 09.41.12”. A copied JPEG or HEIC is kept exactly as it was; anything else is saved as PNG, so transparency is kept. Image files copied in Finder are copied in under their own names. With no folder open, or a photo from Photos showing, pasted pictures go to your Pictures folder and open there.</li>
 </ul>
@@ -348,7 +348,7 @@
   <li><b>Edit again later.</b> A photo you edited here opens with its settings, so you can carry on adjusting instead of starting over. Take every edit off (<b>File › Revert to Original</b>) and save, and it's back to its original in Photos too.</li>
   <li><b>Copies</b> you make (Upscale with AI, Colorize, Black &amp; White, Fix Blur, Extend, Remove Objects, Change Objects, Clone &amp; Heal) are added to your Photos library as new photos.</li>
   <li>Edits not yet saved to Photos are lost when you quit (edits to files are kept). Rename, move or delete the photos themselves in Photos.</li>
-  <li><b>File › Import from Photos…</b> copies the photos you pick out of the library into a folder, as ordinary files that are yours to keep and edit like any others (edits then stay in the files; the photos in Photos aren't changed). It offers the folder you imported into last, or <b>Choose Folder…</b> for another (the first time, it asks), then opens that folder. Each photo comes as it looks now in Photos, with its own name and its date taken as the file's date; a Live Photo comes as its still.</li>
+  <li><b>File › Import from Photos…</b> (<kbd>⇧⌘I</kbd>) copies the photos you pick out of the library into a folder, as ordinary files that are yours to keep and edit like any others (edits then stay in the files; the photos in Photos aren't changed). It offers the folder you imported into last, or <b>Choose Folder…</b> for another (the first time, it asks), then opens that folder. Each photo comes as it looks now in Photos, with its own name and its date taken as the file's date; a Live Photo comes as its still.</li>
   <li><b>Image › Edit With › AOK-ImageTool</b> in Photos works too, for one photo at a time: Save sends the edit back. Photos turns off a Live Photo's motion when it hands it to another app this way, so use Open from Photos for Live Photos.</li>
 </ul>
 
@@ -370,13 +370,16 @@
   <tr><td><kbd>Home</kbd> <kbd>End</kbd></td><td>First / last image</td></tr>
   <tr><td><kbd>Page Up</kbd> <kbd>Page Down</kbd></td><td>Previous / next page (PDF, multi-page TIFF)</td></tr>
   <tr><td><kbd>G</kbd> <kbd>⌘1</kbd> <kbd>⌘2</kbd></td><td>Toggle grid / viewer / grid</td></tr>
+  <tr><td><kbd>Return</kbd> <kbd>⌘↓</kbd></td><td>Open the image selected in the grid</td></tr>
   <tr><td><kbd>Z</kbd> <kbd>⌘9</kbd> <kbd>⌘0</kbd> <kbd>+</kbd> <kbd>−</kbd></td><td>Fit or actual size, fit, 100%, zoom in, zoom out</td></tr>
   <tr><td><kbd>L</kbd></td><td>Lock zoom across images</td></tr>
-  <tr><td><kbd>F</kbd> <kbd>S</kbd> <kbd>T</kbd></td><td>Full screen, slideshow, filmstrip</td></tr>
+  <tr><td><kbd>F</kbd> <kbd>S</kbd> <kbd>T</kbd> <kbd>⌥S</kbd></td><td>Full screen, slideshow, filmstrip, filmstrip</td></tr>
   <tr><td><kbd>I</kbd> <kbd>E</kbd> <kbd>A</kbd></td><td>Info, Adjust, Intelligence panel</td></tr>
   <tr><td><kbd>P</kbd> <kbd>X</kbd> <kbd>U</kbd></td><td>Pick, reject, unflag</td></tr>
   <tr><td><kbd>1</kbd>–<kbd>5</kbd> <kbd>0</kbd></td><td>Rate one to five stars (the same number again adds a half star), no rating</td></tr>
+  <tr><td><kbd>⌥1</kbd>–<kbd>⌥5</kbd> <kbd>⌥0</kbd> <kbd>⌥]</kbd> <kbd>⌥[</kbd></td><td>The same, with Photos' keys; a star more, a star less</td></tr>
   <tr><td><kbd>⇧⌘C</kbd> <kbd>⇧⌘V</kbd></td><td><a href="#copyedits">Copy edits, paste edits</a></td></tr>
+  <tr><td><kbd>⌘R</kbd> <kbd>⌥⌘R</kbd></td><td>Rotate left / right, as in Photos</td></tr>
   <tr><td><kbd>R</kbd> <kbd>⇧R</kbd></td><td>Rotate right / left</td></tr>
   <tr><td><kbd>C</kbd> <kbd>⌘K</kbd> <kbd>⇧⌘K</kbd></td><td>Crop &amp; straighten, Extend</td></tr>
   <tr><td><kbd>⇧⌘X</kbd></td><td><a href="#remove">Remove objects</a>; in it, <kbd>[</kbd> <kbd>]</kbd> size the brush, <kbd>⌘+</kbd> <kbd>⌘−</kbd> <kbd>⌘0</kbd> zoom, and <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd> step through its removals</td></tr>
@@ -385,14 +388,14 @@
   <tr><td><kbd>⌘N</kbd> <kbd>⌥⌘O</kbd> <kbd>⌘`</kbd></td><td>New window, open in a new window, next window</td></tr>
   <tr><td><kbd>⌥⌘N</kbd></td><td>New folder, opened</td></tr>
   <tr><td><kbd>⇧⌘N</kbd></td><td><a href="#newimage">New image from a description</a></td></tr>
-  <tr><td><kbd>\</kbd></td><td>Show the original</td></tr>
+  <tr><td><kbd>\</kbd> <kbd>M</kbd></td><td>Show the original; held, until it's let go</td></tr>
   <tr><td><kbd>⌥⌘E</kbd> <kbd>⌥⌘C</kbd></td><td>Auto enhance, adjust color</td></tr>
   <tr><td><kbd>⇧⌘D</kbd> <kbd>⌥⌘B</kbd> <kbd>⌥⇧⌘C</kbd></td><td>Describe image, remove background, copy subject</td></tr>
   <tr><td><kbd>⌥⇧⌘B</kbd></td><td><a href="#combine">Combine pictures</a></td></tr>
   <tr><td><kbd>⌘S</kbd> <kbd>⇧⌘E</kbd></td><td>Save, export</td></tr>
-  <tr><td><kbd>⇧⌘O</kbd></td><td>Open from Photos</td></tr>
+  <tr><td><kbd>⇧⌘O</kbd> <kbd>⇧⌘I</kbd></td><td>Open from Photos, import from Photos</td></tr>
   <tr><td><kbd>⌘V</kbd></td><td>Paste a picture as a new image</td></tr>
-  <tr><td><kbd>⌥⌘R</kbd> <kbd>⇧⌘R</kbd> <kbd>⌘⌫</kbd></td><td>Rename, show in Finder, move to Trash</td></tr>
+  <tr><td><kbd>⌥↩</kbd> <kbd>⇧⌘R</kbd> <kbd>⌘⌫</kbd></td><td>Rename, show in Finder, move to Trash</td></tr>
   <tr><td><kbd>⌘↑</kbd> <kbd>⌥⌘←</kbd> <kbd>⌥⌘→</kbd></td><td>Enclosing folder, previous / next folder</td></tr>
   <tr><td><kbd>⇧⌘F</kbd></td><td>Start or stop the slideshow</td></tr>
   <tr><td><kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd></td><td>Undo, redo (edits, renames, moves to the Trash)</td></tr>

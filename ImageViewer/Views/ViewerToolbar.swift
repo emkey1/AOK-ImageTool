@@ -57,10 +57,12 @@ struct ViewerToolbar: ToolbarContent {
                     .help("Thumbnail size")
             }
 
-            Button { model.rotate(clockwise: false) } label: {
-                Label("Rotate Left", systemImage: "rotate.left")
+            // As in Photos: left, or right with Option (the icon turns while it's held).
+            Button { model.rotate(clockwise: NSEvent.modifierFlags.contains(.option)) } label: {
+                Label(model.optionKeyDown ? "Rotate Right" : "Rotate Left",
+                      systemImage: model.optionKeyDown ? "rotate.right" : "rotate.left")
             }
-            .help("Rotate left (⌘L)")
+            .help("Rotate left (⌘R). Option-click to rotate right (⌥⌘R).")
             .disabled(!model.canEdit)
 
             Button {

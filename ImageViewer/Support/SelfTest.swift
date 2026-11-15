@@ -933,6 +933,9 @@ enum SelfTest {
         check(model.currentItem?.rating == 3, "3 rates three stars")
         model.rateKey(3)
         check(model.currentItem?.rating == 3.5, "3 again makes it three and a half")
+        let steps = [(3.5, true), (3.5, false), (3, true), (3, false), (5, true), (0, false), (4.5, true), (0.5, false)]
+            .map { ViewerModel.steppedRating($0.0, up: $0.1) }
+        check(steps == [4, 3, 4, 2, 5, 0, 5, 0], "⌥] and ⌥[ step a whole star, from a half star to the next whole one (\(steps))")
         for _ in 0..<60 where FileTags.read(jpeg).rating != 3.5 { try? await Task.sleep(for: .milliseconds(50)) }
         try? await Task.sleep(for: .milliseconds(200))
         // (A fresh URL: the one above has cached the date from before.)

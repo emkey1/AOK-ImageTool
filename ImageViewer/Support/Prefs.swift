@@ -330,8 +330,11 @@ nonisolated enum DebugHooks {
         let parts = text.split(separator: "x").compactMap { Double($0) }
         return parts.count == 2 ? CGSize(width: parts[0], height: parts[1]) : nil
     }
+    /// `-debugKeys <folder>`: presses the keyboard shortcuts and checks what they did (`KeyTest`).
+    static let keyTestFolder: String? = value(after: "-debugKeys")
     /// Any debug hook: such runs use isolated storage and don't save preferences.
-    static let isActive: Bool = extendOnLaunch || scene != nil || ProcessInfo.processInfo.arguments.contains("-extendTest")
+    static let isActive: Bool = extendOnLaunch || scene != nil || keyTestFolder != nil
+        || ProcessInfo.processInfo.arguments.contains("-extendTest")
 
     private static func value(after flag: String) -> String? {
         #if DEBUG

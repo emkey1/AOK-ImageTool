@@ -37,6 +37,7 @@ struct ViewerCommands: Commands {
                 .keyboardShortcut("o", modifiers: [.command, .shift])
                 .disabled(viewer == nil)
             Button("Import from Photos…") { viewer?.importFromPhotos() }
+                .keyboardShortcut("i", modifiers: [.command, .shift])   // Photos' Import
                 .disabled(viewer == nil)
             Button("New Image from Description…") { viewer?.beginNewImage() }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
@@ -65,8 +66,9 @@ struct ViewerCommands: Commands {
             Button("Revert All Edited Images…") { viewer?.revertAllEdits() }
                 .disabled(!(viewer?.hasUnsavedEdits ?? false))
             Divider()
+            // ⌥↩, Photos' Edit Title (⌥⌘R rotates right, as in Photos).
             Button("Rename…") { viewer?.beginRename() }
-                .keyboardShortcut("r", modifiers: [.command, .option])
+                .keyboardShortcut(.return, modifiers: .option)
                 .disabled(!hasImage)
             Button("Move To…") { viewer?.moveOrCopySelection(copy: false) }
                 .disabled(!hasImage)
@@ -196,11 +198,12 @@ struct ViewerCommands: Commands {
         }
 
         CommandMenu("Image") {
+            // As in Photos: ⌘R turns left (counterclockwise), and Option turns the other way.
             Button("Rotate Left") { viewer?.rotate(clockwise: false) }
-                .keyboardShortcut("l")
+                .keyboardShortcut("r")
                 .disabled(!canEdit)
             Button("Rotate Right") { viewer?.rotate(clockwise: true) }
-                .keyboardShortcut("r")
+                .keyboardShortcut("r", modifiers: [.command, .option])
                 .disabled(!canEdit)
             Button("Flip Horizontal") { viewer?.flip(horizontal: true) }
                 .disabled(!canEdit)

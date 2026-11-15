@@ -281,8 +281,10 @@ struct CropEditor: View {
                 .disabled(aspect == .freeform || aspect == .original || aspect == .square)
 
                 Divider().frame(height: 18)
-                Button { geometryChange { $0.rotate(clockwise: false) } } label: { Image(systemName: "rotate.left") }
-                    .help("Rotate left")
+                Button { geometryChange { $0.rotate(clockwise: NSEvent.modifierFlags.contains(.option)) } } label: {
+                    Image(systemName: model.optionKeyDown ? "rotate.right" : "rotate.left")
+                }
+                .help("Rotate left. Option-click to rotate right.")
                 Button { geometryChange { $0.flip(horizontal: true) } } label: {
                     Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
                 }
