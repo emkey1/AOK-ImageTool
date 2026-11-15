@@ -7,8 +7,92 @@ import AppKit
 enum ExtendLab {
     static var isRequested: Bool { ProcessInfo.processInfo.arguments.contains("-extendTest") }
 
+    /// Mean chroma (max − min of R, G, B), luma and luma gradient of `image` more than 12 pixels from `known`
+    /// (1 = the subject), i.e. of the painted background alone.
+    static func backgroundMeasures(_ image: CGImage, known: [UInt8]) -> (chroma: Double, luma: Double, gradient: Double) {
+        let w = image.width, h = image.height
+        guard known.count == w * h else { return (0, 0, 0) }
+        var px = [UInt8](repeating: 0, count: w * h * 4)
+        let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        // Near the subject: within 12 pixels of it (a box, rows then columns).
+        let r = 12
+        var rows = [UInt8](repeating: 0, count: w * h), near = rows
+        for y in 0..<h { for x in 0..<w where known[y * w + x] != 0 { for xx in max(0, x - r)...min(w - 1, x + r) { rows[y * w + xx] = 1 } } }
+        for y in 0..<h { for x in 0..<w where rows[y * w + x] != 0 { for yy in max(0, y - r)...min(h - 1, y + r) { near[yy * w + x] = 1 } } }
+        func luma(_ i: Int) -> Double { 0.299 * Double(px[i * 4]) + 0.587 * Double(px[i * 4 + 1]) + 0.114 * Double(px[i * 4 + 2]) }
+        var n = 0.0, chroma = 0.0, light = 0.0, gradient = 0.0
+        for y in 0..<(h - 1) {
+            for x in 0..<(w - 1) where near[y * w + x] == 0 {
+                let i = y * w + x
+                let c = [px[i * 4], px[i * 4 + 1], px[i * 4 + 2]]
+                chroma += Double(c.max()! - c.min()!)
+                light += luma(i)
+                gradient += abs(luma(i + 1) - luma(i)) + abs(luma(i + w) - luma(i))
+                n += 1
+            }
+        }
+        return n > 0 ? (chroma / n, light / n, gradient / n) : (0, 0, 0)
+    }
+
     static func run() async {
         let args = ProcessInfo.processInfo.arguments
+        // `-extendTest -bgLab <image> <out folder> "<scene>"`: backgrounds painted the app's way (twoPass: the
+        // scene alone first, REDRAW of it redrawn around the subject) or straight around the subject (onePass),
+        // WAYS=onePass,twoPass, for several seeds (SEEDS=1,2,3), with how colorful (chroma), bright and busy
+        // (gradient) each is away from the subject. CROP=x,y,w,h (normalized, top left) crops
+        // the photo first; POINT=x,y (normalized, top left, on the crop) picks the subject there; SUBJECT names it.
+        if let i = args.firstIndex(of: "-bgLab"), i + 3 < args.count {
+            let env = ProcessInfo.processInfo.environment
+            func numbers(_ key: String) -> [Double]? { env[key].map { $0.split(separator: ",").compactMap { Double($0) } } }
+            let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2]), scene = args[i + 3]
+            try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+            guard let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false) else { exit(1) }
+            var picture = CIImage(cgImage: d.cgImage)
+            if let c = numbers("CROP"), c.count == 4 {
+                let e = picture.extent
+                picture = picture.cropped(to: CGRect(x: c[0] * e.width, y: (1 - c[1] - c[3]) * e.height, width: c[2] * e.width, height: c[3] * e.height).integral)
+                picture = picture.transformed(by: CGAffineTransform(translationX: -picture.extent.minX, y: -picture.extent.minY))
+            }
+            guard let cropped = ImageDecoder.ciContext.createCGImage(picture, from: picture.extent) else { exit(1) }
+            let photo = await VisionServices.downscaled(cropped, maxDimension: 1536)
+            do {
+                let mask: CIImage
+                if let p = numbers("POINT"), p.count == 2 {
+                    mask = try await VisionServices.instanceMask(for: photo, at: CGPoint(x: p[0], y: 1 - p[1]))
+                } else {
+                    mask = try await VisionServices.subjectMask(for: photo)
+                }
+                let subject = env["SUBJECT"]
+                print("prompt:", GenerativeImage.backgroundPrompt(scene: scene, subject: subject))
+                let ways = (env["WAYS"] ?? "twoPass").split(separator: ",").map(String.init).filter { ["onePass", "twoPass"].contains($0) }
+                let seeds = (env["SEEDS"] ?? "1").split(separator: ",").compactMap { UInt64($0) }
+                let redraw = env["REDRAW"].flatMap(Float.init) ?? GenerativeImage.sceneRedraw
+                let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+                for way in ways {
+                    for seed in seeds {
+                        let t0 = Date()
+                        let painted = try await GenerativeImage.paintBackground(photo, subject: mask, scene: scene, subjectDescription: subject,
+                                                                                seed: seed, sceneFirst: way == "twoPass", redraw: redraw)
+                        let tag = way == "twoPass" ? String(format: "-%.0f", redraw * 100) : ""
+                        let name = "\(way)\(tag)-\(seed).png"
+                        if let alone = painted.scene?.makeImage(space: sRGB) {
+                            try ImageWriter.write(alone, to: out.appendingPathComponent("scene-\(seed).png"), format: .png, quality: 1,
+                                                  sourceProperties: [:], metadata: .removeAll)
+                        }
+                        guard let made = painted.canvas.makeImage(space: sRGB) else { continue }
+                        try ImageWriter.write(made, to: out.appendingPathComponent(name), format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+                        let m = backgroundMeasures(made, known: painted.known)
+                        print(String(format: "%-11@ seed %2d  chroma %5.1f  luma %5.1f  gradient %5.2f  %.0f s  %@", way as NSString,
+                                     seed, m.chroma, m.luma, m.gradient, Date().timeIntervalSince(t0), name as NSString))
+                    }
+                }
+            } catch {
+                print("failed:", error.localizedDescription)
+            }
+            exit(0)
+        }
         // `-extendTest -background <image> <out.png> "<scene>"`: a background painted around the subject.
         if let i = args.firstIndex(of: "-background"), i + 3 < args.count {
             let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])

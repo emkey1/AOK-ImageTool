@@ -2424,6 +2424,21 @@ enum SelfTest {
                                                                scene.width, scene.height, Date().timeIntervalSince(t2)))
                     check(GenerativeImage.backgroundPrompt(scene: "a beach", subject: "an fox") == "a high quality photo of an fox, a beach in the background",
                           "the background prompt names the subject and the scene")
+                    // The scene asked for, not the photo's own setting: painted straight around the fox (in snow), this
+                    // seed's "soft gray studio backdrop" was snowy woods and the fox grew a second body (color 47–48).
+                    let t3 = Date()
+                    let gray = try await GenerativeImage.paintBackground(fox.cgImage, subject: mask, scene: "a soft gray studio backdrop",
+                                                                         subjectDescription: "a red fox", seed: 2, sceneFirst: true,
+                                                                         redraw: GenerativeImage.sceneRedraw)
+                    if let image = gray.canvas.makeImage(space: CGColorSpace(name: CGColorSpace.sRGB)!) {
+                        try? ImageWriter.write(image, to: out.appendingPathComponent("generated-background-gray.png"), format: .png, quality: 1,
+                                               sourceProperties: [:], metadata: .keepAll)
+                        let m = ExtendLab.backgroundMeasures(image, known: gray.known)
+                        check(m.chroma < 25, String(format: "a soft gray backdrop comes out gray (color %.1f, under 25) in %.1f s",
+                                                    m.chroma, Date().timeIntervalSince(t3)))
+                    } else {
+                        check(false, "paint a soft gray backdrop")
+                    }
                 }
             } catch {
                 check(false, "generative fill: \(error.localizedDescription)")

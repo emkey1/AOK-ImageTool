@@ -114,12 +114,33 @@ nonisolated enum GenerativeImage {
         return scene.isEmpty ? "a high quality photo of \(subject)" : "a high quality photo of \(subject), \(scene) in the background"
     }
 
+    /// How much of the scene painted on its own the pass around the subject redraws. Less keeps stray props
+    /// from the scene (a light stand beside a studio backdrop); more lets the subject's own setting take
+    /// over again.
+    static let sceneRedraw: Float = 0.8
+
     /// A scene behind a cut-out subject, painted around it so its scale, perspective and light suit the
     /// subject: everything outside `subject` (a mask over `photo`, white = the subject) is made from the
     /// scene and the subject's description. Returns the whole picture at `photo`'s proportions; the subject
     /// is in it too, but the cutout stays in front.
     @concurrent static func background(_ photo: CGImage, subject: CIImage, scene: String, subjectDescription: String?, seed: UInt64,
                            progress: (@Sendable (Double) -> Bool)? = nil) async throws -> CGImage {
+        let painted = try await paintBackground(photo, subject: subject, scene: scene, subjectDescription: subjectDescription, seed: seed,
+                                                sceneFirst: true, redraw: sceneRedraw, progress: progress)
+        return try await enlarged(painted.canvas, longSide: min(2048, max(photo.width, photo.height)))
+    }
+
+    /// `background` at the working size, and what was known (the subject) before, and the scene on its own.
+    ///
+    /// Painted straight around the subject, the model follows the subject's own setting more than the words:
+    /// asked for "a soft gray studio backdrop" around a woman photographed outdoors, it painted plants and
+    /// windows for 2 of 4 seeds, and "a city street at night" came out in daylight. So the scene is painted on
+    /// its own first (no subject to follow), and the pass around the subject starts from it, redrawing
+    /// `redraw` of it: gray for 4 of 4 and night for 2 of 2, in about 1.7 times the time. (Leaving "blurry"
+    /// out of the negative prompt, or naming the scene first, changed nothing.)
+    @concurrent static func paintBackground(_ photo: CGImage, subject: CIImage, scene: String, subjectDescription: String?, seed: UInt64,
+                                sceneFirst: Bool, redraw: Float, progress: (@Sendable (Double) -> Bool)? = nil)
+        async throws -> (canvas: RGBABitmap, known: [UInt8], scene: RGBABitmap?) {
         let prompt = backgroundPrompt(scene: scene, subject: subjectDescription)
         // Naming the subject would fight "no people"; instead, no second one of it.
         let avoid = subjectDescription == nil ? ", people, person, crowd" : ", crowd, extra people, second person, duplicate subject"
@@ -128,10 +149,26 @@ nonisolated enum GenerativeImage {
         // The subject, pulled in a little, is kept; its edge is redrawn so the new scene meets it cleanly.
         var known = eroded(mask(subject, width: w, height: h), width: w, height: h, radius: 2)
         guard known.contains(1) else { throw ExtendError.failed }
-        try await GenerativeExtend.paint(&canvas, known: &known, start: nil, prompt: prompt,
-                                         negative: GenerativeExtend.negativePrompt + avoid,
-                                         seed: seed, strength: 1, steps: 25, overlap: GenerativeExtend.overlap, progress: progress)
-        return try await enlarged(canvas, longSide: min(2048, max(photo.width, photo.height)))
+        let subjectKnown = known
+        let words = scene.trimmingCharacters(in: .whitespacesAndNewlines)
+        var alone: RGBABitmap?
+        // (The two passes take about as long as each other: 20 steps each.)
+        let first = sceneFirst && !words.isEmpty ? 0.5 : 0.0
+        if first > 0 {
+            var picture = RGBABitmap(width: w, height: h)
+            var none = [UInt8](repeating: 0, count: w * h)
+            // No people: the subject goes in front of it.
+            try await GenerativeExtend.paint(&picture, known: &none, start: nil, prompt: GenerativeExtend.prompt(words),
+                                             negative: GenerativeExtend.negativePrompt + ", people, person, crowd",
+                                             seed: seed &+ 99, strength: 1, steps: 20, overlap: GenerativeExtend.overlap,
+                                             progress: progress.map { report in { report(first * $0) } })
+            alone = picture
+        }
+        try await GenerativeExtend.paint(&canvas, known: &known, start: alone, prompt: prompt,
+                                         negative: GenerativeExtend.negativePrompt + avoid, seed: seed,
+                                         strength: alone == nil ? 1 : redraw, steps: 25, overlap: GenerativeExtend.overlap,
+                                         progress: progress.map { report in { report(first + (1 - first) * $0) } })
+        return (canvas, subjectKnown, alone)
     }
 
     /// `photo` at the model's working size (short side 512).

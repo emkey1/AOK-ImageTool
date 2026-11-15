@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Generate a Background paints the scene you describe**: painted straight around the subject, the model often followed the photo's own setting rather than the words. Asked for a soft gray studio backdrop behind someone photographed outdoors, it painted plants and windows about half the time, and “a city street at night” came out in daylight. The scene is now painted on its own first, then fitted around the subject, which follows the description much more closely (gray every time in testing, and night at night). It takes about 1.7 times as long.
+
 ## 1.2.5
 
 - **Photos' keyboard shortcuts**: **⌘R rotates left and ⌥⌘R right**, as in Photos (⌘R used to rotate right and ⌘L left), and Option-clicking the toolbar's Rotate button (or the Crop tool's) rotates right; its icon turns while Option is held. Rename… moves from ⌥⌘R to **⌥↩**, Photos' key for editing a title. Also from Photos: **⌥1–⌥5 and ⌥0** rate, and **⌥] ⌥[** add or take away a star; **hold M** to see the original until you let go; **⌥S** shows or hides the filmstrip; **⌘↓** opens the picture selected in the grid; **⇧⌘I** is Import from Photos…. R, ⇧R and the other single keys are unchanged.
