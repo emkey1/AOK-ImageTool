@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.6
 
 - **Generate a Background paints the scene you describe**: painted straight around the subject, the model often followed the photo's own setting rather than the words. Asked for a soft gray studio backdrop behind someone photographed outdoors, it painted plants and windows about half the time, and “a city street at night” came out in daylight. The scene is now painted on its own first, then fitted around the subject, which follows the description much more closely (gray every time in testing, and night at night). It takes about 1.7 times as long.
 - **Remove Objects takes all of a selected object**: a clicked person or thing was filled in completely, but the fill was laid over it only as strongly as the selection's soft mask, so 10–50% of it still showed through, a ghost (Erase, Match Photo and Generate alike). The fill now covers everything it filled, fading into the photo only past the edge. Removals made before stay as they were: undo them and remove again.
