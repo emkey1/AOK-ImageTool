@@ -149,8 +149,9 @@ extension ViewerModel {
             pasteImage()
             return true
         }
-        // In Remove and Change Objects, ⌘Z and ⇧⌘Z step through its changes, and ⌘+, ⌘− and ⌘0 zoom its picture.
-        if mods == .command, activeTool?.paintsObjects == true, event.charactersIgnoringModifiers?.lowercased() == "z" {
+        // In Remove and Change Objects (and Adjust Objects), ⌘Z and ⇧⌘Z step through its changes, and ⌘+, ⌘− and ⌘0
+        // zoom its picture.
+        if mods == .command, activeTool?.paintsObjects == true || activeTool == .adjustObjects, event.charactersIgnoringModifiers?.lowercased() == "z" {
             NotificationCenter.default.post(name: event.modifierFlags.contains(.shift) ? .toolRedo : .toolUndo, object: self)
             return true
         }
@@ -250,6 +251,8 @@ extension ViewerModel {
         }
 
         guard let chars = event.charactersIgnoringModifiers, let ch = chars.first else { return false }
+        // (Not turning in Adjust Objects, whose adjustments are made on the picture as it was when it opened.)
+        if objectSession != nil, "rR][".contains(ch) { return false }
         switch ch {
         case " ":
             if isSlideshowRunning { toggleSlideshowPause() } else if isGrid { viewMode = .viewer } else if Prefs.spaceAdvances { shift ? previous() : next() } else { return false }

@@ -81,7 +81,7 @@ struct ObjectSelectEditor: View {
             if note.object as AnyObject? === model, mask != nil { toAdjust ? adjust() : cutOut() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toolCancel)) { note in
-            if note.object as AnyObject? === model { model.activeTool = nil }
+            if note.object as AnyObject? === model { toAdjust ? model.cancelSelectingToAdjust() : (model.activeTool = nil) }
         }
     }
 
@@ -119,13 +119,13 @@ struct ObjectSelectEditor: View {
             }
             .disabled(included.isEmpty)
             if toAdjust {
-                Button("Cancel") { model.activeTool = nil }
+                Button("Cancel") { model.cancelSelectingToAdjust() }
                     .keyboardShortcut(.cancelAction)
                 Button("Adjust") { adjust() }
                     .prominentButtonStyle()
                     .keyboardShortcut(.defaultAction)
                     .disabled(mask == nil)
-                    .help("Change the selection's light, color and detail in the Adjust panel, leaving the rest as it is")
+                    .help("Adjust the selection's light, color and detail on its own, in the Adjust panel")
             } else {
                 Button("Copy") { copy() }
                     .disabled(mask == nil)
@@ -133,7 +133,7 @@ struct ObjectSelectEditor: View {
                     .disabled(mask == nil)
                 Button("Adjust") { adjust() }
                     .disabled(mask == nil)
-                    .help("Change the selection's light, color and detail in the Adjust panel, leaving the rest as it is")
+                    .help("Adjust the selection's light, color and detail on its own (Adjust Objects)")
                 Button("Cancel") { model.activeTool = nil }
                     .keyboardShortcut(.cancelAction)
                 Button("Cut Out") { cutOut() }
@@ -199,12 +199,11 @@ struct ObjectSelectEditor: View {
     }
 
     /// Adjust: the selection, on the image's own pixels (so it turns and crops with the picture), becomes the
-    /// object the Adjust panel's sliders change.
+    /// object Adjust Objects adjusts.
     private func adjust() {
         guard let mask, let d = model.decoded else { return }
         do {
             try model.adjustSelection(EditRenderer.shared.sourceMask(mask, shownWith: shown, size: d.pixelSize), of: d.url, size: d.pixelSize)
-            model.activeTool = nil
         } catch {
             message = "The selection couldn't be kept: \(error.localizedDescription)"
         }

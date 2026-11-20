@@ -641,6 +641,78 @@ enum SelfTest {
               "pending edits keep an object's own adjustments, and drop one whose selection is gone")
         try? fm.removeItem(at: storeURL)
 
+        // Adjust Objects finishes as Remove Objects does: Cancel leaves the picture as it was; Done saves
+        // "<name> (Adjusted)", stacked on the original, which stays as it was; with its copies off, Done keeps the
+        // adjustments as an edit of the picture.
+        let folder = out.appendingPathComponent("adjust-objects")
+        try? fm.removeItem(at: folder)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let photo = folder.appendingPathComponent("Gray.png").standardizedFileURL
+        try? fm.copyItem(at: gray.url, to: photo)
+        let before = try? Data(contentsOf: photo)
+        let model = ViewerModel()
+        model.stacksEnabled = true
+        model.openFolder(folder, selecting: photo)
+        func open(_ url: URL) async -> Bool {
+            model.select(url)
+            for _ in 0..<100 where model.decoded?.url != url { try? await Task.sleep(for: .milliseconds(50)) }
+            return model.decoded?.url == url
+        }
+        func adjustObject(exposure: Double) {
+            model.beginAdjustingObjects()
+            try? model.adjustSelection(selection, of: photo, size: CGSize(width: w, height: h))
+            if let t = model.adjustTarget { model.changeObjects { $0.setLocalValue(\.exposure, exposure, of: t.id, mask: t.mask) } }
+        }
+        if await open(photo) {
+            model.beginAdjustingObjects()
+            check(model.activeTool == .selectToAdjust && model.objectSession != nil, "Adjust Objects opens on selecting an object")
+            model.cancelSelectingToAdjust()
+            check(model.activeTool == nil && model.objectSession == nil, "Cancel before selecting anything closes it")
+            adjustObject(exposure: 1)
+            check(model.activeTool == .adjustObjects && model.isAdjustingObjects && model.currentEdits.localAdjustments?.first?.exposure == 1
+                  && model.edits[photo] == nil && !model.hasUnsavedEdits,
+                  "the object's adjustments show on the picture as they're made, and aren't an edit until Done")
+            model.undoObjectChange()
+            let undone = model.currentEdits.localValue(\.exposure, of: model.adjustTarget?.id ?? UUID())
+            model.redoObjectChange()
+            check(undone == 0 && model.currentEdits.localAdjustments?.first?.exposure == 1, "⌘Z and ⇧⌘Z step through Adjust Objects' changes")
+            model.cancelAdjustingObjects()
+            check(model.edits[photo] == nil && model.activeTool == nil && model.objectSession == nil, "Cancel leaves the picture as it was")
+
+            adjustObject(exposure: 1)
+            model.finishAdjustingObjects()
+            let copy = folder.appendingPathComponent("Gray (Adjusted).png")
+            for _ in 0..<300 where !fm.fileExists(atPath: copy.path) || model.items.count < 2 { try? await Task.sleep(for: .milliseconds(100)) }
+            check(fm.fileExists(atPath: copy.path) && (try? Data(contentsOf: photo)) == before && model.edits[photo] == nil
+                  && ImageStacks.source(of: copy) == "Gray.png" && model.activeTool == nil && model.objectSession == nil,
+                  "Done saves “Gray (Adjusted)”, stacked on the original, which stays as it was")
+            if let c = try? ImageDecoder.decode(url: copy, page: 0, allowHDR: false), c.cgImage.width == w {
+                let px = rgba(c.cgImage)
+                func green(_ x: Int, _ y: Int) -> Int { Int(px[(y * w + x) * 4 + 1]) }
+                check(green(100, 100) > Int(shade(100, 100)) + 30 && abs(green(350, 40) - Int(shade(350, 40))) <= 2,
+                      "the copy has the object adjusted (\(shade(100, 100)) → \(green(100, 100))) and the rest as it was")
+            }
+
+            Prefs.setBool(false, CopyOperation.adjustObjects.key)
+            if await open(photo) {
+                adjustObject(exposure: 0.5)
+                model.finishAdjustingObjects()
+                check(model.edits[photo]?.localAdjustments?.first?.exposure == 0.5 && model.activeTool == nil
+                      && !fm.fileExists(atPath: folder.appendingPathComponent("Gray (Adjusted) 2.png").path),
+                      "with its copies off, Done keeps the adjustments as an edit of the picture")
+                model.beginAdjustingObjects()
+                check(model.activeTool == .adjustObjects && model.currentAdjustTarget?.id == model.edits[photo]?.localAdjustments?.first?.id,
+                      "Adjust Objects opens on the objects a picture has adjusted")
+                if let t = model.currentAdjustTarget { model.changeObjects { $0.setLocalValue(\.exposure, -1, of: t.id, mask: t.mask) } }
+                model.activeTool = nil   // (as moving to another picture does)
+                check(model.edits[photo]?.localAdjustments?.first?.exposure == 0.5 && model.objectSession == nil,
+                      "Adjust Objects put away another way is cancelled")
+                model.updateEdits("Revert") { $0 = .identity }
+            }
+        } else {
+            check(false, "open a picture for Adjust Objects")
+        }
+
         // The Adjust panel's preview: the object as it is, the rest darkened.
         var turned = e
         turned.quarterTurns = 1
@@ -1422,7 +1494,7 @@ enum SelfTest {
         // The test drives real models, which save preferences; put them back afterwards, so each run starts alike.
         let touchedKeys = [PrefKey.sortKey, PrefKey.sortAscending, PrefKey.recentFolders, PrefKey.lastViewedFiles,
                            PrefKey.includeSubfolders, PrefKey.gridThumbnailSize, PrefKey.showFilmstrip, PrefKey.stackCopies, PrefKey.stacksByOriginal,
-                           CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, CopyOperation.cloneHeal.key, PrefKey.cloneHeals, PrefKey.confirmOverwrite,
+                           CopyOperation.blackAndWhite.key, CopyOperation.removeObjects.key, CopyOperation.changeObjects.key, CopyOperation.cloneHeal.key, CopyOperation.adjustObjects.key, PrefKey.cloneHeals, PrefKey.confirmOverwrite,
                            PrefKey.trashOriginalOnSave, PrefKey.blackAndWhite, PrefKey.extendMethod, PrefKey.removalMethod,
                            PrefKey.removalBrush, PrefKey.fixBlur, CopyOperation.fixBlur.key, PrefKey.stackFronts]
         // From the defaults: a run that's interrupted leaves its settings behind (in the Debug build's own domain),

@@ -32,8 +32,10 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 enum ActiveTool: Equatable {
     case crop
     case selectObject
-    /// Select Object, to adjust what's selected on its own (from the Adjust panel).
+    /// Select Object, to adjust what's selected on its own (Adjust Objects).
     case selectToAdjust
+    /// Adjust Objects: the Adjust panel's sliders change the selected objects alone, until Done or Cancel.
+    case adjustObjects
     case removeObjects
     case changeObjects
     case cloneHeal
@@ -108,9 +110,11 @@ final class ViewerModel {
     }
     var showInspector = false
     var inspectorTab: InspectorTab = .info
-    /// The selected object the Adjust panel's sliders change, instead of the whole picture (when it's of the
-    /// picture showing: see `currentAdjustTarget`).
+    /// The selected object the Adjust panel's sliders change, instead of the whole picture, in Adjust Objects
+    /// (see `currentAdjustTarget`).
     var adjustTarget: AdjustTarget?
+    /// Adjust Objects in progress (see `ObjectSession`).
+    var objectSession: ObjectSession?
     var showFilmstrip: Bool = Prefs.showFilmstrip {
         didSet { Prefs.setBool(showFilmstrip, PrefKey.showFilmstrip) }
     }
@@ -133,6 +137,8 @@ final class ViewerModel {
         didSet {
             toolImage = activeTool == nil ? nil : currentURL
             if activeTool != nil { pickingWhiteBalance = false }
+            // Adjust Objects put away some other way (another picture, the grid) is cancelled.
+            if objectSession != nil, activeTool != .adjustObjects, activeTool != .selectToAdjust { leaveObjectSession() }
         }
     }
     /// The image the open tool was opened on.
@@ -290,8 +296,10 @@ final class ViewerModel {
 
     var currentURL: URL? { currentItem?.url }
 
+    /// The edits the picture showing is shown with (in Adjust Objects, with its objects' adjustments so far).
     var currentEdits: EditState {
-        currentURL.flatMap { edits[$0] } ?? .identity
+        if let s = objectSession, s.url == currentURL { return s.working }
+        return currentURL.flatMap { edits[$0] } ?? .identity
     }
 
     var hasUnsavedEdits: Bool { !unsavedURLs.isEmpty }

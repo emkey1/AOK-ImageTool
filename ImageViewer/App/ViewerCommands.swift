@@ -13,7 +13,8 @@ struct ViewerCommands: Commands {
     @AppStorage(PrefKey.upscaledAnimationFormat) private var animationFormat = Animation.Container.gif.rawValue
 
     private var hasImage: Bool { viewer?.currentItem != nil }
-    private var hasEdits: Bool { !(viewer?.currentEdits.isIdentity ?? true) }
+    /// (Not while Adjust Objects is open: its adjustments are Done's, or Cancel's.)
+    private var hasEdits: Bool { !(viewer?.currentEdits.isIdentity ?? true) && viewer?.objectSession == nil }
     private var canEdit: Bool { viewer?.canEdit ?? false }
 
     var body: some Commands {
@@ -107,7 +108,7 @@ struct ViewerCommands: Commands {
                 .disabled(!hasEdits)
             Button("Paste Edits") { viewer?.pasteEdits() }
                 .keyboardShortcut("v", modifiers: [.command, .shift])
-                .disabled(viewer?.actionTargets.isEmpty ?? true || EditClipboard.shared.adjustments == nil)
+                .disabled(viewer?.actionTargets.isEmpty ?? true || EditClipboard.shared.adjustments == nil || viewer?.objectSession != nil)
             Divider()
             Button("Copy File Path") { viewer?.copyPath() }
                 .disabled(!hasImage)
@@ -311,6 +312,8 @@ struct ViewerCommands: Commands {
             Button("Change Objects…") { viewer?.beginChangeObjects() }
                 .keyboardShortcut("j", modifiers: [.command, .shift])
                 .disabled(!(viewer?.canRemoveObjects ?? false))
+            Button("Adjust Objects…") { viewer?.beginAdjustingObjects() }
+                .disabled(!canEdit)
             Divider()
             // Extend opens with the fill used last (Generate, once its model is installed).
             Button("Extend…") { viewer?.beginExtend() }

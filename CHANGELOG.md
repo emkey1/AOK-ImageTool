@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Adjust Objects finishes like the other tools**: adjusting an object on its own left the change on the photo, to keep with Save (which asks to save over the original or export a copy), unlike Remove Objects, Change Objects and Clone & Heal. It's now **Adjust Objects** (under **Objects** in the Adjust panel, or the Intelligence menu), with a bar under the picture: **Done** saves “*name* (Adjusted)”, stacked on the original, which stays as it was, and **Cancel** leaves the photo as it was; ⌘Z steps back through its changes. Turn off **Adjust Objects makes a copy** in Settings › Editing › Copies to keep the adjustments as an edit of the photo instead, as before.
+
 ## 1.3.0
 
 - **Adjust one object on its own**: under **Objects** in the Adjust panel, **Select Object…** then click a person or thing and **Adjust**, and the White Balance, Light, Color and Detail sliders change just that object, fading into the rest at its edges, while the rest of the photo stays as it is. Adjust as many objects as you like, each from the panel's **Adjusting** menu (**Whole Picture** for everything); the trash button takes one away. The object turns and crops with the photo, and its adjustments are kept with the edits like everything else. Select Object… in the Intelligence menu has **Adjust** too.

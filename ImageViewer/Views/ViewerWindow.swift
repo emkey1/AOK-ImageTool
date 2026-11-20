@@ -185,6 +185,7 @@ struct ViewerPane: View {
                 case .crop: CropEditor()
                 case .selectObject: ObjectSelectEditor()
                 case .selectToAdjust: ObjectSelectEditor(toAdjust: true)
+                case .adjustObjects: ObjectAdjustBar()
                 case .removeObjects: RemoveObjectsEditor()
                 case .changeObjects: RemoveObjectsEditor(mode: .change)
                 case .cloneHeal: RemoveObjectsEditor(mode: .clone)

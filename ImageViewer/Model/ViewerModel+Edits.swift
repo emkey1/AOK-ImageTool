@@ -27,6 +27,12 @@ extension ViewerModel {
     /// Live update for continuous controls (sliders). Pair with `commitEdits(from:actionName:)`.
     func previewEdits(_ change: (inout EditState) -> Void) {
         guard let url = currentURL, !savingURLs.contains(url) else { return }
+        // (In Adjust Objects, its own until Done.)
+        if objectSession?.url == url, var working = objectSession?.working {
+            change(&working)
+            objectSession?.working = working
+            return refreshDisplay()
+        }
         var state = edits[url] ?? .identity
         change(&state)
         setEditsDictionary(url, state.isIdentity ? nil : state)
@@ -167,6 +173,9 @@ extension ViewerModel {
     /// Writes the edits back into the original file (same format), keeping metadata.
     func save() {
         guard let url = currentURL, let d = decoded, d.url == url else { return }
+        guard objectSession == nil else {
+            return showToast("Finish Adjust Objects first: Done or Cancel", systemImage: "person.crop.rectangle")
+        }
         guard !extendIsPending(for: url) else {
             showToast("Extend is still filling in the new area — try again in a moment", systemImage: "hourglass")
             return

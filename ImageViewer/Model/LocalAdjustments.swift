@@ -102,23 +102,40 @@ nonisolated struct LocalAdjustment: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// An object the Adjust panel adjusts on its own: `id` in `url`'s `localAdjustments`, selected by `mask` (it may
-/// have no adjustments there yet).
+/// An object Adjust Objects adjusts: `id` in `url`'s `localAdjustments`, selected by `mask` (it may have no
+/// adjustments there yet).
 struct AdjustTarget: Equatable {
     let url: URL
     let id: UUID
     let mask: String
 }
 
+/// Adjust Objects in progress on `url`, like Remove Objects: `working` is the picture's edits with the objects'
+/// adjustments so far, shown as they're made (`currentEdits`), while its edits stay as they were. Done saves a
+/// copy with them (or, with its copies off, makes them an edit of the picture); Cancel drops them. `undo` and
+/// `redo` are its own steps (⌘Z).
+struct ObjectSession {
+    let url: URL
+    var working: EditState
+    var undo: [EditState] = []
+    var redo: [EditState] = []
+}
+
 extension ViewerModel {
-    /// The object the Adjust panel's sliders change, when it's of the picture showing (nil: the whole picture).
+    /// Adjust Objects is open on the picture showing (its bar over the picture, the Adjust panel's sliders on
+    /// the object).
+    var isAdjustingObjects: Bool {
+        activeTool == .adjustObjects && objectSession != nil && objectSession?.url == currentURL
+    }
+
+    /// The object the Adjust panel's sliders change (nil: the whole picture).
     var currentAdjustTarget: AdjustTarget? {
-        guard let t = adjustTarget, t.url == currentURL else { return nil }
+        guard let t = adjustTarget, t.url == currentURL, objectSession?.url == t.url else { return nil }
         return t
     }
 
-    /// The objects the Adjust panel can adjust on their own, in the order they were selected: those with
-    /// adjustments, and the one just selected (which has none yet).
+    /// The objects Adjust Objects has, in the order they were selected: those with adjustments, and the one just
+    /// selected (which has none yet).
     var adjustableObjects: [AdjustTarget] {
         guard let url = currentURL else { return [] }
         var list = (currentEdits.localAdjustments ?? []).map { AdjustTarget(url: url, id: $0.id, mask: $0.mask) }
@@ -126,18 +143,119 @@ extension ViewerModel {
         return list
     }
 
-    /// Adjusts the object selected by `mask` (on the image's own pixels) on its own from now on.
+    /// Adjust Objects…: on the objects the picture already has adjusted on their own, or selecting one first.
+    func beginAdjustingObjects() {
+        guard let url = currentURL, canEdit else { return }
+        viewMode = .viewer
+        objectSession = ObjectSession(url: url, working: currentEdits)
+        inspectorTab = .adjust
+        showInspector = true
+        if let first = currentEdits.localAdjustments?.first {
+            adjustTarget = AdjustTarget(url: url, id: first.id, mask: first.mask)
+            activeTool = .adjustObjects
+        } else {
+            adjustTarget = nil
+            activeTool = .selectToAdjust
+        }
+    }
+
+    /// Adjust in Select Object: the selection (`mask`, on the image's own pixels, `size` big) is the object
+    /// adjusted from now on, in Adjust Objects (begun here if it isn't open).
     func adjustSelection(_ mask: CIImage, of url: URL, size: CGSize) throws {
         let path = try SelectionStore.save(mask, size: size)
+        if objectSession?.url != url { objectSession = ObjectSession(url: url, working: edits[url] ?? .identity) }
         adjustTarget = AdjustTarget(url: url, id: UUID(), mask: path)
         inspectorTab = .adjust
         showInspector = true
+        activeTool = .adjustObjects
     }
 
-    /// Takes the object's own adjustments away, and goes back to adjusting the whole picture.
-    func removeObjectAdjustments(_ target: AdjustTarget) {
-        updateEdits("Remove Object Adjustments", of: target.url) { $0.removeLocalAdjustment(target.id) }
-        if adjustTarget?.id == target.id { adjustTarget = nil }
+    /// Cancel in Select Object, in Adjust Objects: back to the objects there are, or out if there are none.
+    func cancelSelectingToAdjust() {
+        guard objectSession != nil, let url = currentURL else { return activeTool = nil }
+        if currentAdjustTarget == nil, let first = currentEdits.localAdjustments?.first {
+            adjustTarget = AdjustTarget(url: url, id: first.id, mask: first.mask)
+        }
+        if currentAdjustTarget != nil { activeTool = .adjustObjects } else { cancelAdjustingObjects() }
+    }
+
+    /// A change in Adjust Objects, as one of its steps: `change` made now, or (after a slider drag) what changed
+    /// since `before`.
+    func changeObjects(from before: EditState? = nil, _ change: ((inout EditState) -> Void)? = nil) {
+        guard objectSession != nil else { return }
+        let previous = before ?? currentEdits
+        if let change { previewEdits(change) }
+        guard currentEdits != previous else { return }
+        objectSession?.undo.append(previous)
+        objectSession?.redo.removeAll()
+    }
+
+    func undoObjectChange() {
+        guard let s = objectSession, let previous = s.undo.last else { return NSSound.beep() }
+        objectSession?.undo.removeLast()
+        objectSession?.redo.append(s.working)
+        objectSession?.working = previous
+        if s.url == currentURL { refreshDisplay() }
+        keepTargetValid()
+    }
+
+    func redoObjectChange() {
+        guard let s = objectSession, let next = s.redo.last else { return NSSound.beep() }
+        objectSession?.redo.removeLast()
+        objectSession?.undo.append(s.working)
+        objectSession?.working = next
+        if s.url == currentURL { refreshDisplay() }
+        keepTargetValid()
+    }
+
+    /// The trash button: the object's adjustments taken away (another object adjusted instead, or selecting one).
+    func removeObjectFromSession(_ target: AdjustTarget) {
+        changeObjects { $0.removeLocalAdjustment(target.id) }
+        adjustTarget = nil
+        keepTargetValid()
+        if currentAdjustTarget == nil { activeTool = .selectToAdjust }
+    }
+
+    /// (With none being adjusted, the first there is. One whose adjustments a step took away can still be
+    /// adjusted: its selection is kept.)
+    private func keepTargetValid() {
+        guard adjustTarget == nil, let url = currentURL, let first = currentEdits.localAdjustments?.first else { return }
+        adjustTarget = AdjustTarget(url: url, id: first.id, mask: first.mask)
+    }
+
+    /// Done in Adjust Objects: a copy, "<name> (Adjusted)", stacked on the original (which stays as it was), or,
+    /// with its copies turned off, the adjustments made an edit of the picture (one step to undo).
+    func finishAdjustingObjects() {
+        guard let s = objectSession else { return activeTool = nil }
+        let before = edits[s.url] ?? .identity
+        guard s.working.shown.localAdjustments != before.shown.localAdjustments else { return cancelAdjustingObjects() }
+        if extendIsPending(for: s.url) {
+            return showToast("Extend is still filling in the new area — try again in a moment", systemImage: "hourglass")
+        }
+        guard let d = decoded, d.url == s.url else { return }
+        leaveObjectSession()
+        activeTool = nil
+        if Prefs.makesCopy(.adjustObjects) {
+            saveCopy(of: s.url, decoded: d, edits: s.working, label: "Adjusted", defaultFormat: .heic, working: "Saving the adjusted copy…",
+                     systemImage: "person.crop.rectangle", failure: "Couldn't save an adjusted copy of “\(s.url.lastPathComponent)”") { $0 }
+        } else {
+            applyEdits(s.working, to: s.url, undoName: "Adjust Objects", previous: before)
+        }
+    }
+
+    /// Cancel in Adjust Objects: the picture as it was before.
+    func cancelAdjustingObjects() {
+        leaveObjectSession()
+        activeTool = nil
+    }
+
+    /// Ends Adjust Objects, its adjustments dropped (whatever the open tool is now): the picture shows as its edits
+    /// have it.
+    func leaveObjectSession() {
+        guard let s = objectSession else { return }
+        objectSession = nil
+        adjustTarget = nil
+        if s.url == currentURL { refreshDisplay() }
     }
 }
 
