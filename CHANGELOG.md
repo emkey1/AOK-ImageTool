@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.0
 
 - **Adjust one object on its own**: under **Objects** in the Adjust panel, **Select Object…** then click a person or thing and **Adjust**, and the White Balance, Light, Color and Detail sliders change just that object, fading into the rest at its edges, while the rest of the photo stays as it is. Adjust as many objects as you like, each from the panel's **Adjusting** menu (**Whole Picture** for everything); the trash button takes one away. The object turns and crops with the photo, and its adjustments are kept with the edits like everything else. Select Object… in the Intelligence menu has **Adjust** too.
 
