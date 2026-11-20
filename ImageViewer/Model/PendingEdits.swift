@@ -80,6 +80,11 @@ final class PendingEdits {
                 edits.background = nil
                 edits.matchLighting = nil
             }
+            // (An object adjusted on its own whose selection is gone can't be shown.)
+            if let locals = edits.localAdjustments {
+                let kept = locals.filter { FileManager.default.fileExists(atPath: $0.mask) }
+                edits.localAdjustments = kept.isEmpty ? nil : kept
+            }
             guard modDate == entry.modDate, !edits.isIdentity else {
                 entries[path] = nil
                 scheduleSave()
@@ -104,6 +109,11 @@ final class PendingEdits {
 
     var removalPaths: Set<String> {
         Set(entries.values.flatMap { $0.edits.removals?.map(\.path) ?? [] })
+    }
+
+    /// Selections of objects that pending edits adjust on their own.
+    var selectionPaths: Set<String> {
+        Set(entries.values.flatMap { $0.edits.localAdjustments?.map(\.mask) ?? [] })
     }
 
     // MARK: - Storage

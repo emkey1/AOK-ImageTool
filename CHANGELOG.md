@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Adjust one object on its own**: under **Objects** in the Adjust panel, **Select Object…** then click a person or thing and **Adjust**, and the White Balance, Light, Color and Detail sliders change just that object, fading into the rest at its edges, while the rest of the photo stays as it is. Adjust as many objects as you like, each from the panel's **Adjusting** menu (**Whole Picture** for everything); the trash button takes one away. The object turns and crops with the photo, and its adjustments are kept with the edits like everything else. Select Object… in the Intelligence menu has **Adjust** too.
+
 ## 1.2.6
 
 - **Generate a Background paints the scene you describe**: painted straight around the subject, the model often followed the photo's own setting rather than the words. Asked for a soft gray studio backdrop behind someone photographed outdoors, it painted plants and windows about half the time, and “a city street at night” came out in daylight. The scene is now painted on its own first, then fitted around the subject, which follows the description much more closely (gray every time in testing, and night at night). It takes about 1.7 times as long.

@@ -32,6 +32,8 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 enum ActiveTool: Equatable {
     case crop
     case selectObject
+    /// Select Object, to adjust what's selected on its own (from the Adjust panel).
+    case selectToAdjust
     case removeObjects
     case changeObjects
     case cloneHeal
@@ -106,6 +108,9 @@ final class ViewerModel {
     }
     var showInspector = false
     var inspectorTab: InspectorTab = .info
+    /// The selected object the Adjust panel's sliders change, instead of the whole picture (when it's of the
+    /// picture showing: see `currentAdjustTarget`).
+    var adjustTarget: AdjustTarget?
     var showFilmstrip: Bool = Prefs.showFilmstrip {
         didSet { Prefs.setBool(showFilmstrip, PrefKey.showFilmstrip) }
     }
@@ -850,6 +855,8 @@ final class ViewerModel {
         fullRenderTask?.cancel()
         // A tool belongs to the image it was opened on (another one may now be current: a removed file, an undo).
         if activeTool != nil, toolImage != currentURL { activeTool = nil }
+        // (Another picture opens on adjusting the whole of it.)
+        if let t = adjustTarget, t.url != currentURL { adjustTarget = nil }
         guard let item = currentItem else {
             clearDisplay()
             return

@@ -3,8 +3,10 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Click-to-select objects (Vision interactive segmentation) on the picture as it is on screen, then cut out,
-/// copy or save them.
+/// copy or save them, or adjust them on their own.
 struct ObjectSelectEditor: View {
+    /// Opened from the Adjust panel, to adjust what's selected (its main button, and all it offers).
+    var toAdjust = false
     @Environment(ViewerModel.self) private var model
     @State private var proxy: CGImage?
     /// The edits the picture is shown with.
@@ -76,7 +78,7 @@ struct ObjectSelectEditor: View {
             proxy = await EditRenderer.shared.render(d, edits: e, maxDimension: 1600, stage: .full)?.image
         }
         .onReceive(NotificationCenter.default.publisher(for: .toolCommit)) { note in
-            if note.object as AnyObject? === model, mask != nil { cutOut() }
+            if note.object as AnyObject? === model, mask != nil { toAdjust ? adjust() : cutOut() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .toolCancel)) { note in
             if note.object as AnyObject? === model { model.activeTool = nil }
@@ -101,7 +103,8 @@ struct ObjectSelectEditor: View {
                 ProgressView().controlSize(.small)
             }
             Text(message ?? (included.isEmpty
-                             ? "Click an object to select it. ⌥-click to exclude an area."
+                             ? (toAdjust ? "Click the object to adjust. ⌥-click to exclude an area."
+                                         : "Click an object to select it. ⌥-click to exclude an area.")
                              : "Click to add to the selection, ⌥-click to remove."))
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -115,17 +118,30 @@ struct ObjectSelectEditor: View {
                 message = nil
             }
             .disabled(included.isEmpty)
-            Button("Copy") { copy() }
-                .disabled(mask == nil)
-            Button("Save as PNG…") { save() }
-                .disabled(mask == nil)
-            Button("Cancel") { model.activeTool = nil }
-                .keyboardShortcut(.cancelAction)
-            Button("Cut Out") { cutOut() }
-                .prominentButtonStyle()
-                .keyboardShortcut(.defaultAction)
-                .disabled(mask == nil)
-                .help("Keep only the selection (non-destructive)")
+            if toAdjust {
+                Button("Cancel") { model.activeTool = nil }
+                    .keyboardShortcut(.cancelAction)
+                Button("Adjust") { adjust() }
+                    .prominentButtonStyle()
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(mask == nil)
+                    .help("Change the selection's light, color and detail in the Adjust panel, leaving the rest as it is")
+            } else {
+                Button("Copy") { copy() }
+                    .disabled(mask == nil)
+                Button("Save as PNG…") { save() }
+                    .disabled(mask == nil)
+                Button("Adjust") { adjust() }
+                    .disabled(mask == nil)
+                    .help("Change the selection's light, color and detail in the Adjust panel, leaving the rest as it is")
+                Button("Cancel") { model.activeTool = nil }
+                    .keyboardShortcut(.cancelAction)
+                Button("Cut Out") { cutOut() }
+                    .prominentButtonStyle()
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(mask == nil)
+                    .help("Keep only the selection (non-destructive)")
+            }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
@@ -180,6 +196,18 @@ struct ObjectSelectEditor: View {
         let id = MaskStore.shared.addObjectMask(EditRenderer.shared.sourceMask(mask, shownWith: shown, size: d.pixelSize))
         model.updateEdits("Cut Out Object") { $0.cutout = .object(id) }
         model.activeTool = nil
+    }
+
+    /// Adjust: the selection, on the image's own pixels (so it turns and crops with the picture), becomes the
+    /// object the Adjust panel's sliders change.
+    private func adjust() {
+        guard let mask, let d = model.decoded else { return }
+        do {
+            try model.adjustSelection(EditRenderer.shared.sourceMask(mask, shownWith: shown, size: d.pixelSize), of: d.url, size: d.pixelSize)
+            model.activeTool = nil
+        } catch {
+            message = "The selection couldn't be kept: \(error.localizedDescription)"
+        }
     }
 
     /// The picture as shown, at full size (what Copy and Save as PNG cut the selection from).

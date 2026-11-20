@@ -65,6 +65,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     private var proxies: [(key: String, image: CGImage)] = []
     private var backdrops: [String: CIImage] = [:]
     private var patches: [String: CIImage] = [:]
+    private var selections: [String: CIImage] = [:]
     private var lightingCache: [String: (subject: [CGFloat], background: [CGFloat])] = [:]
 
     // MARK: - Public API
@@ -165,18 +166,13 @@ nonisolated final class EditRenderer: @unchecked Sendable {
             }
         }
 
-        // 3. Perspective (document) correction.
-        if let q = e.perspective { img = perspectiveCorrected(img, q) }
-
-        // 4. Geometry. Before the adjustments (which are per-pixel, so the order doesn't change them) so that
-        //    Extend's fill, made from this stage, gets the same adjustments as the original pixels.
-        img = applyOrientation(img, e)
-        if e.straighten != 0 {
-            img = straightened(img, degrees: e.straighten)
-        }
-        img = normalized(img)
+        // 3–4. Perspective (document) correction, then the turns, flips and straightening. Before the adjustments
+        //    (which are per-pixel, so the order doesn't change them) so that Extend's fill, made from this stage,
+        //    gets the same adjustments as the original pixels.
+        img = shaped(img, e)
         if stage == .geometry { return img }
         let frame = img.extent   // `crop` is relative to this
+        let locals = localLayers(e, onto: base.extent)
 
         // 5. Extend: when the crop reaches past the image, the fill shows there (transparent until it's made).
         if stage == .full, let c = e.crop, e.cropExtendsBeyondImage {
@@ -204,8 +200,8 @@ nonisolated final class EditRenderer: @unchecked Sendable {
             }
         }
 
-        // 6–9. Auto enhance, light & color, detail, look.
-        img = applyAdjustments(img, e, decoded: decoded, scale: scale)
+        // 6–9. Auto enhance, light & color (the selected objects' own too), detail, look.
+        img = applyAdjustments(img, e, decoded: decoded, scale: scale, locals: locals)
         if stage == .beforeCrop { return normalized(img) }
 
         // 10. Crop (possibly beyond the original frame, onto the Extend fill).
@@ -376,6 +372,77 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         return vignetted(normalized(img), e.vignette)
     }
 
+    /// `img` (the image's own pixels, or anything over them, such as a selection) through the edits' changes of
+    /// shape before the crop: the document correction, then the turns, flips and straightening.
+    private func shaped(_ img: CIImage, _ e: EditState) -> CIImage {
+        var img = img
+        if let q = e.perspective { img = perspectiveCorrected(img, q) }
+        img = applyOrientation(img, e)
+        if e.straighten != 0 {
+            img = straightened(img, degrees: e.straighten)
+        }
+        return normalized(img)
+    }
+
+    /// The selected objects' adjustments that change something, each with its selection stretched over the image
+    /// (`extent`, as `makeImage` has it at its size) and shaped as the picture is, to lay over it after its shape
+    /// changes.
+    private func localLayers(_ e: EditState, onto extent: CGRect) -> [(adjustment: LocalAdjustment, mask: CIImage)] {
+        guard let locals = e.localAdjustments, !locals.isEmpty, extent.width > 0, extent.height > 0 else { return [] }
+        return locals.compactMap { local in
+            let a = local.shown
+            guard !a.isEmpty, let mask = selectionMask(a.mask) else { return nil }
+            let m = mask.extent
+            let fitted = mask
+                .transformed(by: CGAffineTransform(translationX: -m.minX, y: -m.minY))
+                .transformed(by: CGAffineTransform(scaleX: extent.width / m.width, y: extent.height / m.height))
+                .transformed(by: CGAffineTransform(translationX: extent.minX, y: extent.minY))
+                .cropped(to: extent)
+            return (a, shaped(fitted, e))
+        }
+    }
+
+    /// The picture as `e` shows it in full, `maxDimension` big, darkened outside the selection kept at `path` (a
+    /// `LocalAdjustment.mask`): which object the Adjust panel is adjusting.
+    func selectionPreview(_ decoded: DecodedImage, edits e: EditState, mask path: String, maxDimension: CGFloat) -> CGImage? {
+        let picture = makeImage(decoded, edits: e, maxDimension: maxDimension, stage: .full)
+        let ext = baseImage(decoded, maxDimension: maxDimension).extent
+        var probe = e
+        var selected = LocalAdjustment(mask: path)
+        selected.exposure = 1   // (so it isn't left out as changing nothing)
+        probe.localAdjustments = [selected]
+        guard var m = localLayers(probe, onto: ext).first?.mask else { return nil }
+        // Cropped as the picture is (onto an Extend fill, nothing is selected).
+        let frame = m.extent
+        m = m.composited(over: CIImage(color: .black))
+        if let c = e.crop {
+            var rect = Self.pixelRect(c, in: frame).integral
+            if !e.cropExtendsBeyondImage { rect = rect.intersection(frame) }
+            if rect.width >= 1, rect.height >= 1 { m = m.cropped(to: rect) } else { m = m.cropped(to: frame) }
+        } else {
+            m = m.cropped(to: frame)
+        }
+        m = normalized(m)
+        let shown = picture.extent
+        let shade = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.62)).cropped(to: shown).composited(over: picture)
+        let out = picture.applyingFilter("CIBlendWithMask", parameters: [
+            kCIInputBackgroundImageKey: shade,
+            kCIInputMaskImageKey: m,
+        ]).cropped(to: shown)
+        return createCGImage(out, like: decoded)
+    }
+
+    /// Kept selections, decoded once and kept for later renders.
+    private func selectionMask(_ path: String) -> CIImage? {
+        if let hit = lock.withLock({ selections[path] }) { return hit }
+        guard let mask = SelectionStore.load(path) else { return nil }
+        lock.withLock {
+            if selections.count > 32 { selections.removeAll() }
+            selections[path] = mask
+        }
+        return mask
+    }
+
     private func perspectiveCorrected(_ img: CIImage, _ q: Quad) -> CIImage {
         let ext = img.extent
         func p(_ n: CGPoint) -> CIVector { CIVector(x: ext.minX + n.x * ext.width, y: ext.minY + n.y * ext.height) }
@@ -397,8 +464,10 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         ]).cropped(to: ext)
     }
 
-    /// The per-pixel adjustments, in pipeline order. `scale` is the image's size relative to the source.
-    private func applyAdjustments(_ input: CIImage, _ e: EditState, decoded: DecodedImage, scale: CGFloat) -> CIImage {
+    /// The per-pixel adjustments, in pipeline order. `scale` is the image's size relative to the source. `locals`
+    /// are the selected objects' own adjustments, with their selections over `input` (see `localLayers`).
+    private func applyAdjustments(_ input: CIImage, _ e: EditState, decoded: DecodedImage, scale: CGFloat,
+                                  locals: [(adjustment: LocalAdjustment, mask: CIImage)] = []) -> CIImage {
         var img = input
         // 6. Auto enhance.
         if e.autoEnhance {
@@ -410,7 +479,33 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         // 7. Light & color.
         img = applyLightAndColor(img, e)
 
+        // 7a. Selected objects' own light, color and detail, on top, through their selections (soft-edged, so
+        //     they fade into the rest).
+        for (local, mask) in locals {
+            let ext = img.extent
+            let changed = detailed(applyLightAndColor(img, local.edits), local.edits, scale: scale)
+            img = changed.applyingFilter("CIBlendWithMask", parameters: [
+                kCIInputBackgroundImageKey: img,
+                kCIInputMaskImageKey: mask,
+            ]).cropped(to: ext)
+        }
+
         // 8. Detail.
+        img = detailed(img, e, scale: scale)
+
+        // 9. Look.
+        if e.filter != .none {
+            let filtered = applyPreset(e.filter, to: img)
+            img = e.filterIntensity >= 0.999 ? filtered : img.applyingFilter("CIDissolveTransition", parameters: [
+                kCIInputTargetImageKey: filtered, kCIInputTimeKey: e.filterIntensity,
+            ])
+        }
+        return img
+    }
+
+    /// Noise reduction and sharpening (`scale`: the image's size relative to the source).
+    private func detailed(_ input: CIImage, _ e: EditState, scale: CGFloat) -> CIImage {
+        var img = input
         if e.noiseReduction > 0 {
             img = img.applyingFilter("CINoiseReduction", parameters: [
                 "inputNoiseLevel": 0.01 + e.noiseReduction * 0.05, kCIInputSharpnessKey: 0.4,
@@ -419,14 +514,6 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         if e.sharpness > 0 {
             img = img.applyingFilter("CISharpenLuminance", parameters: [
                 kCIInputSharpnessKey: e.sharpness * 1.2, kCIInputRadiusKey: max(0.5, 1.7 * scale),
-            ])
-        }
-
-        // 9. Look.
-        if e.filter != .none {
-            let filtered = applyPreset(e.filter, to: img)
-            img = e.filterIntensity >= 0.999 ? filtered : img.applyingFilter("CIDissolveTransition", parameters: [
-                kCIInputTargetImageKey: filtered, kCIInputTimeKey: e.filterIntensity,
             ])
         }
         return img

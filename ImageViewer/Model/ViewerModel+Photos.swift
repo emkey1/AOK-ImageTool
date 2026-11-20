@@ -157,7 +157,7 @@ extension ViewerModel {
         if photo.isLive && PhotosLibrary.stillOnly(e) {
             let alert = NSAlert()
             alert.messageText = "Save the Live Photo as a still photo?"
-            alert.informativeText = "A removed background and Extend are for a single picture, so the photo would be saved without its motion."
+            alert.informativeText = "A removed background, removed objects, Extend and objects adjusted on their own are for a single picture, so the photo would be saved without its motion."
             alert.addButton(withTitle: "Save as Still")
             alert.addButton(withTitle: "Cancel")
             let handle: (NSApplication.ModalResponse) -> Void = { [weak self] response in

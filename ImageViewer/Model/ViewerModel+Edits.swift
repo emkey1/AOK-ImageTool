@@ -275,6 +275,8 @@ extension ViewerModel {
         }.value
         setEditsDictionary(url, nil)
         dropEditUndos(for: url)
+        // (Its selection fits the picture as it was before its turn and crop went into the file.)
+        if adjustTarget?.url == url { adjustTarget = nil }
         window?.isDocumentEdited = hasUnsavedEdits
         fileDidChange(url)
     }

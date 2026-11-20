@@ -281,6 +281,9 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     /// 0...1: how far the subject's light and color move toward a picture background (nil: off).
     var matchLighting: Double?
 
+    /// Selected objects' own light, color and detail, on top of the whole picture's (see `LocalAdjustment`).
+    var localAdjustments: [LocalAdjustment]?
+
     static let identity = EditState()
 
     /// No edits that show: also when what's left can't change the picture (a slider within a hair of zero, an
@@ -299,6 +302,10 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         e.quarterTurns = ((e.quarterTurns % 4) + 4) % 4
         if let c = e.crop, abs(c.minX) < 0.0005, abs(c.minY) < 0.0005, abs(c.width - 1) < 0.0005, abs(c.height - 1) < 0.0005 { e.crop = nil }
         if e.removals?.isEmpty == true { e.removals = nil }
+        if let locals = e.localAdjustments {
+            let kept = locals.map(\.shown).filter { !$0.isEmpty }
+            e.localAdjustments = kept.isEmpty ? nil : kept
+        }
         if !e.cropExtendsBeyondImage {
             e.extendFill = nil
             e.extendSeed = nil
@@ -390,24 +397,27 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     }
 
     /// What belongs to this picture alone, as opposed to its adjustments (light, color, detail, the filter): its
-    /// turn, crop and straightening, Extend, retouching, cutout and background.
+    /// turn, crop and straightening, Extend, retouching, cutout and background, and its selected objects'
+    /// adjustments (their selections fit only this picture).
     private var ownParts: (Int, Bool, Bool, Double, CGRect?, Quad?, Cutout?, Backdrop?, Double?, [Removal]?, UInt64?, ExtendMethod?,
-                           String?, ExtendFill?) {
+                           String?, [LocalAdjustment]?, ExtendFill?) {
         get {
             (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-             removals, extendSeed, extendMethod, extendPrompt, extendFill)
+             removals, extendSeed, extendMethod, extendPrompt, localAdjustments, extendFill)
         }
         set {
             // The fill comes last: setting straighten or perspective clears it.
             (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-             removals, extendSeed, extendMethod, extendPrompt, extendFill) = newValue
+             removals, extendSeed, extendMethod, extendPrompt, localAdjustments, extendFill) = newValue
         }
     }
 
+    /// Reset Adjustments: the whole picture's and its selected objects' (its turn, crop and so on stay).
     mutating func resetAdjustments() {
         let own = ownParts
         self = EditState()
         ownParts = own
+        localAdjustments = nil
     }
 
     /// The adjustments alone, for Copy Edits.
@@ -439,7 +449,7 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
 
     /// The pictures the edits use (an Extend fill, a background, removed objects' patches) are all on this Mac.
     var referencedFilesExist: Bool {
-        var paths = (removals ?? []).map(\.path)
+        var paths = (removals ?? []).map(\.path) + (localAdjustments ?? []).map(\.mask)
         if let fill = extendFill { paths.append(fill.path) }
         if case .image(let path, _) = background { paths.append(path) }
         return paths.allSatisfy { FileManager.default.fileExists(atPath: $0) }

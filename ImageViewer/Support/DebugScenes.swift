@@ -92,6 +92,22 @@ enum DebugScenes {
             }
             model.inspectorTab = .adjust
             model.showInspector = true
+        case "adjust-object":
+            // The subject adjusted on its own: brighter and more colorful than the rest.
+            Task {
+                for _ in 0..<100 where model.decoded?.url != model.currentURL { try? await Task.sleep(for: .milliseconds(100)) }
+                guard let d = model.decoded, let mask = try? await VisionServices.subjectMask(for: d.cgImage),
+                      (try? model.adjustSelection(mask, of: d.url, size: d.pixelSize)) != nil, let t = model.adjustTarget else { return }
+                model.updateEdits("Adjust") {
+                    $0.setLocalValue(\.exposure, 0.6, of: t.id, mask: t.mask)
+                    $0.setLocalValue(\.vibrance, 0.4, of: t.id, mask: t.mask)
+                    $0.setLocalValue(\.shadows, 0.3, of: t.id, mask: t.mask)
+                }
+            }
+        case "select-adjust":
+            model.inspectorTab = .adjust
+            model.showInspector = true
+            model.activeTool = .selectToAdjust
         case "intelligence":
             model.inspectorTab = .intelligence
             model.showInspector = true

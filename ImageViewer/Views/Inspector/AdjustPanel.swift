@@ -4,17 +4,25 @@ struct AdjustPanel: View {
     @Environment(ViewerModel.self) private var model
     @State private var dragStart: EditState?
     @State private var presetPreviews: [FilterPreset: CGImage] = [:]
+    /// The object being adjusted, the rest of the picture darkened (and which object it was made for).
+    @State private var objectPreview: (id: UUID, image: CGImage)?
     @AppStorage(PrefKey.upscaledAnimationFormat) private var animationFormat = Animation.Container.gif.rawValue
 
     var body: some View {
         let e = model.currentEdits
+        // Adjusting a selected object: only what it has its own of shows (the rest is the whole picture's).
+        let object = model.currentAdjustTarget
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 quickActions(e)
 
-                straightenSection(e)
+                objectsSection(object)
 
-                whiteBalanceSection(e)
+                if object == nil {
+                    straightenSection(e)
+                }
+
+                whiteBalanceSection(e, object: object)
 
                 PanelSection(title: "Light", systemImage: "sun.max") {
                     slider("Exposure", \.exposure, -2...2, format: { String(format: "%+.2f EV", $0) })
@@ -32,30 +40,23 @@ struct AdjustPanel: View {
                 PanelSection(title: "Detail", systemImage: "camera.filters") {
                     slider("Sharpness", \.sharpness, 0...1)
                     slider("Noise Reduction", \.noiseReduction, 0...1)
-                    slider("Vignette", \.vignette, 0...1)
-                }
-
-                PanelSection(title: "Filters", systemImage: "camera.filters") {
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 10) {
-                        ForEach(FilterPreset.allCases) { preset in
-                            PresetTile(preset: preset, image: presetPreviews[preset], selected: e.filter == preset) {
-                                model.updateEdits("Filter") {
-                                    $0.filter = preset
-                                    $0.filterIntensity = 1
-                                }
-                            }
-                        }
-                    }
-                    if e.filter != .none {
-                        slider("Intensity", \.filterIntensity, 0...1, format: { "\(Int($0 * 100))%" }, resetValue: 1)
+                    if object == nil {
+                        slider("Vignette", \.vignette, 0...1)
                     }
                 }
 
-                copiesSection
+                if object == nil {
+                    wholePictureSections(e)
+                }
 
                 HStack {
-                    Button("Reset Adjustments") { model.resetAdjustments() }
-                        .disabled(!e.hasAdjustments)
+                    if let object {
+                        Button("Reset Object") { resetObject(object) }
+                            .disabled((e.localAdjustments?.first { $0.id == object.id }?.shown.isEmpty) ?? true)
+                    } else {
+                        Button("Reset Adjustments") { model.resetAdjustments() }
+                            .disabled(!e.hasAdjustments)
+                    }
                     Spacer()
                     Button("Revert All") { model.revertEdits() }
                         .disabled(e.isIdentity)
@@ -95,6 +96,107 @@ struct AdjustPanel: View {
             }.value
             guard !Task.isCancelled else { return }
             presetPreviews = previews
+        }
+        .task(id: objectPreviewKey) {
+            guard let object = model.currentAdjustTarget else { return objectPreview = nil }
+            try? await Task.sleep(for: .milliseconds(objectPreview?.id == object.id ? 300 : 0))
+            guard !Task.isCancelled, let d = model.decoded, d.url == object.url else { return }
+            let e = model.currentEdits
+            let image = await Task.detached(priority: .userInitiated) {
+                EditRenderer.shared.selectionPreview(d, edits: e, mask: object.mask, maxDimension: 480)
+            }.value
+            guard !Task.isCancelled, let image else { return }
+            objectPreview = (object.id, image)
+        }
+    }
+
+    /// The filters, the copies made from the picture: the whole picture's alone.
+    @ViewBuilder
+    private func wholePictureSections(_ e: EditState) -> some View {
+        PanelSection(title: "Filters", systemImage: "camera.filters") {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 10) {
+                ForEach(FilterPreset.allCases) { preset in
+                    PresetTile(preset: preset, image: presetPreviews[preset], selected: e.filter == preset) {
+                        model.updateEdits("Filter") {
+                            $0.filter = preset
+                            $0.filterIntensity = 1
+                        }
+                    }
+                }
+            }
+            if e.filter != .none {
+                slider("Intensity", \.filterIntensity, 0...1, format: { "\(Int($0 * 100))%" }, resetValue: 1)
+            }
+        }
+
+        copiesSection
+    }
+
+    /// What the object preview shows: the object, in the picture as it's edited (made again a moment after a change).
+    private var objectPreviewKey: Int {
+        var h = Hasher()
+        h.combine(model.currentAdjustTarget?.id)
+        h.combine(model.decoded.map(ObjectIdentifier.init))
+        h.combine(try? JSONEncoder().encode(model.currentEdits))
+        return h.finalize()
+    }
+
+    /// Objects: which one the sliders below change (or the whole picture), selecting another, and taking one's
+    /// adjustments away.
+    private func objectsSection(_ object: AdjustTarget?) -> some View {
+        let objects = model.adjustableObjects
+        return PanelSection(title: "Objects", systemImage: "person.crop.rectangle") {
+            if objects.isEmpty {
+                Text("Select an object to change its light, color and detail on its own, leaving the rest as it is.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Picker("Adjusting", selection: Binding(
+                    get: { object?.id },
+                    set: { id in model.adjustTarget = objects.first { $0.id == id } }
+                )) {
+                    Text("Whole Picture").tag(UUID?.none)
+                    ForEach(Array(objects.enumerated()), id: \.element.id) { index, o in
+                        Text("Object \(index + 1)").tag(Optional(o.id))
+                    }
+                }
+                .help("What the sliders below change")
+            }
+            if let object, let preview = objectPreview, preview.id == object.id {
+                Image(decorative: preview.image, scale: 1)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: .infinity, maxHeight: 160)
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .help("The object being adjusted (the rest is darkened here only)")
+            }
+            HStack(spacing: 8) {
+                Button {
+                    model.viewMode = .viewer
+                    model.activeTool = .selectToAdjust
+                } label: {
+                    Label("Select Object…", systemImage: "hand.point.up.left")
+                }
+                .help("Click an object in the picture to adjust it on its own")
+                Spacer()
+                if let object {
+                    Button(role: .destructive) {
+                        model.removeObjectAdjustments(object)
+                    } label: {
+                        Image(systemName: "trash")
+                    }
+                    .help("Take this object's own adjustments away")
+                }
+            }
+            .controlSize(.small)
+        }
+    }
+
+    /// Sets the object's own adjustments back to none (it stays selected, to adjust again).
+    private func resetObject(_ object: AdjustTarget) {
+        model.updateEdits("Reset Object") { e in
+            for key in LocalAdjustment.keys { e.setLocalValue(key, 0, of: object.id, mask: object.mask) }
         }
     }
 
@@ -176,32 +278,39 @@ struct AdjustPanel: View {
         }
     }
 
-    /// White balance: the eyedropper, Auto, the light it was taken in, and Warmth and Tint.
-    private func whiteBalanceSection(_ e: EditState) -> some View {
+    /// White balance: the eyedropper, Auto, the light it was taken in, and Warmth and Tint (an object has only
+    /// its own Warmth and Tint).
+    private func whiteBalanceSection(_ e: EditState, object: AdjustTarget?) -> some View {
         PanelSection(title: "White Balance", systemImage: "thermometer.sun") {
-            HStack(spacing: 6) {
-                Toggle(isOn: Binding(get: { model.pickingWhiteBalance }, set: { model.pickingWhiteBalance = $0 })) {
-                    Label("Pick", systemImage: "eyedropper")
-                }
-                .toggleStyle(.button)
-                .help("Click something in the photo that should be white or gray, and the color cast is taken out (Esc puts it away)")
-                Button("Auto") { model.autoWhiteBalance() }
-                    .help("Take out the color cast, going by what in the photo looks like it should be neutral")
-                Menu("Lit By") {
-                    Button("As Shot") { model.setWhiteBalance(nil) }
-                    Divider()
-                    ForEach(WhiteBalance.Light.allCases) { light in
-                        Button(light.title) { model.setWhiteBalance(light) }
-                    }
-                }
-                .fixedSize()
-                .help("Correct for the light the photo was taken in")
-                Spacer()
+            if object == nil {
+                whiteBalanceTools
             }
-            .controlSize(.small)
             slider("Warmth", \.temperature, -1...1)
             slider("Tint", \.tint, -1...1)
         }
+    }
+
+    private var whiteBalanceTools: some View {
+        HStack(spacing: 6) {
+            Toggle(isOn: Binding(get: { model.pickingWhiteBalance }, set: { model.pickingWhiteBalance = $0 })) {
+                Label("Pick", systemImage: "eyedropper")
+            }
+            .toggleStyle(.button)
+            .help("Click something in the photo that should be white or gray, and the color cast is taken out (Esc puts it away)")
+            Button("Auto") { model.autoWhiteBalance() }
+                .help("Take out the color cast, going by what in the photo looks like it should be neutral")
+            Menu("Lit By") {
+                Button("As Shot") { model.setWhiteBalance(nil) }
+                Divider()
+                ForEach(WhiteBalance.Light.allCases) { light in
+                    Button(light.title) { model.setWhiteBalance(light) }
+                }
+            }
+            .fixedSize()
+            .help("Correct for the light the photo was taken in")
+            Spacer()
+        }
+        .controlSize(.small)
     }
 
     /// Turns the picture by `step` degrees (clockwise for positive), as one undo step.
@@ -255,18 +364,24 @@ struct AdjustPanel: View {
         .help(help)
     }
 
+    /// A slider for the whole picture's `keyPath`, or the object's own when one is being adjusted (and has one).
     private func slider(_ title: String, _ keyPath: WritableKeyPath<EditState, Double>, _ range: ClosedRange<Double>,
                         format: @escaping (Double) -> String = { String(format: "%+.0f", $0 * 100) },
                         resetValue: Double = 0, undoName: String? = nil) -> some View {
-        AdjustmentSlider(
+        let object = model.currentAdjustTarget.flatMap { LocalAdjustment.keys.contains(keyPath) ? $0 : nil }
+        let value: (EditState) -> Double = { e in object.map { e.localValue(keyPath, of: $0.id) } ?? e[keyPath: keyPath] }
+        let set: (inout EditState, Double) -> Void = { e, v in
+            if let object { e.setLocalValue(keyPath, v, of: object.id, mask: object.mask) } else { e[keyPath: keyPath] = v }
+        }
+        return AdjustmentSlider(
             title: title,
             value: Binding(
-                get: { model.currentEdits[keyPath: keyPath] },
-                set: { v in model.previewEdits { $0[keyPath: keyPath] = v } }
+                get: { value(model.currentEdits) },
+                set: { v in model.previewEdits { set(&$0, v) } }
             ),
             range: range,
             format: format,
-            isDefault: abs(model.currentEdits[keyPath: keyPath] - resetValue) < 0.0001,
+            isDefault: abs(value(model.currentEdits) - resetValue) < 0.0001,
             onEditingChanged: { editing in
                 if editing {
                     dragStart = model.currentEdits
@@ -277,7 +392,7 @@ struct AdjustPanel: View {
                     model.refillExtensionIfNeeded()
                 }
             },
-            reset: { model.updateEdits("Reset \(undoName ?? title)") { $0[keyPath: keyPath] = resetValue } }
+            reset: { model.updateEdits("Reset \(undoName ?? title)") { set(&$0, resetValue) } }
         )
     }
 }

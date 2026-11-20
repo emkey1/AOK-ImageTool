@@ -213,12 +213,12 @@ final class PhotosLibrary {
         Self.keepFiles(of: edits)
     }
 
-    /// Files in Application Support (backgrounds, Extend fills, removal patches) that edits saved to Photos refer
-    /// to: kept when those stores are cleaned up at launch, so the edits open with their settings again.
+    /// Files in Application Support (backgrounds, Extend fills, removal patches, selections) that edits saved to
+    /// Photos refer to: kept when those stores are cleaned up at launch, so the edits open with their settings again.
     nonisolated static var keptFiles: Set<String> { Set(UserDefaults.standard.stringArray(forKey: PrefKey.photosEditFiles) ?? []) }
 
     nonisolated static func keepFiles(of e: EditState) {
-        var paths = e.removals?.map(\.path) ?? []
+        var paths = (e.removals?.map(\.path) ?? []) + (e.localAdjustments?.map(\.mask) ?? [])
         if let path = e.extendFill?.path { paths.append(path) }
         if case .image(let path, _) = e.background { paths.append(path) }
         guard !paths.isEmpty else { return }
@@ -261,8 +261,8 @@ final class PhotosLibrary {
     }
 
     /// Edits a Live Photo's motion can't take: they're for one picture (a cutout, a background, Extend,
-    /// removed objects).
+    /// removed objects, objects adjusted on their own).
     nonisolated static func stillOnly(_ e: EditState) -> Bool {
-        e.cutout != nil || e.background != nil || e.cropExtendsBeyondImage || e.removals != nil
+        e.cutout != nil || e.background != nil || e.cropExtendsBeyondImage || e.removals != nil || e.shown.localAdjustments != nil
     }
 }

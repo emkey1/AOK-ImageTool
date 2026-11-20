@@ -55,6 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         BackdropStore.prune(keeping: PendingEdits.shared.backdropPaths.union(photos))
         ExtendFillStore.prune(keeping: PendingEdits.shared.extendFillPaths.union(photos))
         RemovalStore.prune(keeping: PendingEdits.shared.removalPaths.union(photos))
+        SelectionStore.prune(keeping: PendingEdits.shared.selectionPaths.union(photos))
     }
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {

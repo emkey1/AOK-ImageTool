@@ -484,6 +484,183 @@ enum SelfTest {
         }
     }
 
+    /// Objects adjusted on their own: the selection changes only what it covers, fading at its soft edge, and
+    /// follows the picture through turns, flips, straightening, a document fix and a crop; it's kept as it was
+    /// selected; it's this picture's own (not copied by Copy Edits, kept by Paste, cleared by Reset Adjustments,
+    /// not part of what Extend continues); it reads edits from a later version; pending edits drop it when its
+    /// selection is gone; the Adjust panel's preview darkens the rest. (`AOK_SELFTEST_ONLY=local` runs just these.)
+    private static func localAdjustmentChecks(out: URL) async {
+        let w = 400, h = 300
+        // The object: an L shape (so a turn or flip the wrong way shows), top-down rows.
+        func inObject(_ x: Int, _ y: Int) -> Bool { (60..<160).contains(x) && (40..<250).contains(y) || (160..<300).contains(x) && (190..<250).contains(y) }
+        func picture(_ name: String, _ color: (Int, Int) -> (UInt8, UInt8, UInt8)) -> DecodedImage? {
+            var px = [UInt8](repeating: 255, count: w * h * 4)
+            for y in 0..<h { for x in 0..<w { let c = color(x, y); let i = (y * w + x) * 4; px[i] = c.0; px[i + 1] = c.1; px[i + 2] = c.2 } }
+            let url = out.appendingPathComponent(name)
+            guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+                  let image = ctx.makeImage(),
+                  (try? ImageWriter.write(image, to: url, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)) != nil
+            else { return nil }
+            return try? ImageDecoder.decode(url: url, page: 0, allowHDR: false)
+        }
+        func rgba(_ image: CGImage) -> [UInt8] {
+            var px = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            let ctx = CGContext(data: &px, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return px
+        }
+        // A gray picture with texture (so straightening's resampling has something to move), the same with the object
+        // painted red (where the object is after the same edits), and the object's selection.
+        func shade(_ x: Int, _ y: Int) -> UInt8 { UInt8(110 + (x / 8 + y / 8) % 2 * 20) }
+        guard let gray = picture("local-gray.png", { x, y in (shade(x, y), shade(x, y), shade(x, y)) }),
+              let marked = picture("local-marked.png", { x, y in inObject(x, y) ? (230, 20, 20) : (shade(x, y), shade(x, y), shade(x, y)) }),
+              let selection = ObjectRemover.maskImage((0..<(w * h)).map { inObject($0 % w, $0 / w) ? 255 : 0 }, width: w, height: h),
+              let path = try? SelectionStore.save(selection, size: CGSize(width: w, height: h))
+        else { return check(false, "make the pictures and selection for objects adjusted on their own") }
+
+        // Kept as it was selected (a soft mask's values aren't taken for gray levels).
+        if let half = ObjectRemover.maskImage([UInt8](repeating: 128, count: 64 * 64), width: 64, height: 64),
+           let halfPath = try? SelectionStore.save(half, size: CGSize(width: 64, height: 64)),
+           let loaded = SelectionStore.load(halfPath) {
+            let v = EditRenderer.shared.context.renderGray(loaded, bounds: loaded.extent)
+            check(abs(Int(v[v.count / 2]) - 128) <= 1, "a selection is kept as it was selected (half selected stays \(v[v.count / 2]) of 255)")
+        }
+
+        var local = LocalAdjustment(mask: path)
+        local.exposure = 1
+        var e = EditState()
+        e.localAdjustments = [local]
+        // Brighter where the object is, and nothing else changed; through a turn, a flip, straightening, a document fix
+        // and a crop, the brightened part is where the object went.
+        let quad = Quad(topLeft: CGPoint(x: 0.04, y: 0.95), topRight: CGPoint(x: 0.92, y: 0.98),
+                        bottomRight: CGPoint(x: 0.96, y: 0.06), bottomLeft: CGPoint(x: 0.03, y: 0.02))
+        let shapes: [(String, (inout EditState) -> Void)] = [
+            ("as taken", { _ in }),
+            ("turned right and cropped", { $0.quarterTurns = 1; $0.crop = CGRect(x: 0.05, y: 0.08, width: 0.9, height: 0.8) }),
+            ("turned left and flipped", { $0.quarterTurns = 3; $0.flipHorizontal = true }),
+            ("straightened and cropped", { $0.straighten = 6; $0.crop = CGRect(x: 0.1, y: 0.05, width: 0.8, height: 0.85) }),
+            ("corrected and turned over", { $0.perspective = quad; $0.quarterTurns = 2 }),
+        ]
+        for (name, shape) in shapes {
+            var adjusted = e, plain = EditState(), where_ = EditState()
+            shape(&adjusted); shape(&plain); shape(&where_)
+            guard let a = EditRenderer.shared.renderSync(gray, edits: adjusted, maxDimension: nil)?.image,
+                  let b = EditRenderer.shared.renderSync(gray, edits: plain, maxDimension: nil)?.image,
+                  let m = EditRenderer.shared.renderSync(marked, edits: where_, maxDimension: nil)?.image,
+                  a.width == m.width, a.height == m.height, b.width == m.width, b.height == m.height
+            else { check(false, "render an object adjusted on its own in a picture \(name)"); continue }
+            let (pa, pb, pm) = (rgba(a), rgba(b), rgba(m))
+            var wrong = 0, object = 0, brighter = 0, changedOutside = 0
+            for i in stride(from: 0, to: pa.count, by: 4) {
+                let isObject = pm[i] > 200 && pm[i + 1] < 80
+                let isRest = abs(Int(pm[i]) - Int(pm[i + 1])) < 6   // (gray: not the object, nor its blended edge)
+                let lift = Int(pa[i + 1]) - Int(pb[i + 1])
+                if isObject { object += 1; if lift > 30 { brighter += 1 } else { wrong += 1 } }
+                if isRest, abs(lift) > 2 { changedOutside += 1; wrong += 1 }
+            }
+            let total = pa.count / 4
+            check(object > total / 10 && Double(wrong) / Double(total) < 0.005,
+                  "an object adjusted on its own in a picture \(name) is brightened (\(brighter) of \(object) pixels) and nothing else (\(changedOutside) changed)")
+        }
+
+        // A softly selected edge is adjusted part way.
+        if let halfMask = ObjectRemover.maskImage([UInt8](repeating: 128, count: w * h), width: w, height: h),
+           let halfPath = try? SelectionStore.save(halfMask, size: CGSize(width: w, height: h)) {
+            var soft = EditState(), full = EditState()
+            var a = LocalAdjustment(mask: halfPath); a.exposure = 1
+            soft.localAdjustments = [a]
+            full.exposure = 1
+            if let s = EditRenderer.shared.renderSync(gray, edits: soft, maxDimension: nil)?.image,
+               let f = EditRenderer.shared.renderSync(gray, edits: full, maxDimension: nil)?.image {
+                let (ps, pf) = (rgba(s), rgba(f))
+                let base = Int(shade(0, 0)), mid = Int(ps[1]), top = Int(pf[1])
+                check(mid > base + 10 && mid < top - 10, "half selected is adjusted part way (\(base) → \(mid), all the way \(top))")
+            }
+        }
+
+        // Its own, not the look's: Copy Edits leaves it, Paste keeps the picture's, Reset Adjustments takes it away,
+        // and Extend's fill doesn't depend on it.
+        var both = e
+        both.exposure = 0.3
+        check(both.adjustments.localAdjustments == nil, "Copy Edits doesn't copy an object's own adjustments")
+        var pasted = both
+        pasted.takeAdjustments(from: EditState())
+        check(pasted.localAdjustments == e.localAdjustments && pasted.exposure == 0, "Paste Edits keeps the picture's own objects' adjustments")
+        var reset = both
+        reset.resetAdjustments()
+        check(reset.localAdjustments == nil && reset.isIdentity, "Reset Adjustments takes objects' own adjustments away too")
+        var more = both
+        more.localAdjustments?[0].exposure = -0.5
+        check(more.extendSourceKey == both.extendSourceKey, "Extend's fill doesn't depend on objects' own adjustments")
+        var untouched = EditState()
+        untouched.localAdjustments = [LocalAdjustment(mask: path)]
+        check(untouched.isIdentity && !e.isIdentity, "an object selected but not yet adjusted isn't an edit")
+        check(PhotosLibrary.stillOnly(e) && !PhotosLibrary.stillOnly(untouched), "a Live Photo with an object adjusted on its own saves as a still")
+        var set = EditState()
+        set.setLocalValue(\.shadows, 0.4, of: local.id, mask: path)
+        set.setLocalValue(\.exposure, 0.2, of: local.id, mask: path)
+        check(set.localAdjustments?.count == 1 && set.localValue(\.shadows, of: local.id) == 0.4 && set.localValue(\.exposure, of: local.id) == 0.2,
+              "the sliders set one object's own values")
+
+        // Saved and read back; edits from a later version (with a value this one doesn't know, and one missing) open.
+        if let data = try? JSONEncoder().encode(e), let back = try? JSONDecoder().decode(EditState.self, from: data) {
+            check(back == e, "an object's own adjustments are kept with the edits")
+        }
+        var laterLocal = LocalAdjustment(mask: path)
+        laterLocal.exposure = 0.5
+        var laterEdits = EditState()
+        laterEdits.localAdjustments = [laterLocal]
+        if let data = try? JSONEncoder().encode(laterEdits),
+           var json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+           var locals = json["localAdjustments"] as? [[String: Any]] {
+            locals[0]["clarity"] = 0.3
+            locals[0]["shadows"] = nil
+            json["localAdjustments"] = locals
+            let later = (try? JSONSerialization.data(withJSONObject: json)).flatMap { try? JSONDecoder().decode(EditState.self, from: $0) }
+            check(later?.localAdjustments?.first?.exposure == 0.5 && later?.localAdjustments?.first?.shadows == 0,
+                  "an object's adjustments from a later version open")
+        }
+
+        // Pending edits: an object whose selection is gone is dropped (the rest stays).
+        let fm = FileManager.default
+        let file = out.appendingPathComponent("local-pending.png").standardizedFileURL
+        try? fm.removeItem(at: file)
+        try? fm.copyItem(at: gray.url, to: file)
+        var pending = e
+        pending.exposure = 0.25
+        pending.localAdjustments?.append({ var gone = LocalAdjustment(mask: out.appendingPathComponent("gone.png").path); gone.exposure = 1; return gone }())
+        let storeURL = out.appendingPathComponent("LocalPendingEdits.json")
+        let store = PendingEdits(fileURL: storeURL)
+        let modDate = try? URL(fileURLWithPath: file.path).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        store.set(pending, for: file, modificationDate: modDate)
+        store.flush()
+        let restored = PendingEdits(fileURL: storeURL).restore(in: out, recursive: false, restrictedTo: [file])[file]
+        check(restored?.localAdjustments == e.localAdjustments && restored?.exposure == 0.25,
+              "pending edits keep an object's own adjustments, and drop one whose selection is gone")
+        try? fm.removeItem(at: storeURL)
+
+        // The Adjust panel's preview: the object as it is, the rest darkened.
+        var turned = e
+        turned.quarterTurns = 1
+        if let preview = EditRenderer.shared.selectionPreview(gray, edits: turned, mask: path, maxDimension: 300),
+           let shown = EditRenderer.shared.renderSync(gray, edits: turned, maxDimension: 300)?.image,
+           let where_ = EditRenderer.shared.renderSync(marked, edits: { var t = EditState(); t.quarterTurns = 1; return t }(), maxDimension: 300)?.image,
+           preview.width == shown.width, preview.height == shown.height, where_.width == shown.width {
+            let (pp, ps, pm) = (rgba(preview), rgba(shown), rgba(where_))
+            var same = 0, darker = 0, object = 0, rest = 0
+            for i in stride(from: 0, to: pp.count, by: 4) {
+                if pm[i] > 200 && pm[i + 1] < 80 { object += 1; if abs(Int(pp[i + 1]) - Int(ps[i + 1])) <= 3 { same += 1 } }
+                else if abs(Int(pm[i]) - Int(pm[i + 1])) < 6 { rest += 1; if Int(pp[i + 1]) < Int(ps[i + 1]) - 30 { darker += 1 } }
+            }
+            check(same > object * 98 / 100 && darker > rest * 98 / 100,
+                  "the Adjust panel shows which object it's adjusting (\(same) of \(object) as they are, \(darker) of \(rest) others darkened)")
+        } else {
+            check(false, "the Adjust panel's preview of the object it's adjusting")
+        }
+    }
+
     /// White balance: the eyedropper makes what's clicked neutral (on a cropped photo too); Auto takes a cast out
     /// of a photo with something neutral in it, and leaves one with nothing neutral alone; presets go the right
     /// way. (`AOK_SELFTEST_ONLY=wb` runs just these.)
@@ -1331,8 +1508,11 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ["clone", "wb", "newimage", "tags", "combine"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
-            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "combine" {
+        if ["clone", "wb", "newimage", "tags", "combine", "local"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "local" {
+                print("\n[Objects adjusted on their own]")
+                await localAdjustmentChecks(out: out)
+            } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "combine" {
                 print("\n[Combine Pictures]")
                 await combineChecks(folder: folder, out: out)
             } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "tags" {
@@ -2467,6 +2647,8 @@ enum SelfTest {
         await cloneHealChecks(out: out)
         print("\n[White Balance]")
         await whiteBalanceChecks(out: out)
+        print("\n[Objects adjusted on their own]")
+        await localAdjustmentChecks(out: out)
         print("\n[New Image]")
         await newImageChecks(out: out)
         print("\n[Ratings, captions, Copy Edits]")
