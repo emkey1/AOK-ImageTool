@@ -5,8 +5,8 @@ extension ViewerModel {
     /// it. The copy records what it was made from, so it stacks on top of it, and is shown. When `operation` is
     /// set not to make copies (Settings ▸ Editing ▸ Copies), the result takes the image's place instead. `then`
     /// gets the file made (the copy, or the image replaced) once it's saved and listed (not for a photo from
-    /// Photos, whose copy goes to the library).
-    func saveCopy(of url: URL, decoded d: DecodedImage, edits e: EditState, label: String, defaultFormat: ExportFormat,
+    /// Photos, whose copy goes to the library). Edit ▸ Undo `undoName` takes the copy away again.
+    func saveCopy(of url: URL, decoded d: DecodedImage, edits e: EditState, label: String, undoName: String, defaultFormat: ExportFormat,
                   working: String, systemImage: String, failure: String, operation: CopyOperation? = nil, replaced: String = "",
                   then: ((URL) -> Void)? = nil, transform: @escaping @Sendable (CGImage) async throws -> CGImage) {
         // (A photo from the Photos library always gets a copy, added to Photos.)
@@ -35,7 +35,7 @@ extension ViewerModel {
                     Self.copyWritten(dest, picture: made, from: url)
                     return dest
                 }.value
-                try await finishCopy(dest, from: url)
+                try await finishCopy(dest, from: url, undoName: undoName)
                 if !PhotosRoundTrip.isFromPhotos(url) { then?(dest.standardizedFileURL) }
             } catch {
                 dismissToast()
@@ -96,8 +96,8 @@ extension ViewerModel {
     }
 
     /// A copy of `original` has been written at `dest`: it's shown (stacked on the original), or, for a photo
-    /// from Photos, added to the Photos library as a new photo.
-    func finishCopy(_ dest: URL, from original: URL) async throws {
+    /// from Photos, added to the Photos library as a new photo (which Undo can't take back out).
+    func finishCopy(_ dest: URL, from original: URL, undoName: String) async throws {
         if PhotosRoundTrip.isFromPhotos(original) {
             do {
                 try await PhotosRoundTrip.add(dest)
@@ -108,15 +108,16 @@ extension ViewerModel {
             showToast("Added “\(dest.lastPathComponent)” to Photos", systemImage: "photo.on.rectangle")
             return
         }
-        copySaved(dest, from: original)
+        copySaved(dest, from: original, undoName: undoName)
     }
 
     /// A copy of `original` is saved at `dest`: it's shown straight away if you're still on the original with
-    /// no tool open; otherwise the toast offers to show it.
-    func copySaved(_ dest: URL, from original: URL) {
+    /// no tool open; otherwise the toast offers to show it. Undo (`undoName`) takes it away again.
+    func copySaved(_ dest: URL, from original: URL, undoName: String? = nil) {
         let stillHere = currentURL == original && activeTool == nil
         if let item = FolderScanner.item(for: dest) { insertItem(item, select: stillHere) }
         let copy = dest.standardizedFileURL
+        if let undoName { registerCopyUndo(copy, from: original.standardizedFileURL, name: undoName) }
         // The newest copy is what its stack shows from now on (unless a picture in it is the one being viewed).
         if !stillHere, let root = stackOf[copy], stackFront[root] != copy {
             stackFront[root] = copy
@@ -132,13 +133,57 @@ extension ViewerModel {
         }
     }
 
+    /// Undo for a copy just made (Colorize, Upscale, a tool's Done…): the copy goes to the Trash and the picture
+    /// it was made from is shown again; Redo puts the copy back. (Making a copy is a step like any edit: without
+    /// this, Undo would pass over it to whatever was done before, perhaps to another picture.)
+    func registerCopyUndo(_ copy: URL, from original: URL, name: String) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: self) { model in
+            model.takeBackCopy(copy, from: original, name: name)
+        }
+        undoManager.setActionName(name)
+    }
+
+    private func takeBackCopy(_ copy: URL, from original: URL, name: String) {
+        // (A tool open on it, like Extend on the crop it saved first, is put away: its picture is going.)
+        if currentURL == copy, activeTool != nil { activeTool = nil }
+        var result: NSURL?
+        do {
+            try FileManager.default.trashItem(at: copy, resultingItemURL: &result)
+        } catch {
+            return showError("Couldn't move “\(copy.lastPathComponent)” to the Trash", error)
+        }
+        // (Its stack shows the original again, in its place.)
+        if let root = stackOf[copy] { stackFront[root] = original }
+        removeItems([copy])
+        if currentURL != original { select(original) }
+        if let trashed = result as URL?, let undoManager {
+            undoManager.registerUndo(withTarget: self) { model in
+                model.putBackCopy(copy, from: trashed, original: original, name: name)
+            }
+            undoManager.setActionName(name)
+        }
+        showToast("Moved “\(copy.lastPathComponent)” to the Trash", systemImage: "trash")
+    }
+
+    private func putBackCopy(_ copy: URL, from trashed: URL, original: URL, name: String) {
+        do {
+            try FileManager.default.moveItem(at: trashed, to: copy)
+        } catch {
+            return showError("Couldn't put back “\(copy.lastPathComponent)”", error)
+        }
+        if let item = FolderScanner.item(for: copy) { insertItem(item, select: true) }
+        registerCopyUndo(copy, from: original, name: name)
+        showToast("Put back “\(copy.lastPathComponent)”", systemImage: "arrow.uturn.forward")
+    }
+
     /// Saves a colorized copy of the current image, with its edits, next to the original (see `Colorizer`).
     func colorizeCurrent() {
         guard Colorizer.isInstalled else {
             return offerDownload(.colorize) { [weak self] in self?.colorizeCurrent() }
         }
         guard let url = currentURL, let d = decoded, d.url == url else { return }
-        saveCopy(of: url, decoded: d, edits: currentEdits, label: "Colorized", defaultFormat: .heic,
+        saveCopy(of: url, decoded: d, edits: currentEdits, label: "Colorized", undoName: "Colorize", defaultFormat: .heic,
                  working: "Colorizing…", systemImage: "paintpalette", failure: "Couldn't colorize “\(url.lastPathComponent)”",
                  operation: .colorize, replaced: "Colorized “\(url.lastPathComponent)”") {
             try await Colorizer.colorize($0)
@@ -159,7 +204,7 @@ extension ViewerModel {
                 let fill = try await ExtendRenderer.makeFill(d, edits: e, progress: report)
                 var extended = e
                 extended.extendFill = fill.extendFill(try ExtendFillStore.save(fill.fill))
-                saveCopy(of: url, decoded: d, edits: extended, label: "Extended", defaultFormat: .heic,
+                saveCopy(of: url, decoded: d, edits: extended, label: "Extended", undoName: "Extend", defaultFormat: .heic,
                          working: "Saving the extended copy…", systemImage: "arrow.up.left.and.arrow.down.right",
                          failure: "Couldn't extend “\(url.lastPathComponent)”") { $0 }
             } catch {
@@ -190,7 +235,7 @@ extension ViewerModel {
         guard let url = currentURL, let d = decoded, d.url == url else { return }
         let relay = ModelRelay(self)
         let working = Prefs.makesCopy(.fixBlur) ? "Fixing the blur…" : "Sharpening…"
-        saveCopy(of: url, decoded: d, edits: currentEdits, label: "Sharpened", defaultFormat: .heic,
+        saveCopy(of: url, decoded: d, edits: currentEdits, label: "Sharpened", undoName: "Fix Blur", defaultFormat: .heic,
                  working: working, systemImage: "camera.metering.center.weighted",
                  failure: "Couldn't fix the blur in “\(url.lastPathComponent)”",
                  operation: .fixBlur, replaced: "Sharpened “\(url.lastPathComponent)”") {
@@ -211,7 +256,7 @@ extension ViewerModel {
         guard let url = currentURL, let d = decoded, d.url == url else { return }
         BlackAndWhite.last = bw
         let copy = Prefs.makesCopy(.blackAndWhite)
-        saveCopy(of: url, decoded: d, edits: currentEdits, label: "Black & White", defaultFormat: .heic,
+        saveCopy(of: url, decoded: d, edits: currentEdits, label: "Black & White", undoName: "Black & White", defaultFormat: .heic,
                  working: copy ? "Making a black and white copy…" : "Making it black and white…", systemImage: "circle.lefthalf.filled",
                  failure: "Couldn't make “\(url.lastPathComponent)” black and white",
                  operation: .blackAndWhite, replaced: "Made “\(url.lastPathComponent)” black and white") {

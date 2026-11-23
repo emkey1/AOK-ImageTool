@@ -46,7 +46,7 @@ extension ViewerModel {
             let kind = changed ? "changed" : "retouched"
             let failure = "Couldn't save a \(kind) copy of “\(url.lastPathComponent)”"
             let save: (EditState) -> Void = { [weak self] e in
-                self?.saveCopy(of: url, decoded: d, edits: e, label: changed ? "Changed" : "Retouched", defaultFormat: .heic,
+                self?.saveCopy(of: url, decoded: d, edits: e, label: changed ? "Changed" : "Retouched", undoName: operation.title, defaultFormat: .heic,
                                working: "Saving the \(kind) copy…", systemImage: changed ? "paintbrush" : operation == .cloneHeal ? "bandage" : "eraser",
                                failure: failure) { $0 }
             }

@@ -34,7 +34,7 @@ extension ViewerModel {
     /// Saves the combined picture as a copy of the background (“Name (Combined)”, stacked with it).
     func saveCombined(background url: URL, decoded d: DecodedImage, subject: Combine.Subject, layout: Combine.Layout,
                       matchLighting: Double, shadow: Double) {
-        saveCopy(of: url, decoded: d, edits: edits[url] ?? .identity, label: "Combined", defaultFormat: .heic,
+        saveCopy(of: url, decoded: d, edits: edits[url] ?? .identity, label: "Combined", undoName: "Combine", defaultFormat: .heic,
                  working: "Combining the pictures…", systemImage: "square.2.layers.3d", failure: "Couldn't combine the pictures") { rendered in
             guard let made = Combine.compose(background: rendered, subject: subject, layout: layout, matchLighting: matchLighting, shadow: shadow) else {
                 throw ImageWriteError.finalizeFailed

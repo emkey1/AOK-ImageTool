@@ -54,7 +54,7 @@ extension ViewerModel {
     /// cropped picture is saved first, as "<name> (Cropped)" stacked on the original (or, with Extend's copies
     /// off, in place of it), and Extend opens on that.
     private func extendCropped(url: URL, decoded d: DecodedImage, edits e: EditState, method: ExtendMethod?) {
-        saveCopy(of: url, decoded: d, edits: e, label: "Cropped", defaultFormat: .heic, working: "Saving the crop…", systemImage: "crop",
+        saveCopy(of: url, decoded: d, edits: e, label: "Cropped", undoName: "Extend", defaultFormat: .heic, working: "Saving the crop…", systemImage: "crop",
                  failure: "Couldn't save the crop of “\(url.lastPathComponent)”", operation: .extend,
                  replaced: "Saved the crop in “\(url.lastPathComponent)”", then: { [weak self] made in
             // (Unless the user has moved on to another picture meanwhile.)

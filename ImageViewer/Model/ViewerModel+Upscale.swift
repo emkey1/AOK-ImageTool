@@ -39,7 +39,7 @@ extension ViewerModel {
     }
 
     private func saveUpscaled(url: URL, decoded d: DecodedImage, edits e: EditState, scale: Int) {
-        saveCopy(of: url, decoded: d, edits: e, label: "\(scale)×", defaultFormat: .png,
+        saveCopy(of: url, decoded: d, edits: e, label: "\(scale)×", undoName: "Upscale", defaultFormat: .png,
                  working: "Upscaling…", systemImage: "arrow.up.left.and.arrow.down.right",
                  failure: "Couldn't upscale “\(url.lastPathComponent)”",
                  operation: .upscale, replaced: "Upscaled “\(url.lastPathComponent)” \(scale)×") {
@@ -121,7 +121,7 @@ extension ViewerModel {
                     made.set()
                     Self.copyWritten(dest, picture: first, from: url)
                 }.value
-                try await finishCopy(dest, from: url)
+                try await finishCopy(dest, from: url, undoName: "Upscale")
             } catch {
                 if made.isSet { try? FileManager.default.removeItem(at: dest) }
                 dismissToast()

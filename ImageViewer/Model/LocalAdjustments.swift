@@ -236,7 +236,7 @@ extension ViewerModel {
         leaveObjectSession()
         activeTool = nil
         if Prefs.makesCopy(.adjustObjects) {
-            saveCopy(of: s.url, decoded: d, edits: s.working, label: "Adjusted", defaultFormat: .heic, working: "Saving the adjusted copy…",
+            saveCopy(of: s.url, decoded: d, edits: s.working, label: "Adjusted", undoName: "Adjust Objects", defaultFormat: .heic, working: "Saving the adjusted copy…",
                      systemImage: "person.crop.rectangle", failure: "Couldn't save an adjusted copy of “\(s.url.lastPathComponent)”") { $0 }
         } else {
             applyEdits(s.working, to: s.url, undoName: "Adjust Objects", previous: before)

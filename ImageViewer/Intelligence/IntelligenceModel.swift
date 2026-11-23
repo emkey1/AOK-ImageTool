@@ -757,9 +757,13 @@ final class IntelligenceModel {
         let dest = ImageWriter.uniqueURL(in: viewer.currentURL?.deletingLastPathComponent() ?? folder, baseName: base, ext: ext)
         do {
             try FileManager.default.copyItem(at: tempURL, to: dest)
-            if let original = viewer.currentURL { ImageStacks.markDerived(dest, from: original) }
+            let original = viewer.currentURL
+            if let original { ImageStacks.markDerived(dest, from: original) }
             if let item = FolderScanner.item(for: dest) {
                 viewer.insertItem(item, select: true)
+            }
+            if let original {
+                viewer.registerCopyUndo(dest.standardizedFileURL, from: original.standardizedFileURL, name: "Image Playground")
             }
             viewer.showToast("Saved \(dest.lastPathComponent)", systemImage: "apple.image.playground")
         } catch {
