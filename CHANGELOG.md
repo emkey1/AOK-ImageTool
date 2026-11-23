@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.3.1
 
 - **Adjust Objects finishes like the other tools**: adjusting an object on its own left the change on the photo, to keep with Save (which asks to save over the original or export a copy), unlike Remove Objects, Change Objects and Clone & Heal. It's now **Adjust Objects** (under **Objects** in the Adjust panel, or the Intelligence menu), with a bar under the picture: **Done** saves “*name* (Adjusted)”, stacked on the original, which stays as it was, and **Cancel** leaves the photo as it was; ⌘Z steps back through its changes. Turn off **Adjust Objects makes a copy** in Settings › Editing › Copies to keep the adjustments as an edit of the photo instead, as before.
 
