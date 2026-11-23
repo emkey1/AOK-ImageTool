@@ -116,6 +116,21 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         return result
     }
 
+    /// Small previews of each saved preset on the picture: its adjustments in place of the picture's own, which
+    /// keeps its turn, retouching and so on (`edits`), as clicking it would.
+    func adjustmentPresetPreviews(_ decoded: DecodedImage, edits: EditState, presets: [AdjustmentPreset], size: CGFloat) -> [UUID: CGImage] {
+        var result: [UUID: CGImage] = [:]
+        for preset in presets {
+            var e = edits
+            e.takeAdjustments(from: preset.edits)
+            let img = makeImage(decoded, edits: e, maxDimension: size, stage: .full)
+            if let cg = context.createCGImage(img, from: img.extent, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB)) {
+                result[preset.id] = cg
+            }
+        }
+        return result
+    }
+
     func forget(_ url: URL) {
         lock.withLock {
             autoRecipes[url] = nil

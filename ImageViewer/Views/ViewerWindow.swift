@@ -51,6 +51,7 @@ struct ViewerWindow: View {
         .sheet(isPresented: $model.showFixBlur) { FixBlurSheet() }
         .sheet(isPresented: $model.showNewImage) { NewImageSheet() }
         .sheet(item: $model.combineRequest) { CombineSheet(request: $0) }
+        .sheet(item: $model.presetNaming) { PresetNameSheet(naming: $0) }
         .alert(model.alert?.title ?? "", isPresented: Binding(get: { model.alert != nil }, set: { if !$0 { model.alert = nil } })) {
             Button("OK") { model.alert = nil }
         } message: {

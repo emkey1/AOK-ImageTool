@@ -106,6 +106,24 @@ enum DebugScenes {
             }
         case "select-adjust":
             model.beginAdjustingObjects()
+        case "presets":
+            // Two saved presets (in the run's temporary storage), the first put on the picture.
+            let store = PresetStore.shared
+            if store.presets.isEmpty {
+                var golden = EditState()
+                golden.exposure = 0.15
+                golden.temperature = 0.35
+                golden.vibrance = 0.3
+                golden.vignette = 0.3
+                store.save("Golden Hour", edits: golden)
+                var noir = EditState()
+                noir.filter = .noir
+                noir.contrast = 0.2
+                store.save("Moody Noir", edits: noir)
+            }
+            model.applyPreset(store.presets[0])
+            model.inspectorTab = .adjust
+            model.showInspector = true
         case "intelligence":
             model.inspectorTab = .intelligence
             model.showInspector = true

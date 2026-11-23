@@ -354,6 +354,14 @@ struct ItemContextMenu: View {
             .disabled(model.edits[item.url]?.adjustments.isIdentity ?? true)
         Button(targets.count > 1 ? "Paste Edits to \(targets.count) Images" : "Paste Edits") { model.pasteEdits(to: targets) }
             .disabled(EditClipboard.shared.adjustments == nil)
+        if !PresetStore.shared.presets.isEmpty {
+            Menu(targets.count > 1 ? "Apply Preset to \(targets.count) Images" : "Apply Preset") {
+                ForEach(PresetStore.shared.presets) { preset in
+                    Button(preset.name) { model.applyPreset(preset, to: targets) }
+                }
+            }
+            .disabled(model.objectSession != nil)
+        }
         Divider()
         Button("Pick") { model.setFlag(.pick, for: targets) }
         Button("Reject") { model.setFlag(.reject, for: targets) }

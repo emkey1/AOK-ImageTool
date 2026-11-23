@@ -4,6 +4,10 @@ struct AdjustPanel: View {
     @Environment(ViewerModel.self) private var model
     @State private var dragStart: EditState?
     @State private var presetPreviews: [FilterPreset: CGImage] = [:]
+    /// Each saved preset on this picture.
+    @State private var savedPreviews: [UUID: CGImage] = [:]
+    /// A saved preset about to be deleted (asked first).
+    @State private var deleting: AdjustmentPreset?
     /// The object being adjusted, the rest of the picture darkened (and which object it was made for).
     @State private var objectPreview: (id: UUID, image: CGImage)?
     @AppStorage(PrefKey.upscaledAnimationFormat) private var animationFormat = Animation.Container.gif.rawValue
@@ -90,6 +94,27 @@ struct AdjustPanel: View {
             guard !Task.isCancelled else { return }
             presetPreviews = previews
         }
+        .task(id: savedPreviewKey) {
+            let presets = PresetStore.shared.presets
+            guard !presets.isEmpty else { return savedPreviews = [:] }
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let d = model.decoded else { return }
+            var base = model.currentEdits
+            base.crop = nil
+            let previews = await Task.detached(priority: .utility) {
+                EditRenderer.shared.adjustmentPresetPreviews(d, edits: base, presets: presets, size: 150)
+            }.value
+            guard !Task.isCancelled else { return }
+            savedPreviews = previews
+        }
+        .confirmationDialog("Delete the preset “\(deleting?.name ?? "")”?",
+                            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            presenting: deleting) { preset in
+            Button("Delete", role: .destructive) { PresetStore.shared.delete(preset.id) }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("Pictures it was put on keep their adjustments.")
+        }
         .task(id: objectPreviewKey) {
             guard let object = model.currentAdjustTarget else { return objectPreview = nil }
             try? await Task.sleep(for: .milliseconds(objectPreview?.id == object.id ? 300 : 0))
@@ -128,7 +153,7 @@ struct AdjustPanel: View {
         PanelSection(title: "Filters", systemImage: "camera.filters") {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 10) {
                 ForEach(FilterPreset.allCases) { preset in
-                    PresetTile(preset: preset, image: presetPreviews[preset], selected: e.filter == preset) {
+                    PresetTile(title: preset.title, image: presetPreviews[preset], selected: e.filter == preset) {
                         model.updateEdits("Filter") {
                             $0.filter = preset
                             $0.filterIntensity = 1
@@ -141,7 +166,59 @@ struct AdjustPanel: View {
             }
         }
 
+        presetsSection(e)
+
         copiesSection
+    }
+
+    /// The user's own presets: a picture's adjustments saved under a name, put on this one with a click (in place
+    /// of its own, as Paste Edits does).
+    private func presetsSection(_ e: EditState) -> some View {
+        let presets = PresetStore.shared.presets
+        let adjusted = !e.adjustments.shown.isIdentity
+        return PanelSection(title: "Presets", systemImage: "square.stack.3d.up") {
+            if presets.isEmpty {
+                Text("Save this picture's light, color, white balance, detail and filter as a preset, to put on others with a click.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 10) {
+                    ForEach(presets) { preset in
+                        PresetTile(title: preset.name, image: savedPreviews[preset.id], selected: preset.matches(e)) {
+                            model.applyPreset(preset, to: model.currentURL.map { [$0] })
+                        }
+                        .help("“\(preset.name)”: its light, color, detail and filter in place of this picture's (right-click to rename or delete)")
+                        .contextMenu {
+                            Button("Rename…") { model.presetNaming = PresetNaming(kind: .rename(preset)) }
+                            Button("Replace with This Picture's Adjustments") { PresetStore.shared.update(preset.id, edits: e) }
+                                .disabled(!adjusted || preset.matches(e))
+                            Divider()
+                            Button("Delete…") { deleting = preset }
+                        }
+                    }
+                }
+            }
+            Button {
+                model.beginSavingPreset()
+            } label: {
+                Label("Save as Preset…", systemImage: "plus")
+            }
+            .controlSize(.small)
+            .disabled(!adjusted)
+            .help("Save this picture's light, color, white balance, detail and filter, to put on other pictures")
+        }
+    }
+
+    /// What the saved presets' previews show: the picture's own parts (a preset replaces the rest) and the presets.
+    private var savedPreviewKey: Int {
+        var h = Hasher()
+        h.combine(model.decoded.map(ObjectIdentifier.init))
+        var own = model.currentEdits
+        own.takeAdjustments(from: .identity)
+        h.combine(try? JSONEncoder().encode(own))
+        h.combine(try? JSONEncoder().encode(PresetStore.shared.presets))
+        return h.finalize()
     }
 
     /// What the object preview shows: the object, in the picture as it's edited (made again a moment after a change).
@@ -455,7 +532,7 @@ struct AdjustmentSlider: View {
 }
 
 struct PresetTile: View {
-    let preset: FilterPreset
+    let title: String
     let image: CGImage?
     let selected: Bool
     let action: () -> Void
@@ -475,8 +552,11 @@ struct PresetTile: View {
                 .frame(width: 80, height: 60)
                 .clipShape(RoundedRectangle(cornerRadius: 6))
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(selected ? Color.accentColor : .clear, lineWidth: 2.5))
-                Text(preset.title)
+                Text(title)
                     .font(.caption)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: 84)
                     .foregroundStyle(selected ? .primary : .secondary)
             }
         }

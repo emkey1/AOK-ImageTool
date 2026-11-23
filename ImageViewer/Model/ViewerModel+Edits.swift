@@ -145,19 +145,7 @@ extension ViewerModel {
         guard let copied = EditClipboard.shared.adjustments else { return }
         let urls = (targets ?? actionTargets).filter { !savingURLs.contains($0) }
         guard !urls.isEmpty else { return }
-        let name = "Paste Edits"
-        undoManager?.beginUndoGrouping()
-        var changed = 0
-        for url in urls {
-            let old = edits[url] ?? .identity
-            var new = old
-            new.takeAdjustments(from: copied)
-            guard new != old else { continue }
-            applyEdits(new, to: url, undoName: name, previous: old)
-            changed += 1
-        }
-        undoManager?.endUndoGrouping()
-        undoManager?.setActionName(name)
+        let changed = putAdjustments(copied, on: urls, undoName: "Paste Edits")
         guard changed > 0 else { return showToast(urls.count == 1 ? "It already has these edits" : "They already have these edits",
                                                   systemImage: "checkmark.circle") }
         showToast(changed == 1 ? "Pasted edits" : "Pasted edits to \(changed) images", systemImage: "doc.on.clipboard")

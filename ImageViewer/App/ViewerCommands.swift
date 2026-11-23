@@ -224,6 +224,19 @@ struct ViewerCommands: Commands {
             Button("Adjust Color…") { viewer?.inspectorTab = .adjust; viewer?.showInspector = true }
                 .keyboardShortcut("c", modifiers: [.command, .option])
                 .disabled(!hasImage)
+            Menu("Apply Preset") {
+                let presets = PresetStore.shared.presets
+                if presets.isEmpty {
+                    Button("No Saved Presets") {}.disabled(true)
+                }
+                ForEach(presets) { preset in
+                    Button(preset.name) { viewer?.applyPreset(preset) }
+                }
+            }
+            .disabled(viewer?.actionTargets.isEmpty ?? true || viewer?.objectSession != nil)
+            Button("Save as Preset…") { viewer?.beginSavingPreset() }
+                .disabled(!canEdit || (viewer?.currentEdits.adjustments.shown.isIdentity ?? true))
+                .help("Save this picture's light, color, white balance, detail and filter, to put on other pictures")
             if GenerativeModel.isSupported {
                 Button(Colorizer.isInstalled ? "Colorize" : "Colorize…") { viewer?.colorizeCurrent() }
                     .disabled(!hasImage)

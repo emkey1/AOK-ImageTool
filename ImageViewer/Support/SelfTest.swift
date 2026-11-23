@@ -733,6 +733,136 @@ enum SelfTest {
         }
     }
 
+    /// Saved presets: only a picture's adjustments are kept, on disk, under a name (the same name replaces one,
+    /// whatever its case); renamed, changed and deleted; a file this version can't read is put aside, not written
+    /// over. Applied, a preset replaces a picture's adjustments and leaves its own parts; on several pictures at
+    /// once; and each has a preview. (`AOK_SELFTEST_ONLY=presets` runs just these.)
+    private static func presetChecks(out: URL) async {
+        let fm = FileManager.default
+        let dir = out.appendingPathComponent("presets")
+        try? fm.removeItem(at: dir)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("Presets.json")
+
+        // What a preset keeps: the adjustments, not the picture's crop, turn, retouching or objects.
+        var source = EditState()
+        source.exposure = 0.3
+        source.temperature = 0.25
+        source.vignette = 0.4
+        source.filter = .vivid
+        source.filterIntensity = 0.6
+        source.autoEnhance = true
+        source.crop = CGRect(x: 0.1, y: 0.1, width: 0.6, height: 0.6)
+        source.quarterTurns = 1
+        source.straighten = 3
+        source.localAdjustments = [{ var l = LocalAdjustment(mask: "/nowhere.png"); l.exposure = 1; return l }()]
+        let store = PresetStore(fileURL: file)
+        let warm = store.save("  Warm  ", edits: source)
+        check(warm.name == "Warm" && warm.edits.exposure == 0.3 && warm.edits.temperature == 0.25 && warm.edits.vignette == 0.4
+              && warm.edits.filter == .vivid && warm.edits.filterIntensity == 0.6 && warm.edits.autoEnhance
+              && warm.edits.crop == nil && warm.edits.quarterTurns == 0 && warm.edits.straighten == 0 && warm.edits.localAdjustments == nil,
+              "a preset keeps the light, color, detail, filter and Auto, and none of the picture's own parts")
+        var monoEdits = EditState()
+        monoEdits.filter = .mono
+        monoEdits.contrast = 0.2
+        let mono = store.save("Mono", edits: monoEdits)
+        check(PresetStore(fileURL: file).presets == [warm, mono], "presets are saved, and come back in the order they were made")
+        check(PresetNameSheet.newName(in: store) == "Preset 3", "a new preset is offered the next free name")
+
+        var warmer = source
+        warmer.temperature = 0.5
+        let replaced = store.save("warm", edits: warmer)
+        check(store.presets.count == 2 && replaced.id == warm.id && store.presets.first?.edits.temperature == 0.5 && store.presets.first?.name == "warm",
+              "saving under a name already used (in any case) replaces that preset, in its place")
+        store.rename(mono.id, to: " Black & White ")
+        check(store.preset(named: "black & white")?.id == mono.id && store.preset(named: "Black & White", except: mono.id) == nil,
+              "a preset is renamed, and found by its name in any case")
+        store.update(mono.id, edits: source)
+        check(store.presets.last?.edits == warm.edits && store.presets.last?.name == "Black & White", "a preset takes another picture's adjustments, keeping its name")
+        store.delete(warm.id)
+        check(PresetStore(fileURL: file).presets.map(\.id) == [mono.id], "a deleted preset stays deleted")
+
+        // Presets from a later version (with something this one doesn't know) open; a file it can't read is kept aside.
+        if let data = try? Data(contentsOf: file), var json = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] {
+            json[0]["color"] = "blue"
+            if var edits = json[0]["edits"] as? [String: Any] { edits["clarity"] = 0.3; json[0]["edits"] = edits }
+            try? JSONSerialization.data(withJSONObject: json).write(to: file)
+            check(PresetStore(fileURL: file).presets.first?.name == "Black & White", "presets saved by a later version open")
+        }
+        try? Data("not presets".utf8).write(to: file)
+        let fresh = PresetStore(fileURL: file)
+        fresh.save("New", edits: monoEdits)
+        let aside = ((try? fm.contentsOfDirectory(atPath: dir.path)) ?? []).filter { $0.hasPrefix("Presets (unreadable") }
+        check(fresh.presets.count == 1 && aside.count == 1
+              && (try? Data(contentsOf: dir.appendingPathComponent(aside[0]))) == Data("not presets".utf8),
+              "a presets file that can't be read is put aside, not written over")
+
+        // Applied: a preset in place of the picture's adjustments; the picture keeps its own parts.
+        let w = 240, h = 160
+        func write(_ name: String) -> URL? {
+            var px = [UInt8](repeating: 255, count: w * h * 4)
+            for y in 0..<h { for x in 0..<w { let i = (y * w + x) * 4; px[i] = UInt8(60 + x * 150 / w); px[i + 1] = UInt8(90 + y * 100 / h); px[i + 2] = 140 } }
+            let url = dir.appendingPathComponent(name).standardizedFileURL
+            guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+                  let image = ctx.makeImage(),
+                  (try? ImageWriter.write(image, to: url, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)) != nil
+            else { return nil }
+            return url
+        }
+        guard let a = write("A.png"), let b = write("B.png") else { return check(false, "make pictures for presets") }
+        let preset = AdjustmentPreset(name: "Warm", edits: source)
+        let model = ViewerModel()
+        model.openFolder(dir, selecting: a)
+        for _ in 0..<100 where model.decoded?.url != a { try? await Task.sleep(for: .milliseconds(50)) }
+        model.beginSavingPreset()
+        check(model.presetNaming == nil, "nothing to save as a preset from a picture without adjustments")
+        model.updateEdits("Crop") {
+            $0.crop = CGRect(x: 0, y: 0, width: 0.5, height: 0.5)
+            $0.quarterTurns = 3
+            $0.exposure = -0.5
+            $0.saturation = 0.4
+        }
+        model.beginSavingPreset()
+        if case .save(let edits)? = model.presetNaming?.kind {
+            check(edits.exposure == -0.5 && edits.saturation == 0.4 && edits.crop == nil && edits.quarterTurns == 0,
+                  "Save as Preset… offers the picture's adjustments alone")
+        } else {
+            check(false, "Save as Preset… asks for a name")
+        }
+        model.presetNaming = nil
+        check(!preset.matches(model.currentEdits), "a preset isn't shown as the picture's before it's put on")
+        model.applyPreset(preset)
+        let applied = model.edits[a]
+        check(applied?.exposure == 0.3 && applied?.saturation == 0 && applied?.filter == .vivid && applied?.temperature == 0.25
+              && applied?.crop == CGRect(x: 0, y: 0, width: 0.5, height: 0.5) && applied?.quarterTurns == 3 && preset.matches(model.currentEdits),
+              "a preset replaces the picture's adjustments, and the picture keeps its crop and turn")
+        model.applyPreset(AdjustmentPreset(name: "Mono", edits: monoEdits), to: [a, b])
+        check(model.edits[a]?.filter == .mono && model.edits[a]?.exposure == 0 && model.edits[a]?.crop != nil
+              && model.edits[b]?.filter == .mono && model.edits[b]?.contrast == 0.2,
+              "a preset goes on several pictures at once")
+
+        // Previews: each preset on the picture.
+        if let d = model.decoded {
+            let previews = EditRenderer.shared.adjustmentPresetPreviews(d, edits: model.currentEdits,
+                                                                        presets: [preset, AdjustmentPreset(name: "Mono", edits: monoEdits)], size: 120)
+            func saturation(_ image: CGImage?) -> Int {
+                guard let image, let data = image.dataProvider?.data, let p = CFDataGetBytePtr(data) else { return -1 }
+                var total = 0
+                for i in stride(from: 0, to: image.bytesPerRow * image.height - 4, by: 4) {
+                    total += Int(max(p[i], p[i + 1], p[i + 2])) - Int(min(p[i], p[i + 1], p[i + 2]))
+                }
+                return total / max(1, image.width * image.height)
+            }
+            let colorful = saturation(previews[preset.id]), gray = saturation(previews.first { $0.key != preset.id }?.value)
+            check(previews.count == 2 && previews.values.allSatisfy { max($0.width, $0.height) <= 120 } && colorful > 20 && gray < 4,
+                  "each preset has a preview on the picture (color \(colorful), mono \(gray))")
+        } else {
+            check(false, "open a picture for presets")
+        }
+        model.edits.keys.forEach { model.setEditsDictionary($0, nil) }
+    }
+
     /// White balance: the eyedropper makes what's clicked neutral (on a cropped photo too); Auto takes a cast out
     /// of a photo with something neutral in it, and leaves one with nothing neutral alone; presets go the right
     /// way. (`AOK_SELFTEST_ONLY=wb` runs just these.)
@@ -1580,8 +1710,11 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ["clone", "wb", "newimage", "tags", "combine", "local"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
-            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "local" {
+        if ["clone", "wb", "newimage", "tags", "combine", "local", "presets"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "presets" {
+                print("\n[Presets]")
+                await presetChecks(out: out)
+            } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "local" {
                 print("\n[Objects adjusted on their own]")
                 await localAdjustmentChecks(out: out)
             } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "combine" {
@@ -2725,6 +2858,8 @@ enum SelfTest {
         await newImageChecks(out: out)
         print("\n[Ratings, captions, Copy Edits]")
         await tagsChecks(out: out)
+        print("\n[Presets]")
+        await presetChecks(out: out)
         print("\n[Combine Pictures]")
         await combineChecks(folder: folder, out: out)
 
