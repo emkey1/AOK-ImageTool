@@ -19,10 +19,14 @@ Blur and Erase need their models (below).
 The release is a universal build (Apple silicon and Intel), and the README and Guide say the app runs on both. The
 image models are Apple silicon only: `GenerativeModel.isSupported` is `#if arch(arm64)`, and everything that needs a
 model checks it, to leave the feature out or say what it needs (Settings shows “Needs a Mac with Apple silicon”). AI
-upscaling asks VideoToolbox (`SuperResolution.isSupported`) and is hidden where that says no. The Intel half is
-compiled with every release but has never been run: there's no Intel Mac, and no Rosetta, on the machines the app is
-tested on (`arch -x86_64` fails on the development Mac and in the macOS 15 VM). Debug builds only the Mac's own
-architecture.
+upscaling asks VideoToolbox (`SuperResolution.isSupported`) and is hidden where that says no.
+
+There's no Intel Mac to test on, so the Intel half is checked under Rosetta, in the macOS 15 VM (first with 1.4.0).
+An Intel-only Debug build (add `ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO` to the build line; Debug otherwise builds only the
+Mac's own architecture) passes the self-test there with the same 293 checks as the Apple silicon build run without
+models (`AOK_MODELS_DIR` pointing at an empty folder), and `open --arch x86_64 -a AOK-ImageTool.app` runs a release as
+Intel code to look at. That exercises the Intel code and the “needs Apple silicon” paths; it says nothing about Intel
+graphics or how fast a real Intel Mac is.
 
 Swift 5 language mode, with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: types are main-actor unless marked
 `nonisolated`, as the background imaging and model code is.
