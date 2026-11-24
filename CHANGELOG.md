@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0
 
 - **Save your own presets**: **Save as Preset…** under the new **Presets** section in the Adjust panel (or Image › Save as Preset…) keeps a picture's light, color, white balance, detail and filter under a name, without its crop, turn or retouching. Presets show as tiles previewed on the photo you're looking at; click one to give the photo that look, in place of its own adjustments, as Paste Edits does (one step to undo). **Image › Apply Preset** puts one on the pictures selected in the grid, as does the right-click menu. Right-click a preset to rename it, replace it with the photo's adjustments, or delete it. Presets are kept on this Mac for every window, in Application Support's Presets.json.
 - **F shows the picture alone, full screen**: F put the window in macOS's full screen with its toolbar, sidebar, panels and filmstrip still around the picture. Now F (or **View › Full Screen Picture**) shows just the picture on the whole screen, on black; the keys work as usual (browse, zoom, flag, rate, crop), and the menus are at the top of the screen when the pointer goes there. F or Esc brings the window back as it was, and so does asking for a panel or the grid; in the grid, F shows the selected picture and returns to the grid. During a slideshow, F shows the pictures alone. The window's green button is still macOS's own full screen, toolbar and panels included.
