@@ -14,14 +14,18 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
 </p>
 
 - **Fast browsing.** Arrow keys step through a folder, with the next images decoded ahead of time. Every format macOS
-  reads, including HEIC, AVIF, JPEG XL, WebP, 30+ camera RAW formats, PDF and SVG, with HDR shown in HDR. As many
-  windows as you like (⌘N, ⌘` between them), each on its own folder or the same one, and they come back next time.
+  reads, including HEIC, AVIF, JPEG XL, WebP, 30+ camera RAW formats, PDF and SVG, with HDR shown in HDR. F shows the
+  picture alone on the whole screen, and S plays a slideshow. As many windows as you like (⌘N, ⌘` between them), each
+  on its own folder or the same one, and they come back next time.
 - **Pick the keepers.** P, X and U pick, reject and unflag (as Finder color labels); 1–5 rate with stars (half
   stars too), written into the file's XMP (a sidecar for RAW) so Lightroom and Bridge see them; filter, sort by
   rating or Apple's judgment of the best shots, find duplicates and similar photos.
 - **Edit without fear.** Light, color, detail and filters, crop and straighten (by the degree or tenth of a degree, or
-  Auto, which levels the horizon). Copy one picture's edits and paste them onto a whole shoot (⇧⌘C, ⇧⌘V). Nothing
-  touches the picture until you Save, every change can be undone, and unsaved edits survive quitting.
+  Auto, which levels the horizon). Copy one picture's edits and paste them onto a whole shoot (⇧⌘C, ⇧⌘V), or save a
+  look as a preset and put it on any picture with a click. Nothing touches the picture until you Save, every change
+  can be undone, and unsaved edits survive quitting.
+- **Adjust one object on its own:** click a person or thing and its light, color and detail change by themselves,
+  fading into the rest of the photo at its edges.
 - **Your Photos library too.** Open photos from Photos (Live Photos stay live), edit them here, and Save sends the edit
   back as a Photos edit you can revert, synced by iCloud Photos. Or use Photos' Image ▸ Edit With, or import photos
   into a folder as ordinary files.
@@ -42,8 +46,9 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
 - **Change objects:** click a shirt and say “blue”, or “a red plaid flannel shirt”: colors change in place keeping
   their shading, anything more is painted in by the generative model, on your Mac.
 - **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Fix Blur, Upscale with AI (animated
-  GIFs too), Extend, Remove and Change Objects, Clone & Heal, and Reimagine save new copies, stacked with the original
-  in the filmstrip so a folder stays tidy. (Settings can have them change the image itself instead.)
+  GIFs too), Extend, Remove and Change Objects, Clone & Heal, Adjust Objects, Combine and Reimagine save new copies,
+  stacked with the original in the filmstrip so a folder stays tidy, and Undo takes a copy back. (Settings can have
+  most of them change the image itself instead.)
 - **Paste a picture** (⌘V) from anywhere as a new image in the folder.
 - **Apple Intelligence** where your Mac has it: describe a photo (alt text, keywords, a file name, saved into the file's
   metadata if you like), ask about it, search
@@ -147,7 +152,8 @@ pictures all run on your Mac.
 The app goes online only to download the models when you ask for them, to check for updates (once a day, or
 never if you turn it off in Settings), and for a photo's location: the map in Info and the name of the place come
 from Apple Maps, and descriptions can read Wikipedia's notes on places nearby if you turn that on. Only the
-coordinates (and the direction the camera faced) are sent; Settings ▸ Apple Intelligence ▸ Places turns it off.
+coordinates are sent; Settings ▸ Intelligence ▸ Places turns off the place names and Wikipedia (the Info panel's map
+still comes from Apple Maps).
 
 ## Build from source
 

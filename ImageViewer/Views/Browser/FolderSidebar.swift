@@ -137,7 +137,7 @@ struct WelcomeView: View {
                 .frame(maxWidth: 380, alignment: .leading)
                 .padding(.top, 8)
             }
-            Text("← → browse  ·  Space next  ·  F full screen  ·  G grid  ·  ? all shortcuts")
+            Text("← → browse  ·  Space next  ·  F full screen  ·  G grid  ·  ? shortcuts")
                 .font(.callout)
                 .foregroundStyle(.tertiary)
                 .padding(.top, 10)
