@@ -124,6 +124,11 @@ enum DebugScenes {
             model.applyPreset(store.presets[0])
             model.inspectorTab = .adjust
             model.showInspector = true
+        case "pictureonly":
+            // Full screen with F, as far as a window in the background can show it: the toolbar, sidebar,
+            // inspector and filmstrip put away, the picture on black (the window itself stays a window).
+            model.showInspector = true
+            model.beginPictureOnly(inWindow: true)
         case "intelligence":
             model.inspectorTab = .intelligence
             model.showInspector = true

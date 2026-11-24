@@ -120,6 +120,7 @@ struct ViewerCommands: Commands {
             Button("Grid") { viewer?.viewMode = .grid }
                 .keyboardShortcut("2")
             Toggle("Show Filmstrip", isOn: Binding(get: { viewer?.showFilmstrip ?? true }, set: { viewer?.showFilmstrip = $0 }))
+                .disabled(viewer?.pictureOnly == true)
             Divider()
             Button("Zoom In") { viewer?.zoomIn() }
                 .keyboardShortcut("+")
@@ -155,6 +156,10 @@ struct ViewerCommands: Commands {
             Toggle("Sort Stacks by Their Original", isOn: Binding(get: { viewer?.stacksByOriginal ?? true }, set: { viewer?.stacksByOriginal = $0 }))
                 .disabled(viewer?.stacksEnabled == false)
             Divider()
+            // (F, handled with the single-key shortcuts. The window's own Enter Full Screen, below, keeps the toolbar
+            // and panels.)
+            Toggle("Full Screen Picture", isOn: Binding(get: { viewer?.pictureOnly ?? false }, set: { _ in viewer?.toggleFullScreen() }))
+                .disabled(viewer?.currentItem == nil)
             Button(viewer?.isSlideshowRunning == true ? "Stop Slideshow" : "Start Slideshow") { viewer?.toggleSlideshow() }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
             Button("Show Info") { viewer?.toggleInspector(.info) }

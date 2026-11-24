@@ -23,7 +23,8 @@ struct ImageCanvas: NSViewRepresentable {
 
     func updateNSView(_ view: CanvasContainerView, context: Context) {
         let controller = context.coordinator
-        view.background = CanvasBackground(rawValue: background) ?? .dark
+        // (Full screen with F: the picture alone, on black.)
+        view.background = model.pictureOnly ? .black : CanvasBackground(rawValue: background) ?? .dark
         let appearanceChanged = controller.checkerboard != checkerboard || controller.pixelated != pixelated
         controller.checkerboard = checkerboard
         controller.pixelated = pixelated

@@ -106,9 +106,14 @@ final class ViewerModel {
 
     // MARK: UI state
     var viewMode: ViewMode = .viewer {
-        didSet { if viewMode == .grid, activeTool != nil { activeTool = nil } }   // tools work in the viewer
+        didSet {
+            if viewMode == .grid, activeTool != nil { activeTool = nil }   // tools work in the viewer
+            if viewMode == .grid, pictureOnly { endPictureOnly(restoringView: false) }   // and the grid isn't one picture
+        }
     }
-    var showInspector = false
+    var showInspector = false {
+        didSet { if showInspector, pictureOnly { endPictureOnly(restoringView: false) } }   // a panel asked for: back to the window
+    }
     var inspectorTab: InspectorTab = .info
     /// The selected object the Adjust panel's sliders change, instead of the whole picture, in Adjust Objects
     /// (see `currentAdjustTarget`).
@@ -118,6 +123,8 @@ final class ViewerModel {
     var showFilmstrip: Bool = Prefs.showFilmstrip {
         didSet { Prefs.setBool(showFilmstrip, PrefKey.showFilmstrip) }
     }
+    /// The filmstrip is on screen: turned on, in the viewer, and not put away by a slideshow or full screen.
+    var showsFilmstrip: Bool { viewMode == .viewer && showFilmstrip && !items.isEmpty && !isSlideshowRunning && !pictureOnly }
     var lockZoom = false
     var showOriginal = false {
         didSet {
@@ -150,6 +157,14 @@ final class ViewerModel {
     private(set) var isSlideshowRunning = false
     private(set) var isSlideshowPaused = false
     private(set) var isFullScreen = false
+    /// Full screen with F: the picture alone on the whole screen, on black. The window is full screen with its
+    /// toolbar, sidebar, inspector and filmstrip put away until F or Esc brings them back (see `toggleFullScreen`).
+    private(set) var pictureOnly = false
+    /// What F puts back: the window out of full screen (if F took it there), the grid, the inspector, the toolbar.
+    @ObservationIgnored private var pictureOnlyRestore = (leaveFullScreen: false, grid: false, inspector: false, toolbar: false)
+    /// The window is on its way into or out of full screen (F and Esc wait for it).
+    @ObservationIgnored private(set) var fullScreenChanging = false
+    @ObservationIgnored private var fullScreenChanges = 0
     var gridColumns = 4
     var gridThumbnailSize: Double = {
         let v = UserDefaults.standard.double(forKey: PrefKey.gridThumbnailSize)
@@ -361,13 +376,26 @@ final class ViewerModel {
         let nc = NotificationCenter.default
         windowObservers.forEach(nc.removeObserver)
         windowObservers = [
+            nc.addObserver(forName: NSWindow.willEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fullScreenWillChange() }
+            },
+            nc.addObserver(forName: NSWindow.willExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.fullScreenWillChange() }
+            },
             nc.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: window, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.isFullScreen = true }
+                MainActor.assumeIsolated {
+                    self?.isFullScreen = true
+                    self?.fullScreenChanging = false
+                }
             },
             nc.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated {
                     self?.isFullScreen = false
+                    self?.fullScreenChanging = false
                     self?.enteredFullScreenForSlideshow = false
+                    // Left some other way (the green button, View ▸ Exit Full Screen, a slideshow ending): the
+                    // window gets its toolbar and panels back.
+                    self?.endPictureOnly()
                 }
             },
             nc.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: .main) { [weak self] _ in
@@ -1111,8 +1139,66 @@ final class ViewerModel {
         viewMode = viewMode == .viewer ? .grid : .viewer
     }
 
-    func toggleFullScreen() {
+    // MARK: - Full screen
+
+    /// The window itself is full screen (asked of the window: one that macOS brought back full screen never
+    /// sent a notification).
+    private var windowIsFullScreen: Bool { window?.styleMask.contains(.fullScreen) ?? false }
+
+    /// The window is about to change to or from full screen; F and Esc wait until it has (or, should it never
+    /// say so, a few seconds).
+    private func fullScreenWillChange() {
+        fullScreenChanging = true
+        fullScreenChanges += 1
+        let change = fullScreenChanges
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            if self?.fullScreenChanges == change { self?.fullScreenChanging = false }
+        }
+    }
+
+    /// The window to or from macOS's full screen, with its toolbar and panels as they are (Esc, the slideshow).
+    func toggleWindowFullScreen() {
+        guard !fullScreenChanging else { return }
         window?.toggleFullScreen(nil)
+    }
+
+    /// F: the picture alone on the whole screen, and back to how the window was.
+    func toggleFullScreen() {
+        guard !fullScreenChanging else { return }
+        if pictureOnly { endPictureOnly() } else { beginPictureOnly() }
+    }
+
+    /// (`inWindow` leaves the window as it is, for `-debugScene pictureonly`: a run in the background mustn't
+    /// take the screen.)
+    func beginPictureOnly(inWindow: Bool = false) {
+        // (With no picture to show, F is the window's own full screen.)
+        guard currentItem != nil else { return toggleWindowFullScreen() }
+        let fromGrid = viewMode == .grid
+        if fromGrid { viewMode = .viewer }
+        let already = windowIsFullScreen || inWindow
+        pictureOnlyRestore = (leaveFullScreen: !already, grid: fromGrid, inspector: showInspector, toolbar: window?.toolbar?.isVisible ?? false)
+        showInspector = false
+        pictureOnly = true
+        // (The toolbar's own switch, as View ▸ Hide Toolbar would set it: a toolbar hidden with SwiftUI's
+        // modifier keeps its place, empty, across the top of the screen.)
+        window?.toolbar?.isVisible = false
+        if !already { window?.toggleFullScreen(nil) }
+        // The pointer is in the way of the picture until it's moved.
+        NSCursor.setHiddenUntilMouseMoves(true)
+    }
+
+    /// Ends F's full screen: the toolbar and panels come back, the inspector if it was open, and the window
+    /// leaves full screen if F took it there. `restoringView` also goes back to the grid F was pressed in
+    /// (not when the grid or a panel was asked for, which is where to be).
+    func endPictureOnly(restoringView: Bool = true) {
+        guard pictureOnly else { return }
+        let restore = pictureOnlyRestore
+        pictureOnly = false
+        if restore.toolbar { window?.toolbar?.isVisible = true }
+        if restore.inspector { showInspector = true }
+        if restoringView, restore.grid { viewMode = .grid }
+        if restore.leaveFullScreen, windowIsFullScreen { window?.toggleFullScreen(nil) }
     }
 
     func toggleSlideshow() {

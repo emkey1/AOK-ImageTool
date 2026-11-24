@@ -19,11 +19,16 @@ struct ViewerWindow: View {
 
     var body: some View {
         @Bindable var model = model
-        NavigationSplitView(columnVisibility: $sidebarVisibility) {
+        // (Full screen with F shows the picture alone: the sidebar is put away, and comes back as it was.)
+        let sidebar = Binding(get: { model.pictureOnly ? .detailOnly : sidebarVisibility },
+                              set: { if !model.pictureOnly { sidebarVisibility = $0 } })
+        NavigationSplitView(columnVisibility: sidebar) {
             FolderSidebar()
                 .navigationSplitViewColumnWidth(min: 180, ideal: 230, max: 340)
         } detail: {
             MainContent()
+                // (In full screen with F the picture has the whole screen, up to its top edge.)
+                .ignoresSafeArea(.container, edges: model.pictureOnly ? .top : [])
                 .toolbar { ViewerToolbar() }
                 .inspector(isPresented: $model.showInspector) {
                     InspectorPanel()
@@ -153,7 +158,7 @@ struct MainContent: View {
                 WelcomeView()
             } else {
                 VStack(spacing: 0) {
-                    if let reference = model.intelligence.similarityReference {
+                    if let reference = model.intelligence.similarityReference, !model.pictureOnly {
                         SimilarityBanner(reference: reference)
                     }
                     ZStack {
@@ -163,7 +168,7 @@ struct MainContent: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    if model.viewMode == .viewer, model.showFilmstrip, !model.items.isEmpty, !model.isSlideshowRunning {
+                    if model.showsFilmstrip {
                         Divider()
                         FilmstripView()
                     }
@@ -236,13 +241,13 @@ struct CanvasBadges: View {
                 }
                 if model.showOriginal {
                     Badge(text: "Original", systemImage: "eye", tint: .orange)
-                } else if !model.currentEdits.isIdentity {
+                } else if !model.currentEdits.isIdentity, !model.pictureOnly {
                     Badge(text: "Edited", systemImage: "slider.horizontal.3", tint: .accentColor)
                 }
-                if model.decoded?.isHDR == true, model.display?.isHDR == true {
+                if model.decoded?.isHDR == true, model.display?.isHDR == true, !model.pictureOnly {
                     Badge(text: "HDR", systemImage: "sun.max.fill", tint: .yellow)
                 }
-                if model.lockZoom {
+                if model.lockZoom, !model.pictureOnly {
                     Badge(text: "Zoom Locked", systemImage: "lock.fill", tint: .secondary)
                 }
                 Spacer()
@@ -333,7 +338,7 @@ struct ToastView: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             .glassBackground(in: .capsule)
-            .padding(.bottom, model.viewMode == .viewer && model.showFilmstrip ? 100 : 24)
+            .padding(.bottom, model.showsFilmstrip ? 100 : 24)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .id(toast.id)
             .onTapGesture { model.dismissToast() }

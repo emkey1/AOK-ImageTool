@@ -863,6 +863,84 @@ enum SelfTest {
         model.edits.keys.forEach { model.setEditsDictionary($0, nil) }
     }
 
+    /// Full screen with F: the picture alone, with the inspector and filmstrip put away, and everything back as
+    /// it was afterwards; the grid or a panel asked for ends it; tools open over it. (The window's own part, going
+    /// full screen and hiding its toolbar, needs a window: see DEVELOPMENT.md.) (`AOK_SELFTEST_ONLY=fullscreen`
+    /// runs just these.)
+    private static func fullScreenChecks(out: URL) async {
+        let fm = FileManager.default
+        let dir = out.appendingPathComponent("fullscreen")
+        try? fm.removeItem(at: dir)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let w = 240, h = 160
+        func write(_ name: String) -> URL? {
+            var px = [UInt8](repeating: 255, count: w * h * 4)
+            for y in 0..<h { for x in 0..<w { let i = (y * w + x) * 4; px[i] = UInt8(60 + x * 150 / w); px[i + 1] = UInt8(90 + y * 100 / h); px[i + 2] = 140 } }
+            let url = dir.appendingPathComponent(name).standardizedFileURL
+            guard let ctx = CGContext(data: &px, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+                  let image = ctx.makeImage(),
+                  (try? ImageWriter.write(image, to: url, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)) != nil
+            else { return nil }
+            return url
+        }
+        guard let a = write("A.png"), let b = write("B.png") else { return check(false, "make pictures for full screen") }
+        let model = ViewerModel()
+        model.openFolder(dir, selecting: a)
+        for _ in 0..<100 where model.decoded?.url != a { try? await Task.sleep(for: .milliseconds(50)) }
+        guard model.currentURL == a else { return check(false, "open a picture for full screen") }
+
+        // F and back: the panels are put away, and come back as they were.
+        let strip = model.showsFilmstrip
+        model.inspectorTab = .adjust
+        model.showInspector = true
+        model.toggleFullScreen()
+        check(model.pictureOnly && !model.showInspector && !model.showsFilmstrip && model.viewMode == .viewer,
+              "F shows the picture alone: the inspector and filmstrip are put away")
+        model.next()
+        check(model.pictureOnly && model.currentURL == b, "browsing goes on in full screen")
+        model.toggleFullScreen()
+        check(!model.pictureOnly && model.showInspector && model.inspectorTab == .adjust && model.showsFilmstrip == strip,
+              "F again brings them back as they were")
+
+        // From the grid: the selected picture, and back to the grid.
+        model.showInspector = false
+        model.viewMode = .grid
+        model.toggleFullScreen()
+        check(model.pictureOnly && model.viewMode == .viewer && model.currentURL == b, "F in the grid shows the selected picture")
+        model.toggleFullScreen()
+        check(!model.pictureOnly && model.viewMode == .grid, "and goes back to the grid")
+
+        // The grid, or a panel, asked for: back to the window, there.
+        model.viewMode = .viewer
+        model.toggleFullScreen()
+        model.viewMode = .grid
+        check(!model.pictureOnly && model.viewMode == .grid, "the grid ends full screen")
+        model.toggleFullScreen()
+        model.toggleInspector(.info)
+        check(!model.pictureOnly && model.showInspector && model.inspectorTab == .info && model.viewMode == .viewer,
+              "a panel asked for ends full screen and shows, on the picture rather than back in the grid")
+
+        // A panel open before, and the same one asked for in full screen: it shows (it wasn't on screen to hide).
+        model.toggleFullScreen()
+        model.toggleInspector(.info)
+        check(!model.pictureOnly && model.showInspector, "asking for the panel that was open before shows it")
+
+        // Tools work over the picture; the filmstrip's key waits.
+        model.showInspector = false
+        model.toggleFullScreen()
+        model.activeTool = .crop
+        check(model.pictureOnly && model.activeTool == .crop, "a tool opens over the full-screen picture")
+        model.activeTool = nil
+        model.toggleFullScreen()
+        check(!model.pictureOnly && !model.showInspector, "and nothing is left over afterwards")
+
+        // No picture: F leaves the window's toolbar alone.
+        let empty = ViewerModel()
+        empty.toggleFullScreen()
+        check(!empty.pictureOnly, "with no picture open, F doesn't put the toolbar away")
+    }
+
     /// White balance: the eyedropper makes what's clicked neutral (on a cropped photo too); Auto takes a cast out
     /// of a photo with something neutral in it, and leaves one with nothing neutral alone; presets go the right
     /// way. (`AOK_SELFTEST_ONLY=wb` runs just these.)
@@ -1710,10 +1788,13 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ["clone", "wb", "newimage", "tags", "combine", "local", "presets"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+        if ["clone", "wb", "newimage", "tags", "combine", "local", "presets", "fullscreen"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
             if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "presets" {
                 print("\n[Presets]")
                 await presetChecks(out: out)
+            } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "fullscreen" {
+                print("\n[Full screen]")
+                await fullScreenChecks(out: out)
             } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "local" {
                 print("\n[Objects adjusted on their own]")
                 await localAdjustmentChecks(out: out)
@@ -2860,6 +2941,8 @@ enum SelfTest {
         await tagsChecks(out: out)
         print("\n[Presets]")
         await presetChecks(out: out)
+        print("\n[Full screen]")
+        await fullScreenChecks(out: out)
         print("\n[Combine Pictures]")
         await combineChecks(folder: folder, out: out)
 

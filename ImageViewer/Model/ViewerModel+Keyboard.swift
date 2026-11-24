@@ -48,7 +48,7 @@ extension ViewerModel {
             Shortcut(keys: "⌘V", action: "Paste a picture as a new image"),
         ]),
         ("View", [
-            Shortcut(keys: "F", action: "Full screen"),
+            Shortcut(keys: "F", action: "Full screen: just the picture"),
             Shortcut(keys: "S", action: "Slideshow (Space pauses)"),
             Shortcut(keys: "I  ·  E  ·  A", action: "Info / Adjust / Intelligence panel"),
             Shortcut(keys: "T  ·  ⌥S", action: "Show / hide filmstrip"),
@@ -175,7 +175,7 @@ extension ViewerModel {
                 case "]", "[":
                     setRating(Self.steppedRating(currentItem?.rating ?? 0, up: event.charactersIgnoringModifiers == "]"))
                 case "s", "S":
-                    showFilmstrip.toggle()
+                    if !pictureOnly { showFilmstrip.toggle() }
                 default:
                     return false
                 }
@@ -246,7 +246,7 @@ extension ViewerModel {
         }
 
         if event.keyCode == 53 { // Escape
-            if isSlideshowRunning { stopSlideshow() } else if showOriginal { showOriginal = false } else if isFullScreen { toggleFullScreen() } else if !searchText.isEmpty { searchText = "" } else { return false }
+            if isSlideshowRunning { stopSlideshow() } else if showOriginal { showOriginal = false } else if pictureOnly { if !fullScreenChanging { endPictureOnly() } } else if isFullScreen { toggleWindowFullScreen() } else if !searchText.isEmpty { searchText = "" } else { return false }
             return true
         }
 
@@ -258,7 +258,7 @@ extension ViewerModel {
             if isSlideshowRunning { toggleSlideshowPause() } else if isGrid { viewMode = .viewer } else if Prefs.spaceAdvances { shift ? previous() : next() } else { return false }
         case "f", "F": toggleFullScreen()
         case "g", "G": toggleViewMode()
-        case "t", "T": showFilmstrip.toggle()
+        case "t", "T": if !pictureOnly { showFilmstrip.toggle() }   // (put away with everything else by F)
         case "s", "S": toggleSlideshow()
         case "i", "I": toggleInspector(.info)
         case "e", "E": toggleInspector(.adjust)
