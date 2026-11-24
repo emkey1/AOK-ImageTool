@@ -120,17 +120,22 @@ The photos in these pictures were generated for this project; none of them shows
 2. Open it and drag **AOK-ImageTool** to **Applications**.
 3. Open AOK-ImageTool and open a folder of pictures (⌘O), or drop pictures on its icon.
 
-Requires macOS 15 (Sequoia) or later on Apple silicon. AOK-ImageTool offers new versions itself
-(AOK-ImageTool ▸ Check for Updates…).
+Requires macOS 15 (Sequoia) or later, on a Mac with Apple silicon or an Intel processor. AOK-ImageTool offers new
+versions itself (AOK-ImageTool ▸ Check for Updates…).
 
 **What each macOS can do.** Everything except the following works on macOS 15: Image Playground needs 15.1 and Apple
 Intelligence; describing and asking about photos need macOS 26 and Apple Intelligence; Upscale with AI needs macOS 26.
 The Guide has the details.
 
+**On an Intel Mac.** The [optional image models](#the-optional-image-models) and Apple Intelligence need Apple silicon,
+and the upscaler in macOS behind Upscale with AI is made for it. On an Intel Mac the app leaves those out or says what
+they need; everything else works.
+
 ## The optional image models
 
 Some features use image models that run on your Mac but aren't built into the app, because they're large. The app
-offers to download each one the first time you use the feature, or you can get them in **Settings ▸ Editing**:
+offers to download each one the first time you use the feature, or you can get them in **Settings ▸ Editing**. They
+need a Mac with Apple silicon:
 
 - **Generate** (New Image from Description, Extend, Generate a Background, and painting in Remove and Change Objects)
   uses [Stable Diffusion 1.5 Inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting),

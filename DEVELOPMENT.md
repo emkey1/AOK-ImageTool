@@ -12,9 +12,17 @@ xcodebuild -project ImageViewer.xcodeproj -scheme AOK-ImageTool -configuration R
 open build/Build/Products/Release/AOK-ImageTool.app
 ```
 
-The app runs on macOS 15 and later; newer APIs are availability-gated and their frameworks weak-linked. It's built
-for Apple silicon. Image Playground and the Foundation Models features need a Mac with Apple Intelligence turned on;
-Generate and Colorize need their models (below).
+The app runs on macOS 15 and later; newer APIs are availability-gated and their frameworks weak-linked. Image
+Playground and the Foundation Models features need a Mac with Apple Intelligence turned on; Generate, Colorize, Fix
+Blur and Erase need their models (below).
+
+The release is a universal build (Apple silicon and Intel), and the README and Guide say the app runs on both. The
+image models are Apple silicon only: `GenerativeModel.isSupported` is `#if arch(arm64)`, and everything that needs a
+model checks it, to leave the feature out or say what it needs (Settings shows “Needs a Mac with Apple silicon”). AI
+upscaling asks VideoToolbox (`SuperResolution.isSupported`) and is hidden where that says no. The Intel half is
+compiled with every release but has never been run: there's no Intel Mac, and no Rosetta, on the machines the app is
+tested on (`arch -x86_64` fails on the development Mac and in the macOS 15 VM). Debug builds only the Mac's own
+architecture.
 
 Swift 5 language mode, with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: types are main-actor unless marked
 `nonisolated`, as the background imaging and model code is.

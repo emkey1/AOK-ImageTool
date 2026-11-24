@@ -410,7 +410,7 @@
 </table>
 
 <h2 id="macos">Which macOS has what</h2>
-<p>AOK-ImageTool runs on macOS 15 and later. Everything not in this table works on all of them: viewing, culling, editing, Extend (both fills), search, Live Text, translation, and every Vision feature (background removal, duplicates, best shots, Smart Crop, horizon and documents). What a Mac can't do is hidden or explained, never broken.</p>
+<p>AOK-ImageTool runs on macOS 15 and later, on Macs with Apple silicon or an Intel processor. Everything not in this table works on all of them: viewing, culling, editing, Extend with Match Photo, search, Live Text, translation, and every Vision feature (background removal, duplicates, best shots, Smart Crop, horizon and documents). What a Mac can't do is hidden or explained, never broken.</p>
 <table>
   <tr><th>Feature</th><th>macOS 15</th><th>15.1+</th><th>26</th><th>27</th></tr>
   <tr><td>Image Playground (Reimagine, generated backgrounds)</td><td>—</td><td>✓¹</td><td>✓¹</td><td>✓¹</td></tr>
@@ -427,6 +427,7 @@
   <tr><td>Change Objects</td><td colspan="4">Colors on any version. Anything more needs Apple silicon and the <a href="#model">generative fill model</a>.</td></tr>
 </table>
 <p>¹ On a Mac with Apple Intelligence, turned on in System Settings.</p>
+<p id="intel"><b>On an Intel Mac</b> the <a href="#model">image models</a> can't be used (the rows above that say Apple silicon), Apple Intelligence doesn't exist, and the upscaler in macOS behind Upscale with AI is made for Apple silicon. The app leaves those out or says what they need. Everything else in this guide works.</p>
 
 <h2 id="model">The image models</h2>
 <p>Several features use image models that run on this Mac but aren't built into the app, because they're large: <b>Generate</b> (in Extend, Remove Objects, Change Objects, Generate a Background and New Image from Description) uses <b>Stable Diffusion 1.5 Inpainting</b>, about 2 GB; <b>Colorize</b> uses <b>DDColor</b>, about 425 MB; <b>Fix Blur</b> uses <b>Restormer</b> (out of focus and camera shake, about 100 MB together) and, to restore faces, <b>GFPGAN</b>, about 315 MB; and Remove Objects' <b>Erase</b> uses <b>LaMa</b>, about 190 MB. They need Apple silicon.</p>

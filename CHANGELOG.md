@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Intel Macs**: the README and the Guide now say that AOK-ImageTool runs on Intel Macs as well as Apple silicon (the download contains both), and what needs Apple silicon: the image models, Apple Intelligence and Upscale with AI.
+
 ## 1.4.0
 
 - **Save your own presets**: **Save as Preset…** under the new **Presets** section in the Adjust panel (or Image › Save as Preset…) keeps a picture's light, color, white balance, detail and filter under a name, without its crop, turn or retouching. Presets show as tiles previewed on the photo you're looking at; click one to give the photo that look, in place of its own adjustments, as Paste Edits does (one step to undo). **Image › Apply Preset** puts one on the pictures selected in the grid, as does the right-click menu. Right-click a preset to rename it, replace it with the photo's adjustments, or delete it. Presets are kept on this Mac for every window, in Application Support's Presets.json.
