@@ -1489,6 +1489,241 @@ enum SelfTest {
         reopened.edits.keys.forEach { reopened.setEditsDictionary($0, nil) }
     }
 
+    /// Stitch Pictures: views of one picture as a turning camera would see it (made by Core Image, so the two
+    /// check each other) are lined up to within a pixel, and stitched match a single wide view of it; pictures
+    /// that show nothing the others do are left out; the view is level, by the panning or by a phone's motion
+    /// sensor; flat without a lens, wrapped for a wide view; what isn't covered is cropped away or filled; Save
+    /// makes a stacked copy. (`AOK_SELFTEST_ONLY=stitch` runs just these.)
+    private static func stitchChecks(folder: URL, out: URL) async {
+        let fm = FileManager.default
+        let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let harbor = try? ImageDecoder.decode(url: folder.appendingPathComponent("Harbor Village.heic"), page: 0, allowHDR: false),
+              let lake = try? ImageDecoder.decode(url: folder.appendingPathComponent("Mountain Lake.heic"), page: 0, allowHDR: false) else {
+            return check(false, "Harbor Village and Mountain Lake test images")
+        }
+        let world = harbor.cgImage
+        typealias Camera = StitchViews.Camera
+        let w = StitchViews.width, h = StitchViews.height
+        func picture(_ image: CGImage?, lens: Bool) -> Stitch.Picture? {
+            image.flatMap { Stitch.Picture($0, focal: lens ? StitchViews.focal : nil, space: sRGB) }
+        }
+        func bytes(_ image: CGImage) -> [UInt8] {
+            var bitmap = RGBABitmap(width: image.width, height: image.height)
+            bitmap.draw(image, topLeftRect: CGRect(x: 0, y: 0, width: image.width, height: image.height), space: sRGB, quality: .none)
+            return bitmap.pixels
+        }
+        /// How far apart two pictures are on average (levels of 255) where both are opaque and `where` says to look.
+        func difference(_ one: CGImage, _ two: CGImage, where include: (Int, Int) -> Bool = { _, _ in true }) -> (mean: Double, count: Int) {
+            guard one.width == two.width, one.height == two.height else { return (.infinity, 0) }
+            let a = bytes(one), b = bytes(two)
+            var sum = 0.0, n = 0
+            for y in stride(from: 0, to: one.height, by: 2) {
+                for x in stride(from: 0, to: one.width, by: 2) {
+                    let i = (y * one.width + x) * 4
+                    guard a[i + 3] == 255, b[i + 3] == 255, include(x, y) else { continue }
+                    for c in 0..<3 { sum += abs(Double(a[i + c]) - Double(b[i + c])) }
+                    n += 3
+                }
+            }
+            return (n > 0 ? sum / Double(n) : .infinity, n / 3)
+        }
+
+        // Two views half overlapping, the second hand-held and darker.
+        let a = Camera(yaw: -15), b = Camera(yaw: 15, pitch: 2, roll: 1.5)
+        guard let va = StitchViews.view(of: world, a), let vb = StitchViews.view(of: world, b), let dark = StitchViews.view(of: world, b, gain: 0.8),
+              let pa = picture(va, lens: false), let pb = picture(vb, lens: false), let pd = picture(dark, lens: false) else {
+            return check(false, "views of the harbor to stitch")
+        }
+        do {
+            let layout = try Stitch.layout(of: [pa, pd])
+            // (Whichever is the middle one, the other is laid on it.)
+            let other = 1 - layout.reference
+            let truth = other == 1 ? StitchViews.truth(b, onto: a) : StitchViews.truth(a, onto: b)
+            var worst = 0.0, sum = 0.0, n = 0
+            if let found = layout.onto[other] {
+                for gy in 0..<12 {
+                    for gx in 0..<16 {
+                        let p = SIMD3((Double(gx) + 0.5) / 16 * Double(w), (Double(gy) + 0.5) / 12 * Double(h), 1)
+                        let t = truth * p, f = found * p
+                        guard t.z > 0, f.z > 0, t.x / t.z >= 0, t.y / t.z >= 0, t.x / t.z < Double(w), t.y / t.z < Double(h) else { continue }
+                        let d = hypot(f.x / f.z - t.x / t.z, f.y / f.z - t.y / t.z)
+                        worst = max(worst, d)
+                        sum += d
+                        n += 1
+                    }
+                }
+            }
+            check(n > 20 && worst < 1.5 && sum / Double(max(n, 1)) < 0.5,
+                  String(format: "two views half overlapping are lined up to within a pixel (%.2f on average, %.2f at worst, over %d points)",
+                         sum / Double(max(n, 1)), worst, n))
+            check(layout.gains[1] > layout.gains[0] * 1.05,
+                  String(format: "the darker one is brightened and the lighter one darkened to meet (× %.2f and × %.2f)", layout.gains[1], layout.gains[0]))
+            check(!layout.knowsLens && !layout.isLevel && Stitch.shape(for: [pa, pd], layout: layout) == .flat,
+                  "without a lens to go by, they're joined flat, as the middle one was taken")
+        } catch {
+            check(false, "lining two views up: \(error.localizedDescription)")
+        }
+
+        // Stitched, they're what one camera would have seen on a wider picture.
+        do {
+            let layout = try Stitch.layout(of: [pa, pb])
+            let stitched = try Stitch.render([pa, pb], layout: layout, look: Stitch.Look(), sharp: true)
+            let camera = layout.reference == 0 ? a : b
+            let origin = CGPoint(x: layout.focal * stitched.origin.x + layout.center.x, y: layout.focal * stitched.origin.y + layout.center.y)
+            let size = CGSize(width: stitched.image.width, height: stitched.image.height)
+            if let wide = StitchViews.view(of: world, camera, origin: origin, size: size) {
+                writeJPEG(stitched.image, to: out.appendingPathComponent("stitched.jpg"))
+                let d = difference(stitched.image, wide)
+                check(stitched.image.width > w * 3 / 2 && d.count > w * h / 8 && d.mean < 4,
+                      String(format: "stitched, they match one wide view of the harbor (%d × %d; off by %.1f levels of 255 on average)",
+                             stitched.image.width, stitched.image.height, d.mean))
+            } else {
+                check(false, "a wide view to compare the stitched picture with")
+            }
+            // What's kept by Crop is covered everywhere, and is most of it.
+            let px = bytes(stitched.image)
+            if let covered = stitched.covered {
+                var holes = 0
+                for y in stride(from: Int(covered.minY), to: Int(covered.maxY), by: 3) {
+                    for x in stride(from: Int(covered.minX), to: Int(covered.maxX), by: 3) where px[(y * stitched.image.width + x) * 4 + 3] != 255 { holes += 1 }
+                }
+                let cropped = Stitch.finished(stitched, edges: .crop, filling: nil)
+                check(holes == 0 && covered.width * covered.height > 0.4 * size.width * size.height && stitched.coverage < 0.999
+                        && cropped?.width == Int(covered.width) && cropped?.height == Int(covered.height),
+                      "Crop keeps the largest rectangle the pictures cover (\(Int(covered.width)) × \(Int(covered.height)) of \(Int(size.width)) × \(Int(size.height)))")
+            } else {
+                check(false, "a covered rectangle to crop to")
+            }
+        } catch {
+            check(false, "stitching two views: \(error.localizedDescription)")
+        }
+
+        // A picture of something else is left out; two that share nothing can't be stitched.
+        let elsewhere = picture(StitchViews.view(of: lake.cgImage, Camera()), lens: false)
+        if let elsewhere {
+            let three = try? Stitch.layout(of: [pa, elsewhere, pb])
+            check(three?.joined == [0, 2], "a picture that shows nothing the others do is left out (joined: \(three?.joined ?? []))")
+            var refused = false
+            do { _ = try Stitch.layout(of: [pa, elsewhere]) } catch StitchError.noOverlap { refused = true } catch {}
+            check(refused, "two pictures that share nothing aren't stitched")
+        }
+
+        // With a lens: a camera panned while tilted up is leveled, and a wide view is wrapped on a cylinder.
+        let up1 = Camera(yaw: -15, pitch: 9), up2 = Camera(yaw: 15, pitch: 9)
+        if let p1 = picture(StitchViews.view(of: world, up1), lens: true), let p2 = picture(StitchViews.view(of: world, up2), lens: true),
+           let layout = try? Stitch.layout(of: [p1, p2]) {
+            let truth = StitchViews.rotation(layout.reference == 0 ? up1 : up2).transpose * SIMD3(0, 1, 0)
+            let off = acos(min(1, simd_dot(simd_normalize(layout.upright.columns.1), truth))) * 180 / .pi
+            check(layout.knowsLens && layout.isLevel && off < 2, String(format: "a camera panned while tilted up is looked at level (down is right to %.1f°)", off))
+            let wrapped = Stitch.size(for: [p1, p2], layout: layout, look: Stitch.Look(shape: .cylinder))
+            let flat = Stitch.size(for: [p1, p2], layout: layout, look: Stitch.Look(shape: .flat))
+            check(Stitch.shape(for: [p1, p2], layout: layout) == .cylinder && (flat?.size.width ?? 0) > (wrapped?.size.width ?? .infinity) * 1.05,
+                  "a wide view is wrapped on a cylinder, which a flat one is wider than (\(Int(wrapped?.size.width ?? 0)) and \(Int(flat?.size.width ?? 0)) across)")
+            // Level, Tilt and Turn re-aim the view: turned to the right, what was in the middle moves left.
+            if let straight = try? Stitch.render([p1, p2], layout: layout, look: Stitch.Look(shape: .cylinder), maxSide: 600),
+               let turned = try? Stitch.render([p1, p2], layout: layout, look: Stitch.Look(shape: .cylinder, turn: 10), maxSide: 600) {
+                let moved = (straight.origin.x - turned.origin.x) * 180 / .pi
+                check(abs(moved - 10) < 0.5, String(format: "Turn looks further round (the view starts %.1f° further left)", moved))
+            }
+
+            // Filled instead of cropped: nothing is left uncovered, and the pictures themselves are as they were.
+            do {
+                let canvas = try Stitch.render([p1, p2], layout: layout, look: Stitch.Look(shape: .cylinder), maxSide: 900)
+                let covered = Stitch.covered(RGBABitmap(width: canvas.image.width, height: canvas.image.height, pixels: bytes(canvas.image)), inset: 12)
+                func inside(_ x: Int, _ y: Int) -> Bool { covered[y * canvas.image.width + x] == 1 }
+                for method in ExtendMethod.allCases {
+                    if method == .generate, !GenerativeModel.isInstalled { print("  • generative model not installed; skipping a generated fill"); continue }
+                    let filling = try await Stitch.fill(canvas, method: method, prompt: GenerativeExtend.prompt("a harbor"), seed: 3)
+                    guard let made = Stitch.finished(canvas, edges: .fill, filling: filling) else { check(false, "\(method.title) fills a stitched picture"); continue }
+                    writeJPEG(made, to: out.appendingPathComponent("stitched-\(method.rawValue).jpg"))
+                    let all = bytes(made)
+                    var bare = 0, dark = 0, outside = 0
+                    for i in 0..<(made.width * made.height) {
+                        if all[i * 4 + 3] != 255 { bare += 1 }
+                        if covered[i] == 0 { outside += 1; if all[i * 4] < 6 && all[i * 4 + 1] < 6 && all[i * 4 + 2] < 6 { dark += 1 } }
+                    }
+                    let d = difference(made, canvas.image, where: inside)
+                    check(canvas.coverage < 0.97 && made.width == canvas.image.width && bare == 0 && dark < outside / 20 && d.mean < 2.5,
+                          String(format: "%@ fills what the pictures don't cover (%.0f%% of it) and leaves them as they were (off by %.1f levels)",
+                                 method.title, (1 - canvas.coverage) * 100, d.mean))
+                }
+            } catch {
+                check(false, "filling a stitched picture: \(error.localizedDescription)")
+            }
+        } else {
+            check(false, "views with a lens to stitch")
+        }
+
+        // Pictures looking steeply up aren't leveled: they're looked at as they were taken. (The same two views, said
+        // by their sensors to have been taken looking 60° up, or level.)
+        let left = Camera(yaw: -12), right = Camera(yaw: 12)
+        func sensed(_ camera: Camera, down: SIMD3<Double>) -> Stitch.Picture? {
+            StitchViews.view(of: world, camera).flatMap {
+                Stitch.Picture($0, focal: StitchViews.focal, down: StitchViews.rotation(camera).transpose * simd_normalize(down), space: sRGB)
+            }
+        }
+        let steep = SIMD3(0, 0.5, -0.87), flat = SIMD3(0.0, 1, 0)
+        if let s1 = sensed(left, down: steep), let s2 = sensed(right, down: steep), let f1 = sensed(left, down: flat), let f2 = sensed(right, down: flat),
+           let up = try? Stitch.layout(of: [s1, s2]), let ahead = try? Stitch.layout(of: [f1, f2]) {
+            check(ahead.isLevel && !up.isLevel, "pictures taken looking steeply up (60°, by their sensors) aren't leveled; taken level, they are")
+        } else {
+            check(false, "views to try leveling on")
+        }
+
+        // What a phone's motion sensor read says which way is down: tilted up 20°.
+        let lens = [kCGImagePropertyExifLensModel as String: "iPhone 16 Pro back triple camera 6.765mm f/1.78"]
+        func reading(_ values: [Double], orientation: Int) -> [String: Any] {
+            [kCGImagePropertyMakerAppleDictionary as String: ["8": values], kCGImagePropertyExifDictionary as String: lens,
+             kCGImagePropertyOrientation as String: orientation]
+        }
+        let s = sin(20 * Double.pi / 180), c = cos(20 * Double.pi / 180)
+        let expected = SIMD3(0, c, -s)
+        // (Held level; on its side, either way up; upside down; and on its side in a file saved with the turn applied.)
+        let holds = [([-c, 0, s], 1), ([0, -c, s], 6), ([0, c, s], 8), ([c, 0, s], 3), ([0, -c, s], 1)]
+        let read = holds.map { Stitch.down(from: reading($0.0, orientation: $0.1), edits: .identity) }
+        var turned = EditState()
+        turned.quarterTurns = 1
+        check(read.allSatisfy { $0.map { simd_length($0 - expected) < 0.01 } == true }
+                && Stitch.down(from: reading([-c, 0, s], orientation: 1), edits: turned) == nil && Stitch.down(from: [:], edits: .identity) == nil,
+              "a phone's motion sensor says which way was down, however the phone was held (not for a picture turned since)")
+
+        // Save: three hand-held views from files, stitched into a copy stacked with the first.
+        let dir = out.appendingPathComponent("stitch")
+        try? fm.removeItem(at: dir)
+        let urls = StitchViews.writeSet(of: world, into: dir)
+        guard urls.count == 3 else { return check(false, "views written to stitch from files") }
+        let model = ViewerModel()
+        model.stacksEnabled = true
+        model.openFolder(dir, selecting: urls[0])
+        for _ in 0..<100 where model.decoded?.url != urls[0].standardizedFileURL { try? await Task.sleep(for: .milliseconds(50)) }
+        do {
+            var opened: [(decoded: DecodedImage, picture: Stitch.Picture)] = []
+            for url in urls { opened.append(try await Stitch.open(url, edits: .identity, maxSide: Stitch.workingSide, space: opened.first?.picture.space)) }
+            let pictures = opened.map(\.picture)
+            let layout = try Stitch.layout(of: pictures)
+            check(layout.joined == [0, 1, 2] && layout.reference == 1 && layout.knowsLens && layout.isLevel,
+                  "three views from files are joined, the middle one in the middle, by the lens their files name")
+            model.beginStitch(urls)
+            check(model.stitchRequest?.urls == urls, "Stitch Pictures starts with the pictures chosen")
+            model.stitchRequest = nil
+            let look = Stitch.Look()
+            let fit = Stitch.size(for: pictures, layout: layout, look: look)?.fit ?? 1
+            let preview = try Stitch.render(pictures, layout: layout, look: look, maxSide: 600)
+            model.saveStitched(urls, decoded: opened[0].decoded, layout: layout, look: look, edges: .crop, filling: nil, fit: fit, space: pictures[0].space)
+            let copy = dir.appendingPathComponent("View 1 (Stitched).jpg")
+            for _ in 0..<200 where !fm.fileExists(atPath: copy.path) { try? await Task.sleep(for: .milliseconds(100)) }
+            let saved = (CGImageSourceCreateWithURL(copy as CFURL, nil)).flatMap { CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [String: Any] }
+            let width = saved?[kCGImagePropertyPixelWidth as String] as? Int ?? 0, height = saved?[kCGImagePropertyPixelHeight as String] as? Int ?? 0
+            // (As wide for its height as the sheet's preview showed it would be.)
+            let shown = preview.covered.map { $0.width / max($0.height, 1) } ?? 0
+            check(fm.fileExists(atPath: copy.path) && ImageStacks.source(of: copy) == "View 1.jpg" && width > w * 5 / 4
+                    && abs(Double(width) / Double(max(height, 1)) - shown) < 0.05 * shown,
+                  "Save makes “View 1 (Stitched)” (\(width) × \(height)), stacked with the first picture\(model.alert.map { " (\($0.title): \($0.message))" } ?? "")")
+        } catch {
+            check(false, "stitching from files: \(error.localizedDescription)")
+        }
+    }
+
     /// Combine Pictures: the subject placed, sized and flipped where the layout says, lit and shadowed; a
     /// transparent picture's subject from its transparency, a photo's from Vision; the first placement where
     /// it was; the copy saved beside the background and stacked with it. (`AOK_SELFTEST_ONLY=combine` runs
@@ -1839,8 +2074,11 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
-        if ["clone", "wb", "newimage", "tags", "combine", "local", "presets", "fullscreen"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
-            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "presets" {
+        if ["clone", "wb", "newimage", "tags", "combine", "stitch", "local", "presets", "fullscreen"].contains(ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"]) {
+            if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "stitch" {
+                print("\n[Stitch Pictures]")
+                await stitchChecks(folder: folder, out: out)
+            } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "presets" {
                 print("\n[Presets]")
                 await presetChecks(out: out)
             } else if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "fullscreen" {
@@ -2996,6 +3234,8 @@ enum SelfTest {
         await fullScreenChecks(out: out)
         print("\n[Combine Pictures]")
         await combineChecks(folder: folder, out: out)
+        print("\n[Stitch Pictures]")
+        await stitchChecks(folder: folder, out: out)
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")

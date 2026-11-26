@@ -83,6 +83,14 @@ enum DebugScenes {
             if let folder = model.folderURL {
                 model.combineRequest = CombineRequest(background: folder.appendingPathComponent("Mountain Lake.heic"), foreground: model.currentURL)
             }
+        #if DEBUG
+        case "stitch":
+            // Three hand-held views of the harbor (made for this), ready to stitch.
+            if let folder = model.folderURL, let world = try? ImageDecoder.decode(url: folder.appendingPathComponent("Harbor Village.heic"), page: 0, allowHDR: false) {
+                let views = FileManager.default.temporaryDirectory.appendingPathComponent("AOK-StitchViews-\(ProcessInfo.processInfo.processIdentifier)")
+                model.beginStitch(StitchViews.writeSet(of: world.cgImage, into: views))
+            }
+        #endif
         case "adjust":
             model.updateEdits("Adjust") {
                 $0.exposure = 0.2

@@ -197,6 +197,70 @@ enum ExtendLab {
             }
             exit(0)
         }
+        // `-extendTest -stitch <out folder> <automatic|flat|cylinder|sphere> <crop|match|generate|none> <image> <image>…`:
+        // Stitch Pictures as the sheet and Save do it: the pictures lined up at the sheet's size, the stitched
+        // picture at that size (preview.png) and full size (stitched.png, see-through where nothing covers), and
+        // finished (final.png) unless `none`. LOOK=level,tilt,turn (degrees) turns the view; SIDE=n holds the full
+        // size down to n pixels.
+        if let i = args.firstIndex(of: "-stitch"), i + 5 < args.count, let shape = Stitch.Shape(rawValue: args[i + 2]) {
+            let out = URL(fileURLWithPath: args[i + 1]), ending = args[i + 3]
+            let urls = args[(i + 4)...].map { URL(fileURLWithPath: $0) }
+            let env = ProcessInfo.processInfo.environment
+            let turns = env["LOOK"].map { $0.split(separator: ",").compactMap { Double($0) } } ?? []
+            var look = Stitch.Look(shape: shape)
+            if turns.count == 3 { (look.level, look.tilt, look.turn) = (turns[0], turns[1], turns[2]) }
+            try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
+            func write(_ image: CGImage?, _ name: String) {
+                guard let image else { return print("  nothing to write for", name) }
+                try? ImageWriter.write(image, to: out.appendingPathComponent(name), format: .png, quality: 1, sourceProperties: [:], metadata: .removeAll)
+            }
+            do {
+                var t0 = Date()
+                var small: [Stitch.Picture] = [], space: CGColorSpace?
+                for url in urls {
+                    let p = try await Stitch.open(url, edits: .identity, maxSide: Stitch.workingSide, space: space).picture
+                    space = space ?? p.space
+                    small.append(p)
+                }
+                print(String(format: "opened %d pictures in %.2f s", small.count, Date().timeIntervalSince(t0)))
+                t0 = Date()
+                let layout = try Stitch.layout(of: small)
+                print(String(format: "lined up in %.2f s: joined %@ of %d, the middle one is %d, focal %.0f px (lens %@), level %@, gains %@",
+                             Date().timeIntervalSince(t0), "\(layout.joined)", small.count, layout.reference, layout.focal,
+                             layout.knowsLens ? "known" : "unknown", layout.isLevel ? "yes" : "no",
+                             layout.gains.map { String(format: "%.2f", $0) }.joined(separator: " ")))
+                t0 = Date()
+                let preview = try Stitch.render(small, layout: layout, look: look, maxSide: 1800)
+                print(String(format: "preview %d×%d (%@%@) in %.2f s, covered %.0f%%, the covered rectangle %@", preview.image.width, preview.image.height,
+                             preview.shape.rawValue, preview.trimmed ? ", trimmed" : "", Date().timeIntervalSince(t0), preview.coverage * 100,
+                             preview.covered.map { "\(Int($0.width))×\(Int($0.height)) at \(Int($0.minX)),\(Int($0.minY))" } ?? "none"))
+                write(preview.image, "preview.png")
+                var filling: Stitch.Filling?
+                if let method = ExtendMethod(rawValue: ending) {
+                    t0 = Date()
+                    let canvas = try Stitch.render(small, layout: layout, look: look, maxSide: Stitch.fillSide)
+                    filling = try await Stitch.fill(canvas, method: method, prompt: GenerativeExtend.prompt(env["PROMPT"]), seed: UInt64(env["SEED"] ?? "") ?? 1)
+                    print(String(format: "filled (%@) at %d×%d in %.1f s", method.rawValue, filling!.image.width, filling!.image.height, Date().timeIntervalSince(t0)))
+                    write(filling?.image, "filling.png")
+                }
+                t0 = Date()
+                let fit = Stitch.size(for: small, layout: layout, look: look)?.fit ?? 1
+                var full: [Stitch.Picture] = []
+                for url in urls { full.append(try await Stitch.open(url, edits: .identity, maxSide: env["SIDE"].flatMap { Int($0) }, fit: fit, space: space).picture) }
+                let stitched = try Stitch.render(full, layout: layout, look: look, maxSide: env["SIDE"].flatMap { Int($0) }, sharp: true)
+                print(String(format: "full size %d×%d in %.2f s (fit %.2f)", stitched.image.width, stitched.image.height, Date().timeIntervalSince(t0), fit))
+                write(stitched.image, "stitched.png")
+                if ending != "none" {
+                    t0 = Date()
+                    let made = Stitch.finished(stitched, edges: ending == "crop" ? .crop : .fill, filling: filling)
+                    print(String(format: "finished %d×%d in %.2f s", made?.width ?? 0, made?.height ?? 0, Date().timeIntervalSince(t0)))
+                    write(made, "final.png")
+                }
+            } catch {
+                print("failed:", error.localizedDescription)
+            }
+            exit(0)
+        }
         // `-extendTest -create "<description>" <square|landscape|portrait|wide> <out-prefix> [seed]`: New Image from
         // Description's preview (<out-prefix>-preview.png) and the finished picture (<out-prefix>.png).
         if let i = args.firstIndex(of: "-create"), i + 3 < args.count, let shape = GenerativeImage.Shape(rawValue: args[i + 2]) {

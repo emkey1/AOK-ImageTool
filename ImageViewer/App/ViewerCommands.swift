@@ -322,6 +322,8 @@ struct ViewerCommands: Commands {
             Button("Combine Pictures…") { viewer?.beginCombine() }
                 .keyboardShortcut("b", modifiers: [.command, .option, .shift])
                 .disabled(viewer?.folderURL == nil)
+            Button("Stitch Pictures…") { viewer?.beginStitch() }
+                .disabled(viewer?.folderURL == nil)
             Button("Select Object…") { viewer?.viewMode = .viewer; viewer?.activeTool = .selectObject }
                 .disabled(!canEdit)
             Button("Remove Objects…") { viewer?.beginRemoveObjects() }

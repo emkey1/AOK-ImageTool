@@ -43,10 +43,13 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   blends it into the color and light where it goes.
 - **Combine pictures:** put the subject of one photo, its background removed for you, into another; move and size
   it, match its lighting, add a soft shadow, and erase any of the old background that came along.
+- **Stitch pictures:** join overlapping photos taken from one spot into one wide or tall picture. They're lined up and
+  leveled for you; keep it flat, so straight lines stay straight, or wrap a wide view; crop the ragged edges, or fill
+  them as Extend does.
 - **Change objects:** click a shirt and say “blue”, or “a red plaid flannel shirt”: colors change in place keeping
   their shading, anything more is painted in by the generative model, on your Mac.
 - **Copies that stack.** Black & White (with darkroom filters and toning), Colorize, Fix Blur, Upscale with AI (animated
-  GIFs too), Extend, Remove and Change Objects, Clone & Heal, Adjust Objects, Combine and Reimagine save new copies,
+  GIFs too), Extend, Remove and Change Objects, Clone & Heal, Adjust Objects, Combine, Stitch and Reimagine save new copies,
   stacked with the original in the filmstrip so a folder stays tidy, and Undo takes a copy back. (Settings can have
   most of them change the image itself instead.)
 - **Paste a picture** (⌘V) from anywhere as a new image in the folder.

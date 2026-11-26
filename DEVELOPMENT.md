@@ -45,6 +45,8 @@ ImageViewer/
                  Removal.swift (Remove and Change Objects: LaMa, Match Photo, Generate, recolor; patches in
                  RemovalStore, and Clone & Heal); Change.swift (reading Change Objects' instructions); Recolor.c; Heal.c;
                  Colorize.swift
+    Stitch/      Stitch Pictures: Stitch.c (corners, matching, RANSAC homography, the two-band renderer),
+                 Stitch.swift (how the pictures lie on each other, leveling, the view), StitchFill.swift (crop, fills)
   Canvas/        AppKit zoom/pan canvas (CALayer-backed, HDR), Live Text overlay
   Intelligence/  Vision services, Foundation Models describer/chat, folder index & search
   Views/         SwiftUI: window, toolbar, browser (grid/filmstrip/sidebar), inspector, tools, sheets
@@ -199,6 +201,73 @@ precision gives noise or a flat color), Restormer is fine in half precision on t
 `ImageModel` runs on CPU and GPU. NAFNet was tried for camera shake and dropped (colored noise on some pictures, even
 in its own code).
 
+## How Stitch Pictures works
+
+`Imaging/Stitch/` (`Stitch.c`, `Stitch.swift`, `StitchFill.swift`), `Views/Sheets/StitchSheet.swift`,
+`Model/ViewerModel+Stitch.swift`. No model and no outside library: it runs on Intel and macOS 15.
+
+**Why not Vision.** `VNHomographicImageRegistrationRequest` is exact (under 0.2 px) only while two frames differ by up
+to about 2% of their width; at 4% it's off, beyond that its answer is meaningless, and it reports confidence 1 either
+way. `VNTranslationalImageRegistrationRequest` finds big shifts but knows nothing of perspective. Stitching needs
+pictures that share a quarter to a half of themselves, so the matching is our own.
+
+1. **Corners** (`iv_stitch_features`). Harris corners at up to 2,400 px (`Stitch.workingSide`), the strongest three in
+   each cell of a grid (44 cells along the long side) so they're spread over the picture, placed between pixels by a parabola through the
+   peak. Each is described by 256 brightness comparisons around it (BRIEF), turned to the corner's own direction, so a
+   camera rolled a little still matches. Nothing makes them match across zooms.
+2. **Pairs** (`iv_stitch_align`). Every picture against every other: corners that are each other's nearest (Hamming
+   distance) and clearly nearer than the runner-up are paired; RANSAC finds the homography most pairs agree on (within
+   2.5 px), refit by least squares on the centered, scaled points. A pair counts as overlapping with at least 20
+   agreeing corners, a tenth of those paired, and a homography that keeps the overlap the right way round and about the
+   same size (`plausible`; not judged at the picture's corners, which with a wide lens can be behind the other
+   picture's camera). The median brightness ratio at the agreeing corners is the pair's gain.
+3. **Layout** (`Stitch.layout`). The surest links make a spanning tree over the biggest set of pictures joined to each
+   other; the picture fewest links from the furthest one is the middle one, and every other picture's homography onto
+   it is the product along the tree. (No bundle adjustment: fine for a handful of pictures, and it would drift round a
+   full circle.) Homographies are kept scaled to determinant 1, which also fixes their sign: a direction is in front of
+   a camera exactly when its third coordinate comes out positive. Gains are chained the same way and centered on their
+   geometric mean.
+4. **The view.** The pictures are looked at from one view, a rotation of the middle picture's camera: ahead is where
+   the cameras look between them; down is what the files say (an iPhone writes its motion sensor's reading in its maker
+   note, key 8: gravity along the phone's axes, which `Stitch.down` turns into the picture's own directions for the
+   back camera, if the picture hasn't been turned here; of the four ways round a picture can be shown, it's the one
+   with down nearest the picture's bottom, which is how the camera turned it, so a picture saved again with its turn
+   applied reads right too) or, failing that, the normal of
+   the plane the cameras' left-to-right directions lie in (a panned camera keeps its sides level), when they turned at
+   least a dozen degrees and that normal is within 40° of down in every picture. The two agree to about 3° on real
+   pairs. Without either, or when the pictures look more than 50° up or down, the view is as the middle picture was
+   taken, from between them. The rotations come from the homographies and the lens
+   (the 35 mm equivalent focal length in EXIF); pictures without one (scans) are joined flat on the middle picture's
+   plane, where the lens cancels out. Level, Tilt and Turn are a further rotation of the view.
+5. **Shape.** A direction of the view goes to the picture's pixels as a flat (rectilinear) view, a cylinder or a
+   sphere (`view_ray` and `view_point` in the C). Automatic is flat up to 80° across and tall, a cylinder up to 95°
+   tall, a sphere beyond. A flat view shows nothing more than 72° off its middle; what's cut is reported (`trimmed`).
+6. **Blending** (`iv_stitch_render`). Two bands. Each picture has a small blurred copy (256 px, `iv_stitch_low`): its
+   broad light and color, which cross-fade over the whole overlap by each picture's distance from its own edge, hiding
+   what's left of exposure differences. The rest (the picture minus that) is its detail, taken by that weight to the
+   16th power, which is nearly all from one picture at a time: nothing is blurred by being averaged, and something that
+   moved between pictures shows once. Sampling is Catmull-Rom for the saved picture, bilinear for previews; rows are
+   rendered in parallel. Everything is 8 bits in the first picture's color space, standard range (HDR photos are
+   opened without HDR, as Combine does).
+7. **Edges.** `iv_stitch_covered_rect` finds the largest covered rectangle (the histogram method) for Crop. Fill
+   renders the view at up to 2,048 px, fills it with the content-aware engine or with `GenerativeExtend.paint` in
+   Extend's two passes (from masks rather than a rectangle), seam-blends it to the pictures, and `Stitch.filled` puts
+   the full-size stitched picture back over it, fading into it just inside the pictures' edges.
+8. **Saving.** The sheet works on pictures of 2,400 px; `saveStitched` opens them again at full size and renders with
+   the layout the sheet found (homographies are kept in full-size pixels). A result past 16,384 px or 120 megapixels is
+   made smaller, its pictures opened smaller to match.
+
+On an M-series Mac, two 24-megapixel photos line up in about 0.2 s, preview in 0.02 s and render at full size (33
+megapixels) in under half a second; two 48-megapixel ones make 97 megapixels in about 2 s. A generated fill takes about
+a minute.
+
+**Trying it.** `-extendTest -stitch <out folder> <automatic|flat|cylinder|sphere> <crop|match|generate|none> <image>…`
+stitches files as the sheet and Save do and writes each stage (`LOOK=level,tilt,turn`, `SIDE=n` to hold the size
+down); `AOK_STITCH_TRACE=1` prints each pair's counts and the two estimates of down. The self-test's views
+(`StitchViews`) are made by Core Image from one picture as a turning camera would see it, so the true homography is
+known and the stitched picture can be compared with a single wide view. `-debugScene stitch` opens the sheet on three
+such views, and `-debugStitch flat,fill,match,tilt=4` sets its choices.
+
 ## Releasing
 
 Releases follow AOK-Foray's pipeline:
@@ -231,9 +300,9 @@ build/Build/Products/Debug/AOK-ImageTool.app/Contents/MacOS/AOK-ImageTool -selfT
 
 The self-test uses its own temporary storage and restores any preferences it changes, so it's safe to run while you're using the app. It checks the generative fill's scheduler and noise every time, and runs a real generation when the model is installed. `-debugExtend` (Debug builds) opens the first image straight into the Crop tool extending to 16:9 (add `-debugGenerate` for Generate), for checking that UI.
 
-The Guide's and the README's screenshots come from `-debugScene viewer|grid|adjust|adjust-object|presets|pictureonly|intelligence|info|stack-open|remove|change|clone|fixblur|blackwhite|newimage` (`adjust-object` selects the picture's subject and adjusts it on its own; `presets` saves two presets in the run's temporary storage and puts the first on the picture; `pictureonly` is F's full screen as far as a window in the background can show it, with the toolbar, sidebar, inspector and filmstrip put away and the picture on black, but the window left a window). The tool scenes set the tool part way through on particular demo photos (`showSceneForGuide` in `RemoveObjectsEditor`: the boat in Sailboat outlined, the apple in Fruit Bowl selected with "green" typed, a Clone & Heal stroke over Desert Canyon's shrubs); `newimage` opens New Image from Description and paints its previews; `stack-open` wants a folder with a stack in it. They're captured with `screencapture -l` of the window (with its sheet, for the sheets), with `-debugAppearance light|dark` and `-debugWindowSize 1280x800`. Runs with any of these switches use temporary storage and never save preferences. The screenshots were taken with a copy of the app under its own bundle ID, so its recents and window positions stay apart from yours. The demo photos in them were generated by the app's own model.
+The Guide's and the README's screenshots come from `-debugScene viewer|grid|adjust|adjust-object|presets|pictureonly|intelligence|info|stack-open|remove|change|clone|fixblur|blackwhite|newimage|stitch` (`adjust-object` selects the picture's subject and adjusts it on its own; `presets` saves two presets in the run's temporary storage and puts the first on the picture; `pictureonly` is F's full screen as far as a window in the background can show it, with the toolbar, sidebar, inspector and filmstrip put away and the picture on black, but the window left a window). The tool scenes set the tool part way through on particular demo photos (`showSceneForGuide` in `RemoveObjectsEditor`: the boat in Sailboat outlined, the apple in Fruit Bowl selected with "green" typed, a Clone & Heal stroke over Desert Canyon's shrubs); `newimage` opens New Image from Description and paints its previews; `stack-open` wants a folder with a stack in it. They're captured with `screencapture -l` of the window (with its sheet, for the sheets), with `-debugAppearance light|dark` and `-debugWindowSize 1280x800`. Runs with any of these switches use temporary storage and never save preferences. The screenshots were taken with a copy of the app under its own bundle ID, so its recents and window positions stay apart from yours. The demo photos in them were generated by the app's own model.
 
-In Debug builds, `AOK_MODELS_DIR` and `AOK_MODELS_URL` point the models folder and the model downloads somewhere else (for testing the downloader against a local server), and `-extendTest -download generative-fill|colorize` downloads and installs one headlessly. `AOK_SELFTEST_ONLY=remove|change|clone|wb|local|presets|fullscreen|newimage|blur|quality|tags|combine|straighten|places|download` runs just those self-test sections (`local`: objects adjusted on their own; `presets`: saved presets, their file and applying them; `fullscreen`: what F puts away and brings back, without a window) (`remove` also runs `change`; `download` fetches the LaMa, Restormer and GFPGAN archives from `AOK_MODELS_URL`). `AOK_SELFTEST_LIVE=1` adds checks that ask Apple Maps and Wikipedia themselves (`places`). `-extendTest -fixBlur <image> <out.png> [focus|shake|none] [faces]` runs Fix Blur on one picture (with `SHAKE=<pixels>`, on a copy shaken first, to compare with the original).
+In Debug builds, `AOK_MODELS_DIR` and `AOK_MODELS_URL` point the models folder and the model downloads somewhere else (for testing the downloader against a local server), and `-extendTest -download generative-fill|colorize` downloads and installs one headlessly. `AOK_SELFTEST_ONLY=remove|change|clone|wb|local|presets|fullscreen|newimage|blur|quality|tags|combine|stitch|straighten|places|download` runs just those self-test sections (`local`: objects adjusted on their own; `presets`: saved presets, their file and applying them; `fullscreen`: what F puts away and brings back, without a window) (`remove` also runs `change`; `download` fetches the LaMa, Restormer and GFPGAN archives from `AOK_MODELS_URL`). `AOK_SELFTEST_LIVE=1` adds checks that ask Apple Maps and Wikipedia themselves (`places`). `-extendTest -fixBlur <image> <out.png> [focus|shake|none] [faces]` runs Fix Blur on one picture (with `SHAKE=<pixels>`, on a copy shaken first, to compare with the original).
 
 **Full screen (F)** hides the toolbar with the window's own `NSToolbar.isVisible`, not SwiftUI's `.toolbar(.hidden, for: .windowToolbar)`: on macOS 27 the SwiftUI modifier empties the toolbar but keeps its height, which would leave a blank band across the top of the screen. The self-test covers the model's side; the window's side (really going full screen, a window that was already full screen, F during a slideshow, the pointer at the top of the screen) is checked by hand in the macOS 15 VM, where plain keys like F pass through VNC.
 

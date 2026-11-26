@@ -340,6 +340,13 @@ nonisolated struct RGBABitmap {
         pixels = [UInt8](repeating: 0, count: width * height * 4)
     }
 
+    init(width: Int, height: Int, pixels: [UInt8]) {
+        precondition(pixels.count == width * height * 4)
+        self.width = width
+        self.height = height
+        self.pixels = pixels
+    }
+
     /// Draws `image` into `rect` (top-left origin, pixels).
     mutating func draw(_ image: CGImage, topLeftRect rect: CGRect, space: CGColorSpace, quality: CGInterpolationQuality) {
         let w = width, h = height

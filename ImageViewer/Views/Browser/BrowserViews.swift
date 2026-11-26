@@ -350,6 +350,9 @@ struct ItemContextMenu: View {
         if targets.count == 2 {
             Button("Combine These Pictures…") { model.beginCombine(targets) }
         }
+        if targets.count >= 2 {
+            Button("Stitch These Pictures…") { model.beginStitch(targets) }
+        }
         Button("Copy Edits") { model.copyEdits(from: item.url) }
             .disabled(model.edits[item.url]?.adjustments.isIdentity ?? true)
         Button(targets.count > 1 ? "Paste Edits to \(targets.count) Images" : "Paste Edits") { model.pasteEdits(to: targets) }

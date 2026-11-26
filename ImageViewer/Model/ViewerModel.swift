@@ -177,6 +177,7 @@ final class ViewerModel {
     var showShortcuts = false
     var exportRequest: ExportRequest?
     var combineRequest: CombineRequest?
+    var stitchRequest: StitchRequest?
     /// Saving the picture's adjustments as a preset, or renaming one (`PresetNameSheet`).
     var presetNaming: PresetNaming?
     var renameTarget: ImageItem?

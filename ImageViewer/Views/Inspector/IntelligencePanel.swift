@@ -243,6 +243,9 @@ struct IntelligencePanel: View {
                 ActionButton("Combine…", systemImage: "square.2.layers.3d") {
                     model.beginCombine()
                 }
+                ActionButton("Stitch…", systemImage: "rectangle.split.3x1") {
+                    model.beginStitch()
+                }
             }
             .disabled(!model.canEdit || ai.busy != nil)
             if model.hasFillableTransparency {
