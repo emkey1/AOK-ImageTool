@@ -482,6 +482,57 @@ enum SelfTest {
         } catch {
             check(false, "Clone & Heal: \(error.localizedDescription)")
         }
+
+        // An HDR photo (PQ): wood, lighter to the right. Painted with itself (copied from no distance away), nothing
+        // should change. A patch faded out in 8 bits came back with a thin line around it, far brighter than the
+        // wood: where it had all but faded out its color had one level left, and in PQ that's the brightest there is.
+        let linear = CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!
+        let wood = CIFilter(name: "CILinearGradient", parameters: [
+            "inputPoint0": CIVector(x: 0, y: 0), "inputPoint1": CIVector(x: CGFloat(w), y: 0),
+            "inputColor0": CIColor(red: 0.45, green: 0.22, blue: 0.08, alpha: 1, colorSpace: linear)!,
+            "inputColor1": CIColor(red: 0.75, green: 0.45, blue: 0.2, alpha: 1, colorSpace: linear)!,
+        ])?.outputImage?.cropped(to: frame)
+        guard let wood, let pq = CGColorSpace(name: CGColorSpace.itur_2100_PQ),
+              let hdr = ImageDecoder.ciContext.createCGImage(wood, from: frame, format: .RGBAh, colorSpace: pq) else {
+            return check(false, "an HDR picture for Clone & Heal")
+        }
+        let photo = DecodedImage(url: out.appendingPathComponent("clone-hdr.png"), cgImage: hdr, isHDR: true, isAnimated: false,
+                                 pageCount: 1, pageIndex: 0, typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+        let stroke = CIImage(color: .white).cropped(to: CGRect(x: 120, y: 100, width: 160, height: 100))
+            .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 12])
+            .composited(over: CIImage(color: .black).cropped(to: frame)).cropped(to: frame)
+        func light(_ image: CGImage?) -> [Float] {
+            var p = [Float](repeating: 0, count: w * h * 4)
+            guard let image else { return p }
+            ImageDecoder.ciContext.render(CIImage(cgImage: image), toBitmap: &p, rowBytes: w * 16, bounds: frame, format: .RGBAf, colorSpace: linear)
+            return p
+        }
+        do {
+            let plain = light(EditRenderer.shared.renderSync(photo, edits: EditState(), maxDimension: nil)?.image)
+            var worst: Float = 0
+            for heal in [false, true] {
+                var e = EditState()
+                e.removals = [try await ObjectRemover.clone(photo, after: [], mask: stroke, offset: .zero, heal: heal)]
+                let painted = light(EditRenderer.shared.renderSync(photo, edits: e, maxDimension: nil)?.image)
+                for i in 0..<(w * h) { for c in 0..<3 { worst = max(worst, abs(painted[i * 4 + c] - plain[i * 4 + c])) } }
+            }
+            check(plain[1] > 0.1 && worst < 0.05,
+                  String(format: "a soft brush leaves no bright line around what it paints on an HDR photo (off by at most %.3f, white being 1)", worst))
+            // Remove Objects' patches fade out the same way. (Filled from the wood, nothing can be brighter than it.)
+            let mark = CIImage(color: .white).cropped(to: CGRect(x: 170, y: 120, width: 60, height: 60))
+                .composited(over: CIImage(color: .black).cropped(to: frame)).cropped(to: frame)
+            var e = EditState()
+            e.removals = [try await ObjectRemover.remove(photo, after: [], mask: mark, grow: 4, method: .match, seed: 7)]
+            let removed = light(EditRenderer.shared.renderSync(photo, edits: e, maxDimension: nil)?.image)
+            var over: Float = 0
+            for c in 0..<3 {
+                let brightest = stride(from: c, to: plain.count, by: 4).reduce(Float(0)) { max($0, plain[$1]) }
+                for i in stride(from: c, to: removed.count, by: 4) { over = max(over, removed[i] - brightest) }
+            }
+            check(over < 0.05, String(format: "nor around what Remove Objects fills (at most %.3f brighter than the photo's brightest)", over))
+        } catch {
+            check(false, "Clone & Heal on an HDR photo: \(error.localizedDescription)")
+        }
     }
 
     /// Objects adjusted on their own: the selection changes only what it covers, fading at its soft edge, and

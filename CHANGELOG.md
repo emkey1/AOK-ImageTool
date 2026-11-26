@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- **No bright lines around retouching on HDR photos**: on an HDR photo (as recent iPhones take), Clone & Heal left a thin white or orange line around each stroke, and Remove Objects and Change Objects could leave one around what they filled. Where the soft edge of what was painted had all but faded out, its color was kept too coarsely and came back far too bright. Photos that aren't HDR never showed it. (A stroke painted before this keeps its line: take it back and paint it again.)
 - **Intel Macs**: the README and the Guide now say that AOK-ImageTool runs on Intel Macs as well as Apple silicon (the download contains both), and what needs Apple silicon: the image models, Apple Intelligence and Upscale with AI.
 
 ## 1.4.0

@@ -132,6 +132,12 @@ decoded pixels, grown a little, and the area around it (at least 800 px, square 
 what changed is kept, as a PNG patch with a soft edge (`RemovalStore`, an `EditState.removals` entry with its rect),
 drawn first in the pipeline, so later crops, turns, Extend and adjustments keep it.
 
+A patch is put together with straight alpha (`ObjectRemover.patch`: its color in 8 bits, and how much of it shows
+beside it), never faded out by Core Image into 8 premultiplied bits. Premultiplied, a color has one or two levels left
+where the patch has all but faded out, and an HDR photo's patch is in its PQ color space, where the step from one
+level to the next is then from black to the brightest there is: every soft edge came back with a thin bright line
+around it (the self-test paints an HDR picture with itself and checks nothing changes).
+
 **Change Objects** is the same editor in `.change` mode, making the same patches. A click's object mask (Vision) or a
 stroke is narrowed to the pixels near the clicked color (`ObjectRemover.selectByColor`, `iv_select_color` in
 `Recolor.c`), on the picture as shown. The distance is in L\*a\*b\*: hue difference (scaled by chroma, as in CIE94)

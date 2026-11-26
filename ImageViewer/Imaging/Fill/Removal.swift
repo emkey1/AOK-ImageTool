@@ -177,16 +177,12 @@ nonisolated enum ObjectRemover {
                   .composited(over: CIImage(color: .black))
         else { throw RemovalError.failed }
         let fill = CIImage(cgImage: fillImage).transformed(by: CGAffineTransform(translationX: region.minX, y: region.minY))
-        let patch = fill
             .applyingFilter("CIBlendWithMask", parameters: [kCIInputBackgroundImageKey: source, kCIInputMaskImageKey: area])
-            .applyingFilter("CIBlendWithMask", parameters: [
-                kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: patchRect),
-                kCIInputMaskImageKey: area.applyingGaussianBlur(sigma: feather),
-            ])
-            .cropped(to: patchRect)
-        guard let picture = renderer.context.createCGImage(patch, from: patchRect, format: .RGBA8, colorSpace: space) else {
-            throw RemovalError.failed
-        }
+        let pw = Int(patchRect.width), ph = Int(patchRect.height)
+        var color = [UInt8](repeating: 0, count: pw * ph * 4)
+        renderer.context.render(fill, toBitmap: &color, rowBytes: pw * 4, bounds: patchRect, format: .RGBA8, colorSpace: space)
+        let fade = renderer.context.renderGray(area.applyingGaussianBlur(sigma: feather), bounds: patchRect)
+        guard let picture = patch(color, cover: fade, width: pw, height: ph, space: space) else { throw RemovalError.failed }
         let path = try RemovalStore.save(picture)
         let rect = CGRect(x: patchRect.minX / full.width, y: 1 - patchRect.maxY / full.height,
                           width: patchRect.width / full.width, height: patchRect.height / full.height)
@@ -299,16 +295,7 @@ nonisolated enum ObjectRemover {
         renderer.context.render(source, toBitmap: &pixels, rowBytes: w * 4, bounds: rect, format: .RGBA8, colorSpace: srgb)
         let weight = renderer.context.renderGray(soft, bounds: rect), core = renderer.context.renderGray(mask, bounds: rect)
         iv_recolor(&pixels, weight, core, Int32(w), Int32(h), color.red, color.green, color.blue)
-        guard let recolored = image(pixels, width: w, height: h, space: srgb) else { throw RemovalError.failed }
-        let patch = CIImage(cgImage: recolored).transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
-            .applyingFilter("CIBlendWithMask", parameters: [
-                kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect),
-                kCIInputMaskImageKey: soft,
-            ])
-            .cropped(to: rect)
-        guard let picture = renderer.context.createCGImage(patch, from: rect, format: .RGBA8, colorSpace: srgb) else {
-            throw RemovalError.failed
-        }
+        guard let picture = patch(pixels, cover: weight, width: w, height: h, space: srgb) else { throw RemovalError.failed }
         let path = try RemovalStore.save(picture)
         return Removal(path: path, rect: CGRect(x: rect.minX / full.width, y: 1 - rect.maxY / full.height,
                                                 width: rect.width / full.width, height: rect.height / full.height))
@@ -351,16 +338,7 @@ nonisolated enum ObjectRemover {
         renderer.context.render(moved, toBitmap: &there, rowBytes: w * 4, bounds: rect, format: .RGBA8, colorSpace: space)
         let cover = renderer.context.renderGray(mask, bounds: rect)
         let painted = heal && iv_heal(&here, there, cover, Int32(w), Int32(h)) != 0 ? here : there
-        guard let picture = image(painted, width: w, height: h, space: space) else { throw RemovalError.failed }
-        let patch = CIImage(cgImage: picture).transformed(by: CGAffineTransform(translationX: rect.minX, y: rect.minY))
-            .applyingFilter("CIBlendWithMask", parameters: [
-                kCIInputBackgroundImageKey: CIImage(color: .clear).cropped(to: rect),
-                kCIInputMaskImageKey: mask,
-            ])
-            .cropped(to: rect)
-        guard let made = renderer.context.createCGImage(patch, from: rect, format: .RGBA8, colorSpace: space) else {
-            throw RemovalError.failed
-        }
+        guard let made = patch(painted, cover: cover, width: w, height: h, space: space) else { throw RemovalError.failed }
         let path = try RemovalStore.save(made)
         return Removal(path: path, rect: CGRect(x: rect.minX / full.width, y: 1 - rect.maxY / full.height,
                                                 width: rect.width / full.width, height: rect.height / full.height))
@@ -467,6 +445,34 @@ nonisolated enum ObjectRemover {
     }
 
     // MARK: Helpers
+
+    /// A patch: its color (`pixels`, RGBA, rows top-down) and how much of it shows (`cover`, a byte a pixel), kept
+    /// apart in the picture made (straight alpha). Multiplied together in 8 bits, as Core Image makes a faded
+    /// picture, a color has only a level or two left where the patch has all but faded out; in an HDR photo's
+    /// color space (PQ) the step from one to the next is from black to its very brightest, and a soft edge came
+    /// back as a thin bright line around the patch.
+    private static func patch(_ pixels: [UInt8], cover: [UInt8], width w: Int, height h: Int, space: CGColorSpace) -> CGImage? {
+        guard w > 0, h > 0, pixels.count == w * h * 4, cover.count == w * h else { return nil }
+        var bytes = pixels
+        bytes.withUnsafeMutableBufferPointer { px in
+            cover.withUnsafeBufferPointer { shows in
+                for i in 0..<(w * h) {
+                    let a = Int(px[i * 4 + 3])
+                    if a == 255 {
+                        px[i * 4 + 3] = shows[i]
+                    } else {
+                        // (A see-through picture: its own alpha, which its color comes multiplied by, counts too.)
+                        if a > 0 { for c in 0..<3 { px[i * 4 + c] = UInt8(min(255, (Int(px[i * 4 + c]) * 255 + a / 2) / a)) } }
+                        px[i * 4 + 3] = UInt8((a * Int(shows[i]) + 127) / 255)
+                    }
+                }
+            }
+        }
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData) else { return nil }
+        return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: w * 4, space: space,
+                       bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue), provider: provider, decode: nil,
+                       shouldInterpolate: true, intent: .defaultIntent)
+    }
 
     private static func image(_ pixels: [UInt8], width: Int, height: Int, space: CGColorSpace) -> CGImage? {
         var bitmap = RGBABitmap(width: width, height: height)

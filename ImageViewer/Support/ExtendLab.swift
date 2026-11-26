@@ -169,12 +169,14 @@ enum ExtendLab {
             }
             exit(0)
         }
-        // `-extendTest -clone <image> <out.png> <from x> <from y> <to x> <to y> <radius> [copy]`: Clone & Heal paints a
-        // round dab (normalized, top-left origin; radius in fractions of the width) with what's at "from".
+        // `-extendTest -clone <image> <out.png> <from x> <from y> <to x> <to y> <radius> [copy] [hdr]`: Clone & Heal
+        // paints a round dab (normalized, top-left origin; radius in fractions of the width) with what's at "from".
+        // `hdr` opens an HDR photo as the app does (the patch is then made in its PQ color space).
         if let i = args.firstIndex(of: "-clone"), i + 7 < args.count {
             let url = URL(fileURLWithPath: args[i + 1]), out = URL(fileURLWithPath: args[i + 2])
             let v = args[(i + 3)...(i + 7)].compactMap { Double($0) }
-            guard v.count == 5, let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: false) else { exit(1) }
+            let hdr = args.dropFirst(i + 8).contains("hdr")
+            guard v.count == 5, let d = try? ImageDecoder.decode(url: url, page: 0, allowHDR: hdr) else { exit(1) }
             let W = d.pixelSize.width, H = d.pixelSize.height, r = v[4] * W
             let to = CGPoint(x: v[2] * W, y: (1 - v[3]) * H)
             let mask = CIImage(color: .white).cropped(to: CGRect(x: to.x - r, y: to.y - r, width: 2 * r, height: 2 * r))
