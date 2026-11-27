@@ -1647,6 +1647,65 @@ enum SelfTest {
                           String(format: "%@ fills what the pictures don't cover (%.0f%% of it) and leaves them as they were (off by %.1f levels)",
                                  method.title, (1 - canvas.coverage) * 100, d.mean))
                 }
+
+                // Saved at the pictures' full size from a filling made much smaller, as Save does: the filled parts get the
+                // pictures' own fine texture (without it they're an enlargement, smooth beside them), and no picture's
+                // outermost pixels come out black (they did: a line between the pictures and what was filled in).
+                let small = try Stitch.render([p1, p2], layout: layout, look: Stitch.Look(shape: .cylinder), maxSide: 450)
+                let full = try Stitch.render([p1, p2], layout: layout, look: Stitch.Look(shape: .cylinder), sharp: true)
+                /// Whether each pixel is one of the pictures', and how many of their outermost pixels are black.
+                func rim(_ image: CGImage) -> (covered: [Bool], rim: Int, black: Int) {
+                    let px = bytes(image), w = image.width, h = image.height
+                    let covered = (0..<(w * h)).map { px[$0 * 4 + 3] == 255 }
+                    var rim = 0, black = 0
+                    for y in 1..<(h - 1) {
+                        for x in 1..<(w - 1) where covered[y * w + x] {
+                            guard !covered[y * w + x - 1] || !covered[y * w + x + 1] || !covered[(y - 1) * w + x] || !covered[(y + 1) * w + x] else { continue }
+                            rim += 1
+                            if px[(y * w + x) * 4] < 4 && px[(y * w + x) * 4 + 1] < 4 && px[(y * w + x) * 4 + 2] < 4 { black += 1 }
+                        }
+                    }
+                    return (covered, rim, black)
+                }
+                let preview = rim(small.image), saved = rim(full.image)
+                check(preview.rim > 200 && saved.rim > 200 && preview.black * 20 < preview.rim && saved.black * 20 < saved.rim,
+                      "the pictures' outermost pixels aren't black (\(preview.black) of \(preview.rim) in the preview, \(saved.black) of \(saved.rim) at full size)")
+                let filling = try await Stitch.fill(small, method: .match, prompt: "", seed: 3)
+                if let textured = Stitch.finished(full, edges: .fill, filling: filling),
+                   let plain = Stitch.finished(full, edges: .fill, filling: filling, texture: false) {
+                    writeJPEG(textured, to: out.appendingPathComponent("stitched-textured.jpg"))
+                    writeJPEG(plain, to: out.appendingPathComponent("stitched-plain.jpg"))
+                    let w = full.image.width, h = full.image.height
+                    /// How much fine detail (a pixel against the four beside it, levels) the pictures' parts have, or the filled ones.
+                    func fine(_ image: CGImage, pictures: Bool) -> Double {
+                        let px = bytes(image)
+                        func light(_ i: Int) -> Double { (Double(px[i * 4]) + 2 * Double(px[i * 4 + 1]) + Double(px[i * 4 + 2])) / 4 }
+                        var sum = 0.0, n = 0
+                        for y in 1..<(h - 1) {
+                            for x in 1..<(w - 1) {
+                                let i = y * w + x
+                                guard saved.covered[i] == pictures, saved.covered[i - 1] == pictures, saved.covered[i + 1] == pictures,
+                                      saved.covered[i - w] == pictures, saved.covered[i + w] == pictures else { continue }
+                                let d = light(i) - (light(i - 1) + light(i + 1) + light(i - w) + light(i + w)) / 4
+                                sum += d * d
+                                n += 1
+                            }
+                        }
+                        return n > 0 ? (sum / Double(n)).squareRoot() : 0
+                    }
+                    let theirs = fine(textured, pictures: true), with = fine(textured, pictures: false), without = fine(plain, pictures: false)
+                    let counts = filling.detail?.counts
+                    check(counts != nil && counts!.moved > 0 && counts!.none == 0 && with > without * 1.5 && with > theirs * 0.6 && with < theirs * 1.5,
+                          String(format: "what's filled in is as finely textured as the pictures (%.1f levels of fine detail against their %.1f; %.1f enlarged without)",
+                                 with, theirs, without))
+                    let kept = difference(textured, full.image, where: { x, y in
+                        x > 8 && y > 8 && x < w - 8 && y < h - 8 && saved.covered[(y - 8) * w + x] && saved.covered[(y + 8) * w + x]
+                            && saved.covered[y * w + x - 8] && saved.covered[y * w + x + 8]
+                    })
+                    check(kept.mean < 0.5, String(format: "and the pictures are kept as they are to within a few pixels of their edges (off by %.2f levels)", kept.mean))
+                } else {
+                    check(false, "a filled stitched picture at full size")
+                }
             } catch {
                 check(false, "filling a stitched picture: \(error.localizedDescription)")
             }

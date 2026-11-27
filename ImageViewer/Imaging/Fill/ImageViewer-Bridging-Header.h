@@ -4,3 +4,4 @@
 #include "Recolor.h"
 #include "Heal.h"
 #include "../Stitch/Stitch.h"
+#include "../Stitch/StitchDetail.h"

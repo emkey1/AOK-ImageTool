@@ -201,7 +201,8 @@ enum ExtendLab {
         // Stitch Pictures as the sheet and Save do it: the pictures lined up at the sheet's size, the stitched
         // picture at that size (preview.png) and full size (stitched.png, see-through where nothing covers), and
         // finished (final.png) unless `none`. LOOK=level,tilt,turn (degrees) turns the view; SIDE=n holds the full
-        // size down to n pixels.
+        // size down to n pixels; TEXTURE=0 leaves the filling without the pictures' fine texture (to compare);
+        // FILLING=<an earlier run's filling.png> uses that generated filling again, to try what's done with it.
         if let i = args.firstIndex(of: "-stitch"), i + 5 < args.count, let shape = Stitch.Shape(rawValue: args[i + 2]) {
             let out = URL(fileURLWithPath: args[i + 1]), ending = args[i + 3]
             let urls = args[(i + 4)...].map { URL(fileURLWithPath: $0) }
@@ -236,11 +237,26 @@ enum ExtendLab {
                              preview.covered.map { "\(Int($0.width))×\(Int($0.height)) at \(Int($0.minX)),\(Int($0.minY))" } ?? "none"))
                 write(preview.image, "preview.png")
                 var filling: Stitch.Filling?
-                if let method = ExtendMethod(rawValue: ending) {
+                if let path = env["FILLING"], let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+                   let saved = CGImageSourceCreateImageAtIndex(source, 0, nil) {
+                    t0 = Date()
+                    let canvas = try Stitch.render(small, layout: layout, look: look, maxSide: Stitch.fillSide)
+                    let rw = saved.width, rh = saved.height, fine = CGRect(x: 0, y: 0, width: rw, height: rh)
+                    let own = canvas.image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+                    var made = RGBABitmap(width: rw, height: rh), pictures = RGBABitmap(width: rw, height: rh)
+                    made.draw(saved, topLeftRect: fine, space: own, quality: .none)
+                    pictures.draw(canvas.image, topLeftRect: fine, space: own, quality: .high)
+                    let band = max(3, Int((Stitch.bandFraction * CGFloat(min(rw, rh))).rounded()))
+                    filling = Stitch.Filling(image: saved, scale: canvas.scale * Double(rw) / Double(canvas.image.width), origin: canvas.origin,
+                                             band: Double(band), method: .generate, detail: Stitch.Detail(filling: made, pictures: pictures, band: band))
+                    print(String(format: "took the filling %d×%d from %@; its texture worked out in %.2f s", rw, rh, path, Date().timeIntervalSince(t0)))
+                    if let counts = filling?.detail?.counts { print("  texture: \(counts.moved) points take it from elsewhere, \(counts.none) found nowhere") }
+                } else if let method = ExtendMethod(rawValue: ending) {
                     t0 = Date()
                     let canvas = try Stitch.render(small, layout: layout, look: look, maxSide: Stitch.fillSide)
                     filling = try await Stitch.fill(canvas, method: method, prompt: GenerativeExtend.prompt(env["PROMPT"]), seed: UInt64(env["SEED"] ?? "") ?? 1)
                     print(String(format: "filled (%@) at %d×%d in %.1f s", method.rawValue, filling!.image.width, filling!.image.height, Date().timeIntervalSince(t0)))
+                    if let counts = filling?.detail?.counts { print("  texture: \(counts.moved) points take it from elsewhere, \(counts.none) found nowhere") }
                     write(filling?.image, "filling.png")
                 }
                 t0 = Date()
@@ -252,7 +268,7 @@ enum ExtendLab {
                 write(stitched.image, "stitched.png")
                 if ending != "none" {
                     t0 = Date()
-                    let made = Stitch.finished(stitched, edges: ending == "crop" ? .crop : .fill, filling: filling)
+                    let made = Stitch.finished(stitched, edges: ending == "crop" ? .crop : .fill, filling: filling, texture: env["TEXTURE"] != "0")
                     print(String(format: "finished %d×%d in %.2f s", made?.width ?? 0, made?.height ?? 0, Date().timeIntervalSince(t0)))
                     write(made, "final.png")
                 }

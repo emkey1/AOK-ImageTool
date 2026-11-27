@@ -563,7 +563,9 @@ static void render_row(void *context, size_t index) {
     for (int x = 0; x < job->width; x++, o += 4) {
         double ray[3];
         view_ray(job->view.projection, job->view.scale, x + 0.5 + job->view.left, y + 0.5 + job->view.top, ray);
-        float low[3] = { 0, 0, 0 }, high[3] = { 0, 0, 0 }, broad = 0, sharp = 0;
+        // (Doubles: a weight goes down to 1e-4, whose 16th power is nothing at all as a float, and a picture's
+        // outermost pixels, where no other picture covers, came out black.)
+        double low[3] = { 0, 0, 0 }, high[3] = { 0, 0, 0 }, broad = 0, sharp = 0;
         for (int i = 0; i < job->count; i++) {
             const iv_stitch_source *s = job->sources + i;
             const double *m = s->toSource;
@@ -573,8 +575,8 @@ static void render_row(void *context, size_t index) {
             if (sx < 0 || sy < 0 || sx > s->width || sy > s->height) continue;
             // A picture counts for more toward its middle than at its edges.
             double edge = fmin(fmin(sx, s->width - sx), fmin(sy, s->height - sy)) / (0.5 * (s->width < s->height ? s->width : s->height));
-            float w = clampf((float)edge, 1e-4f, 1);
-            float w2 = w * w, w4 = w2 * w2, w8 = w4 * w4, w16 = w8 * w8;
+            double w = edge < 1e-4 ? 1e-4 : edge > 1 ? 1 : edge;
+            double w2 = w * w, w4 = w2 * w2, w8 = w4 * w4, w16 = w8 * w8;
             float color[3], soft[3];
             if (job->quality > 0) sample_sharp(s, sx, sy, color); else sample_near(s, sx, sy, color);
             sample_low(s, sx, sy, soft);
@@ -586,8 +588,8 @@ static void render_row(void *context, size_t index) {
         }
         if (broad <= 0) { o[0] = o[1] = o[2] = o[3] = 0; continue; }
         for (int k = 0; k < 3; k++) {
-            float v = low[k] / broad + high[k] / sharp;
-            o[k] = (uint8_t)lroundf(clampf(v, 0, 255));
+            double v = low[k] / broad + (sharp > 0 ? high[k] / sharp : 0);
+            o[k] = (uint8_t)lround(v < 0 ? 0 : v > 255 ? 255 : v);
         }
         o[3] = 255;
     }

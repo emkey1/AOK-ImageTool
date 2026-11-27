@@ -23,9 +23,9 @@ upscaling asks VideoToolbox (`SuperResolution.isSupported`) and is hidden where 
 
 There's no Intel Mac to test on, so the Intel half is checked under Rosetta, in the macOS 15 VM (first with 1.4.0).
 An Intel-only Debug build (add `ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO` to the build line; Debug otherwise builds only the
-Mac's own architecture) passes the self-test there with the same 311 checks (as of 1.5.0) as the Apple silicon build
-run without models (`AOK_MODELS_DIR` pointing at an empty folder), and `open --arch x86_64 -a AOK-ImageTool.app` runs
-a release as Intel code to look at. That exercises the Intel code and the “needs Apple silicon” paths; it says nothing about Intel
+Mac's own architecture) passes the self-test there, check for check as the Apple silicon build run without models
+does (`AOK_MODELS_DIR` pointing at an empty folder; 311 checks with 1.5.0), and `open --arch x86_64 -a
+AOK-ImageTool.app` runs a release as Intel code to look at. That exercises the Intel code and the “needs Apple silicon” paths; it says nothing about Intel
 graphics or how fast a real Intel Mac is.
 
 Swift 5 language mode, with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: types are main-actor unless marked
@@ -46,7 +46,8 @@ ImageViewer/
                  RemovalStore, and Clone & Heal); Change.swift (reading Change Objects' instructions); Recolor.c; Heal.c;
                  Colorize.swift
     Stitch/      Stitch Pictures: Stitch.c (corners, matching, RANSAC homography, the two-band renderer),
-                 Stitch.swift (how the pictures lie on each other, leveling, the view), StitchFill.swift (crop, fills)
+                 Stitch.swift (how the pictures lie on each other, leveling, the view), StitchFill.swift (crop, fills),
+                 StitchDetail.c (the pictures' fine texture for what's filled in)
   Canvas/        AppKit zoom/pan canvas (CALayer-backed, HDR), Live Text overlay
   Intelligence/  Vision services, Foundation Models describer/chat, folder index & search
   Views/         SwiftUI: window, toolbar, browser (grid/filmstrip/sidebar), inspector, tools, sheets
@@ -203,7 +204,7 @@ in its own code).
 
 ## How Stitch Pictures works
 
-`Imaging/Stitch/` (`Stitch.c`, `Stitch.swift`, `StitchFill.swift`), `Views/Sheets/StitchSheet.swift`,
+`Imaging/Stitch/` (`Stitch.c`, `Stitch.swift`, `StitchFill.swift`, `StitchDetail.c`), `Views/Sheets/StitchSheet.swift`,
 `Model/ViewerModel+Stitch.swift`. No model and no outside library: it runs on Intel and macOS 15.
 
 **Why not Vision.** `VNHomographicImageRegistrationRequest` is exact (under 0.2 px) only while two frames differ by up
@@ -248,12 +249,27 @@ pictures that share a quarter to a half of themselves, so the matching is our ow
    16th power, which is nearly all from one picture at a time: nothing is blurred by being averaged, and something that
    moved between pictures shows once. Sampling is Catmull-Rom for the saved picture, bilinear for previews; rows are
    rendered in parallel. Everything is 8 bits in the first picture's color space, standard range (HDR photos are
-   opened without HDR, as Combine does).
+   opened without HDR, as Combine does). The weights are doubles: at a picture's very edge the weight is 1e-4, whose
+   16th power is zero as a float, and 1.5.0 divided by it, so each picture's outermost two or three pixels came out
+   black wherever no other picture covered them (a dark line around a filled stitch, and along a cropped one's edge).
 7. **Edges.** `iv_stitch_covered_rect` finds the largest covered rectangle (the histogram method) for Crop. Fill
    renders the view at up to 2,048 px, fills it with the content-aware engine or with `GenerativeExtend.paint` in
    Extend's two passes (from masks rather than a rectangle), seam-blends it to the pictures, and `Stitch.filled` puts
-   the full-size stitched picture back over it, fading into it just inside the pictures' edges.
-8. **Saving.** The sheet works on pictures of 2,400 px; `saveStitched` opens them again at full size and renders with
+   the full-size stitched picture back over it. The pictures are kept to within a few pixels of their edges
+   (`Stitch.bandFraction`; Extend's wide redrawn band showed along a stitch's long edges).
+8. **Texture for what's filled in** (`StitchDetail.c`, `Stitch.Detail`). A generated filling is about 1,000 px across
+   under pictures of 4,000 or more, so enlarged it's smooth beside them, and the model's asphalt or grass is a speckle
+   of its own. So filled-in places take the pictures' fine texture. A grid of points is laid over the filling (at its
+   own size); each point near something filled in finds the place in the pictures shaped most like the filling around
+   it (brightness, blurred, less a much wider blur: plain goes to plain, never a railing onto a wall), and of such
+   places the one colored most alike, most evenly textured and nearest; neighbors that could share a place are made
+   to, so texture comes in unbroken stretches. Each filled-in pixel then gets, from where its point leads, what the
+   pictures hold beyond the filling's size (full size minus the filling's size) and their texture at about the
+   filling's size, in place of the filling's own of that size; anything much stronger than the place's usual texture
+   (a leaf, a painted line) is turned down, and so is texture taken to somewhere darker. The plan is made once with the
+   filling, so the sheet's preview and the picture saved at full size get the same (about a second to plan, a few
+   hundredths to apply). `TEXTURE=0` in the lab switch leaves it out, to compare.
+9. **Saving.** The sheet works on pictures of 2,400 px; `saveStitched` opens them again at full size and renders with
    the layout the sheet found (homographies are kept in full-size pixels). A result past 16,384 px or 120 megapixels is
    made smaller, its pictures opened smaller to match.
 
@@ -263,7 +279,8 @@ a minute.
 
 **Trying it.** `-extendTest -stitch <out folder> <automatic|flat|cylinder|sphere> <crop|match|generate|none> <image>…`
 stitches files as the sheet and Save do and writes each stage (`LOOK=level,tilt,turn`, `SIDE=n` to hold the size
-down); `AOK_STITCH_TRACE=1` prints each pair's counts and the two estimates of down. The self-test's views
+down, `FILLING=<an earlier run's filling.png>` to use that generated filling again, `TEXTURE=0` to leave the filled
+parts untextured); `AOK_STITCH_TRACE=1` prints each pair's counts and the two estimates of down. The self-test's views
 (`StitchViews`) are made by Core Image from one picture as a turning camera would see it, so the true homography is
 known and the stitched picture can be compared with a single wide view. `-debugScene stitch` opens the sheet on three
 such views, and `-debugStitch flat,fill,match,tilt=4` sets its choices.

@@ -18,6 +18,10 @@ nonisolated enum StitchEdges: String, CaseIterable, Identifiable, Sendable {
 }
 
 nonisolated extension Stitch {
+    /// How far inside the pictures' edges a generated filling is redrawn for them to fade into, as a fraction
+    /// of the filling's shorter side.
+    static let bandFraction: CGFloat = 0.004
+
     /// What fills the uncovered parts of a stitched picture: the same view, made at another size.
     struct Filling: @unchecked Sendable {
         /// The whole view, the pictures' own parts included (they're put back over it at full size).
@@ -29,6 +33,36 @@ nonisolated extension Stitch {
         /// into it over that.
         let band: Double
         let method: ExtendMethod
+        /// What gives the filled-in parts the pictures' own fine texture when they're put under the pictures,
+        /// at whatever size (nil: there was no memory for it, and they're left as smooth as they were made).
+        let detail: Detail?
+    }
+
+    /// Where each filled-in place takes its fine texture from (see StitchDetail.h): worked out once, at the
+    /// filling's size, so that the preview and the picture saved at full size get the same.
+    final class Detail: @unchecked Sendable {
+        let plan: OpaquePointer
+
+        /// `filling`: the whole view filled; `pictures`: the same view with only the pictures in it.
+        init?(filling: RGBABitmap, pictures: RGBABitmap, band: Int) {
+            guard filling.width == pictures.width, filling.height == pictures.height else { return nil }
+            let made = filling.pixels.withUnsafeBufferPointer { f in
+                pictures.pixels.withUnsafeBufferPointer { p in
+                    iv_detail_make(f.baseAddress, p.baseAddress, Int32(filling.width), Int32(filling.height), Int32(band))
+                }
+            }
+            guard let made else { return nil }
+            plan = made
+        }
+
+        deinit { iv_detail_free(plan) }
+
+        /// How many of its grid's points take texture from elsewhere, and how many found nowhere to.
+        var counts: (moved: Int, none: Int) {
+            var moved: Int32 = 0, none: Int32 = 0
+            iv_detail_counts(plan, &moved, &none)
+            return (Int(moved), Int(none))
+        }
     }
 
     /// Fills what `stitched` (made no bigger than `fillSide`) doesn't cover, as Extend does: with texture copied
@@ -42,6 +76,7 @@ nonisolated extension Stitch {
         guard method == .generate else {
             var canvas = RGBABitmap(width: w, height: h)
             canvas.draw(stitched.image, topLeftRect: whole, space: space, quality: .none)
+            let pictures = canvas
             // (A pixel in from the pictures' own edge, where they're a little soft.)
             let known = covered(canvas, inset: 1)
             do {
@@ -50,7 +85,8 @@ nonisolated extension Stitch {
                 throw StitchError.cancelled
             }
             guard let image = canvas.makeImage(space: space) else { throw StitchError.failed }
-            return Filling(image: image, scale: stitched.scale, origin: stitched.origin, band: 2, method: .match)
+            return Filling(image: image, scale: stitched.scale, origin: stitched.origin, band: 2, method: .match,
+                           detail: Detail(filling: canvas, pictures: pictures, band: 2))
         }
 
         // First pass, at the model's own size (the short side 512): the layout of what's new.
@@ -81,7 +117,10 @@ nonisolated extension Stitch {
             let fine = CGRect(x: 0, y: 0, width: rw, height: rh)
             var own = RGBABitmap(width: rw, height: rh)
             own.draw(stitched.image, topLeftRect: fine, space: sRGB, quality: .high)
-            let band = GenerativeExtend.bandWidth(photo: CGSize(width: rw, height: rh))
+            // (A few pixels, not the wide band Extend redraws inside a photo's edges: stitched pictures have long
+            // edges, and redrawn that far in they showed it. They're kept as they are almost to their edges, and
+            // what's new is given their texture instead.)
+            let band = max(3, Int((bandFraction * CGFloat(min(rw, rh))).rounded()))
             var inner = covered(own, inset: band)
             // (Pictures too thin to have an inside keep what they have.)
             if !inner.contains(1) { inner = covered(own, inset: 1) }
@@ -105,7 +144,8 @@ nonisolated extension Stitch {
             }
             guard Int(status) == IV_FILL_OK, let image = filled.makeImage(space: space) else { throw StitchError.failed }
             _ = progress?(1)
-            return Filling(image: image, scale: stitched.scale * Double(rw) / Double(w), origin: stitched.origin, band: Double(band), method: .generate)
+            return Filling(image: image, scale: stitched.scale * Double(rw) / Double(w), origin: stitched.origin, band: Double(band), method: .generate,
+                           detail: Detail(filling: filled, pictures: reference, band: band))
         } catch ExtendError.cancelled {
             throw StitchError.cancelled
         }
@@ -151,9 +191,42 @@ nonisolated extension Stitch {
         return out
     }
 
-    /// `stitched` with what it doesn't cover taken from `filling` (enlarged to its size); the pictures fade into
-    /// the filling just inside their edges, which the filling was made to carry on from.
-    static func filled(_ stitched: Stitched, with filling: Filling) -> CGImage? {
+    /// `stitched` with what it doesn't cover taken from `filling` (enlarged to its size, and given the pictures'
+    /// own fine texture, unless `texture` is false); the pictures fade into the filling just inside their edges,
+    /// which the filling was made to carry on from.
+    static func filled(_ stitched: Stitched, with filling: Filling, texture: Bool = true) -> CGImage? {
+        guard let detail = filling.detail else { return laid(stitched, over: filling) }
+        let w = stitched.image.width, h = stitched.image.height
+        let space = stitched.image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        let s = stitched.scale / filling.scale
+        let dx = (filling.origin.x - stitched.origin.x) * stitched.scale, dy = (filling.origin.y - stitched.origin.y) * stitched.scale
+        guard let out = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue), let made = out.data else { return nil }
+        let status = withPixels(of: stitched.image, space: space) { top in
+            iv_detail_finish(detail.plan, top, Int32(w), Int32(h), s, dx, dy, texture ? 1 : 0, made.assumingMemoryBound(to: UInt8.self), nil, nil)
+        }
+        guard let status, Int(status) == IV_FILL_OK else { return laid(stitched, over: filling) }
+        return out.makeImage()
+    }
+
+    /// `image`'s pixels as the engine takes them (RGBA, rows top to bottom, alpha 255 where it's covered):
+    /// its own where it holds them that way, else a copy.
+    private static func withPixels<T>(of image: CGImage, space: CGColorSpace, _ body: (UnsafePointer<UInt8>) -> T) -> T? {
+        let w = image.width, h = image.height
+        if image.bitsPerPixel == 32, image.bitsPerComponent == 8, image.bytesPerRow == w * 4, image.alphaInfo == .premultipliedLast,
+           image.byteOrderInfo == .orderDefault || image.byteOrderInfo == .order32Big,
+           let data = image.dataProvider?.data, CFDataGetLength(data) >= w * h * 4, let bytes = CFDataGetBytePtr(data) {
+            return body(bytes)
+        }
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: space,
+                                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue), let data = ctx.data else { return nil }
+        ctx.interpolationQuality = .none
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return body(UnsafePointer(data.assumingMemoryBound(to: UInt8.self)))
+    }
+
+    /// The same without the pictures' texture in the filling, by Core Image (for when there's no `detail`).
+    private static func laid(_ stitched: Stitched, over filling: Filling) -> CGImage? {
         let top = CIImage(cgImage: stitched.image)
         let ext = top.extent
         let s = stitched.scale / filling.scale
@@ -176,14 +249,14 @@ nonisolated extension Stitch {
     }
 
     /// The stitched picture as it's kept: cropped to what's covered, or with the rest filled.
-    static func finished(_ stitched: Stitched, edges: StitchEdges, filling: Filling?) -> CGImage? {
+    static func finished(_ stitched: Stitched, edges: StitchEdges, filling: Filling?, texture: Bool = true) -> CGImage? {
         switch edges {
         case .crop:
             guard let covered = stitched.covered, covered.width >= 2, covered.height >= 2 else { return nil }
             return stitched.image.cropping(to: covered).flatMap(opaque)
         case .fill:
             guard let filling else { return nil }
-            return filled(stitched, with: filling)
+            return filled(stitched, with: filling, texture: texture)
         }
     }
 
