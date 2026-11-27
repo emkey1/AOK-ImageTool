@@ -23,9 +23,9 @@ upscaling asks VideoToolbox (`SuperResolution.isSupported`) and is hidden where 
 
 There's no Intel Mac to test on, so the Intel half is checked under Rosetta, in the macOS 15 VM (first with 1.4.0).
 An Intel-only Debug build (add `ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO` to the build line; Debug otherwise builds only the
-Mac's own architecture) passes the self-test there with the same 311 checks (as of 1.5.0) as the Apple silicon build run without
-models (`AOK_MODELS_DIR` pointing at an empty folder), and `open --arch x86_64 -a AOK-ImageTool.app` runs a release as
-Intel code to look at. That exercises the Intel code and the “needs Apple silicon” paths; it says nothing about Intel
+Mac's own architecture) passes the self-test there with the same 311 checks (as of 1.5.0) as the Apple silicon build
+run without models (`AOK_MODELS_DIR` pointing at an empty folder), and `open --arch x86_64 -a AOK-ImageTool.app` runs
+a release as Intel code to look at. That exercises the Intel code and the “needs Apple silicon” paths; it says nothing about Intel
 graphics or how fast a real Intel Mac is.
 
 Swift 5 language mode, with `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor`: types are main-actor unless marked
