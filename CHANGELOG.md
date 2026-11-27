@@ -3,6 +3,7 @@
 ## Unreleased
 
 - **Stitch Pictures: no line around the pictures, and filled parts that match them.** A stitched picture had a thin dark line along the pictures' outer edges: around everything filled in with **Fill**, and along a cropped picture's edge where it reached a picture's own. (Each picture's outermost two or three pixels came out black.) And what **Generate** filled in was smooth beside the photos, with a texture of its own: asphalt, paving and grass stopped at the join. Now the line is gone, the pictures are kept to within a few pixels of their edges (Generate redrew a wide band inside them, which showed), and what's filled in, by Generate or Match Photo, is given the pictures' own fine texture, taken from a nearby part of them that looks alike. Stitched pictures saved before keep their line: stitch them again.
+- **Pictures put in a subfolder show up.** With **Include Subfolders** on, a picture that another app put into a subfolder of the folder showing (dropped there in Finder, exported from Photos, downloaded) didn't appear until the folder was opened again: only the folder itself was watched, not what's below it. Subfolders are watched too now, and a whole folder of pictures moved in shows them. A picture that was still being written when it was first seen (a slow export or copy) is also read again once it's finished, where it could stay a blank or half-drawn thumbnail. Other files arriving (a download in progress), and what goes on inside a Photos library or a hidden folder, don't have the folder read again.
 
 ## 1.5.0
 

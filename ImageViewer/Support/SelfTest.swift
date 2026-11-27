@@ -1891,6 +1891,114 @@ enum SelfTest {
         }
     }
 
+    /// Pictures another app puts in the folder showing (dropped in with Finder, exported from Photos, downloaded)
+    /// show up by themselves, and ones it takes away go. (`AOK_SELFTEST_ONLY=watch` runs just these.)
+    private static func folderWatchChecks(folder: URL, out: URL) async {
+        let fm = FileManager.default
+        let dir = out.appendingPathComponent("watched")
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let sources = ((try? FolderScanner.scan(folder: folder, recursive: false, showHidden: false)) ?? [])
+            .filter { $0.contentType == .jpeg || $0.contentType == .heic }.sorted { $0.fileSize < $1.fileSize }.map(\.url)
+        guard sources.count >= 4 else { return check(false, "four test pictures to put in a folder") }
+        func name(_ n: String, _ i: Int) -> String { "\(n).\(sources[i].pathExtension)" }
+        func settled(_ seconds: Double, _ done: () -> Bool) async -> Bool {
+            for _ in 0..<Int(seconds * 20) where !done() { try? await Task.sleep(for: .milliseconds(50)) }
+            return done()
+        }
+        try? fm.copyItem(at: sources[0], to: dir.appendingPathComponent(name("One", 0)))
+        let model = ViewerModel()
+        model.openFolder(dir, selecting: nil)
+        _ = await settled(5) { model.items.count == 1 && !model.isScanning }
+        check(model.items.map(\.name) == [name("One", 0)], "the folder opens with its picture (\(model.items.map(\.name)))")
+
+        // Copied in whole.
+        var started = Date()
+        try? fm.copyItem(at: sources[1], to: dir.appendingPathComponent(name("Two", 1)))
+        var shown = await settled(4) { model.items.contains { $0.name == name("Two", 1) } }
+        check(shown, "a picture copied into the folder shows up (after \(String(format: "%.2f", Date().timeIntervalSince(started))) s: \(model.items.map(\.name)))")
+
+        // Written slowly under its own name (an export, a download).
+        let slow = dir.appendingPathComponent(name("Three", 2))
+        let data = (try? Data(contentsOf: sources[2])) ?? Data()
+        started = Date()
+        fm.createFile(atPath: slow.path, contents: nil)
+        if let handle = try? FileHandle(forWritingTo: slow) {
+            try? handle.write(contentsOf: data.prefix(data.count / 3))
+            try? await Task.sleep(for: .milliseconds(1500))
+            try? handle.write(contentsOf: data.dropFirst(data.count / 3))
+            try? handle.close()
+        }
+        shown = await settled(4) { model.items.contains { $0.name == name("Three", 2) } }
+        let listed = model.allItems.first { $0.name == name("Three", 2) }
+        check(shown, "a picture written slowly into the folder shows up (\(model.items.map(\.name)))")
+        let whole = await settled(4) { model.allItems.first { $0.name == name("Three", 2) }?.fileSize == Int64(data.count) }
+        check(whole, "and is listed whole once it's written (\(listed?.fileSize ?? -1) then \(model.allItems.first { $0.name == name("Three", 2) }?.fileSize ?? -1) of \(data.count) bytes)")
+        let thumb = await ThumbnailCache.shared.thumbnail(for: slow.standardizedFileURL, tier: .small)
+        check(thumb != nil, "with a thumbnail")
+
+        // Moved in under its own name from a temporary one.
+        let hidden = dir.appendingPathComponent(".arriving")
+        try? fm.copyItem(at: sources[3], to: hidden)
+        try? await Task.sleep(for: .milliseconds(600))
+        try? fm.moveItem(at: hidden, to: dir.appendingPathComponent(name("Four", 3)))
+        shown = await settled(4) { model.items.contains { $0.name == name("Four", 3) } }
+        check(shown, "a picture renamed into the folder shows up (\(model.items.map(\.name)))")
+
+        // Taken away.
+        try? fm.removeItem(at: dir.appendingPathComponent(name("Two", 1)))
+        shown = await settled(4) { !model.items.contains { $0.name == name("Two", 1) } }
+        check(shown, "and one taken away goes (\(model.items.map(\.name)))")
+
+        // In a subfolder: only with subfolders shown (and then it is: a watch on the folder alone never noticed).
+        let trip = dir.appendingPathComponent("Trip")
+        try? fm.createDirectory(at: trip, withIntermediateDirectories: true)
+        try? fm.copyItem(at: sources[1], to: trip.appendingPathComponent(name("Five", 1)))
+        try? await Task.sleep(for: .milliseconds(1200))
+        check(!model.items.contains { $0.name == name("Five", 1) }, "a picture put in a subfolder isn't listed while subfolders aren't shown")
+        let subfoldersBefore = model.includeSubfolders
+        model.includeSubfolders = true
+        shown = await settled(4) { model.items.contains { $0.name == name("Five", 1) } }
+        check(shown, "with subfolders shown it is (\(model.items.map(\.name)))")
+        started = Date()
+        try? fm.copyItem(at: sources[2], to: trip.appendingPathComponent(name("Six", 2)))
+        shown = await settled(4) { model.items.contains { $0.name == name("Six", 2) } }
+        check(shown, "and a picture put in a subfolder then shows up (after \(String(format: "%.2f", Date().timeIntervalSince(started))) s)")
+        // A folder of pictures moved in whole.
+        let elsewhere = out.appendingPathComponent("elsewhere/Album")
+        try? fm.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+        try? fm.copyItem(at: sources[3], to: elsewhere.appendingPathComponent(name("Seven", 3)))
+        try? fm.moveItem(at: elsewhere, to: dir.appendingPathComponent("Album"))
+        shown = await settled(4) { model.items.contains { $0.name == name("Seven", 3) } }
+        check(shown, "a folder of pictures moved in shows them (\(model.items.map(\.name)))")
+        try? fm.removeItem(at: trip)
+        shown = await settled(4) { !model.items.contains { $0.name == name("Five", 1) || $0.name == name("Six", 2) } }
+        check(shown, "and a subfolder taken away takes its pictures (\(model.items.map(\.name)))")
+        model.includeSubfolders = subfoldersBefore
+
+        // What's worth reading the folder again for.
+        let made = FSEventStreamEventFlags(kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsFile)
+        let folderMade = FSEventStreamEventFlags(kFSEventStreamEventFlagItemCreated | kFSEventStreamEventFlagItemIsDir)
+        let tagged = FSEventStreamEventFlags(kFSEventStreamEventFlagItemXattrMod | kFSEventStreamEventFlagItemIsFile)
+        let flat = FolderWatcher.Filter(root: "/Volumes/Photos/Trip", subfolders: false, hidden: false)
+        let deep = FolderWatcher.Filter(root: "/Volumes/Photos/Trip", subfolders: true, hidden: false)
+        check(flat.concerns("/Volumes/Photos/Trip/a.jpeg", made) && flat.concerns("/volumes/photos/trip/b.HEIC", made)
+              && !flat.concerns("/Volumes/Photos/Trip/movie.mov.download", made) && !flat.concerns("/Volumes/Photos/Trip/.DS_Store", made)
+              && !flat.concerns("/Volumes/Photos/Trip/a.jpeg", tagged) && !flat.concerns("/Volumes/Photos/Trip/Day 1/a.jpeg", made)
+              && !flat.concerns("/Volumes/Photos/Trip/Day 1", folderMade) && !flat.concerns("/Volumes/Photos/Tripod/a.jpeg", made),
+              "a folder is read again for its pictures: not for other files, tags, or what's in its subfolders")
+        check(deep.concerns("/Volumes/Photos/Trip/Day 1/a.jpeg", made) && deep.concerns("/Volumes/Photos/Trip/Day 1", folderMade)
+              && !deep.concerns("/Volumes/Photos/Trip/.cache/a.jpeg", made) && !deep.concerns("/Volumes/Photos/Trip/Day 1/notes.txt", made),
+              "with subfolders shown, for theirs too: not for what's in a hidden folder")
+        let library = dir.appendingPathComponent("Library.photoslibrary/originals")
+        try? fm.createDirectory(at: library, withIntermediateDirectories: true)
+        if let real = realpath(dir.path, nil) {
+            let here = FolderWatcher.Filter(root: String(cString: real), subfolders: true, hidden: false)
+            free(real)
+            check(!here.concerns(here.root + "/Library.photoslibrary/originals/a.jpeg", made) && here.concerns(here.root + "/Album/a.jpeg", made),
+                  "nor for what's inside a package (a Photos library)")
+        }
+    }
+
     /// Places: what's near where a photo was taken, from Wikipedia's answer and Apple Maps', by which way it faced,
     /// and a description that says where. (`AOK_SELFTEST_ONLY=places` runs just these.)
     private static func placesChecks(decodedByName: [String: DecodedImage]) async {
@@ -2115,6 +2223,13 @@ enum SelfTest {
             for (key, value) in savedPrefs {
                 if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
             }
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "watch" {
+            print("\n[Pictures added by another app]")
+            await folderWatchChecks(folder: folder, out: out)
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
@@ -3295,6 +3410,8 @@ enum SelfTest {
         await combineChecks(folder: folder, out: out)
         print("\n[Stitch Pictures]")
         await stitchChecks(folder: folder, out: out)
+        print("\n[Pictures added by another app]")
+        await folderWatchChecks(folder: folder, out: out)
 
         // 6e. Fix Blur.
         print("\n[Fix Blur]")

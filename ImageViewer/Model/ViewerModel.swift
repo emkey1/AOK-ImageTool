@@ -542,7 +542,7 @@ final class ViewerModel {
         expandedStacks = []
         stackFront = StackFronts.load(in: folder)
         if !PhotosRoundTrip.isFromPhotos(folder) { RecentFolders.add(folder) }
-        watcher.watch(folder)
+        watcher.watch(folderURL, subfolders: includeSubfolders, hidden: Prefs.showHiddenFiles)
         if !searchText.isEmpty { searchText = "" }
         flagFilter = .all
         intelligence.folderDidChange(folder)
@@ -631,7 +631,10 @@ final class ViewerModel {
         let recursive = includeSubfolders
         let hidden = Prefs.showHiddenFiles
         let restricted = restrictedTo
+        // (Subfolders or hidden files just turned on or off: watched, or not, from now.)
+        watcher.watch(folder, subfolders: recursive, hidden: hidden)
         scanTask = Task {
+            let started = ContinuousClock.now
             let scanned = await Task.detached(priority: .userInitiated) { () -> [ImageItem] in
                 // Chosen files: just those (no need to read the folder, which may not even be allowed).
                 if let restricted { return restricted.compactMap(FolderScanner.item(for:)) }
@@ -639,6 +642,8 @@ final class ViewerModel {
             }.value
             guard !Task.isCancelled, folder == folderURL else { return }
             isScanning = false
+            // A folder that takes a while to read is read again, for changes in it, a tenth of the time at most.
+            watcher.spacing = min(.seconds(60), (ContinuousClock.now - started) * 10)
             var dates: [URL: Date] = [:]
             var previousModified: [URL: Date] = [:]
             var ratings: [URL: Double] = [:]
