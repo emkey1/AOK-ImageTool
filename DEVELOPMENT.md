@@ -23,7 +23,7 @@ upscaling asks VideoToolbox (`SuperResolution.isSupported`) and is hidden where 
 
 There's no Intel Mac to test on, so the Intel half is checked under Rosetta, in the macOS 15 VM (first with 1.4.0).
 An Intel-only Debug build (add `ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO` to the build line; Debug otherwise builds only the
-Mac's own architecture) passes the self-test there with the same 293 checks as the Apple silicon build run without
+Mac's own architecture) passes the self-test there with the same 311 checks (as of 1.5.0) as the Apple silicon build run without
 models (`AOK_MODELS_DIR` pointing at an empty folder), and `open --arch x86_64 -a AOK-ImageTool.app` runs a release as
 Intel code to look at. That exercises the Intel code and the “needs Apple silicon” paths; it says nothing about Intel
 graphics or how fast a real Intel Mac is.
@@ -186,7 +186,7 @@ first stroke after an ⌥-click, then kept, as Photoshop's Aligned does) are map
 takes the moved pixels as they are; Heal (`iv_heal` in `Heal.c`) solves Laplace's equation for the difference
 between destination and source across the stroke, with the difference just outside it as the boundary (Gauss-Seidel
 with over-relaxation, coarse to fine over a pyramid), and adds it to the source, so the copied detail meets its
-surroundings without an edge. `-extendTest -clone <image> <out.png> <from x> <from y> <to x> <to y> <radius> [copy]`
+surroundings without an edge. `-extendTest -clone <image> <out.png> <from x> <from y> <to x> <to y> <radius> [copy] [hdr]`
 paints a dab headlessly. `-extendTest -change <image> <out.png> <x> <y> "<instruction>"` runs it headlessly
 (`MASK_OUT` saves the selection), and `-extendTest -interpret "<instruction>"…` shows how instructions are read.
 

@@ -140,7 +140,8 @@ Some features use image models that run on your Mac but aren't built into the ap
 offers to download each one the first time you use the feature, or you can get them in **Settings ▸ Editing**. They
 need a Mac with Apple silicon:
 
-- **Generate** (New Image from Description, Extend, Generate a Background, and painting in Remove and Change Objects)
+- **Generate** (New Image from Description, Extend, Generate a Background, Stitch Pictures' generated fill, and
+  painting in Remove and Change Objects)
   uses [Stable Diffusion 1.5 Inpainting](https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting),
   about 2 GB. Its license, [CreativeML Open RAIL-M](https://huggingface.co/spaces/CompVis/stable-diffusion-license),
   limits how the model may be used, so the app asks you to accept it first.

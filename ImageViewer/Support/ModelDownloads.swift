@@ -381,7 +381,11 @@ extension ViewerModel {
                 break
             }
         }
-        if let window { alert.beginSheetModal(for: window, completionHandler: handle) } else { handle(alert.runModal()) }
+        // (Asked on top of a sheet that's open on the window, like New Image or Stitch Pictures: asked of the
+        // window itself, it would wait until that sheet had closed, and the button that asked would seem dead.)
+        var host = window
+        while let sheet = host?.attachedSheet { host = sheet }
+        if let host { alert.beginSheetModal(for: host, completionHandler: handle) } else { handle(alert.runModal()) }
     }
 
     private func showDownloadProgress(_ model: DownloadableModel) {

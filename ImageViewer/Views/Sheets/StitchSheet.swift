@@ -47,6 +47,8 @@ struct StitchSheet: View {
     @State private var job: Task<Void, Never>?
     @State private var cancel: CancelFlag?
     @State private var adding = false
+    /// Fill asked for Generate's model, which wasn't here: filled once it is.
+    @State private var fillWhenInstalled = false
 
     private static let previewSide = 1800
 
@@ -74,6 +76,9 @@ struct StitchSheet: View {
                     if cancel != nil {
                         Button("Stop") { cancel?.set() }.controlSize(.small)
                     }
+                } else if awaitingModel {
+                    // (The window says how the download is going too, but behind this sheet.)
+                    ModelDownloadNote(model: .generativeFill)
                 } else if let size = savedSize {
                     Text("Makes a picture \(Int(size.width).formatted()) × \(Int(size.height).formatted()) pixels").foregroundStyle(.secondary)
                 }
@@ -96,6 +101,12 @@ struct StitchSheet: View {
         .frame(width: sheetSize.width, height: sheetSize.height)
         .task { await start() }
         .onChange(of: look) { render() }
+        .onChange(of: edges) { fillWhenInstalled = false }
+        .onChange(of: ModelDownloads.shared.installCount) {
+            guard fillWhenInstalled, GenerativeModel.isInstalled else { return }
+            fillWhenInstalled = false
+            if working == nil, filling == nil, preview != nil, previewFor == look { fill() }
+        }
         .onDisappear {
             cancel?.set()
             job?.cancel()
@@ -107,6 +118,13 @@ struct StitchSheet: View {
         let window = model.window?.contentLayoutRect.size ?? CGSize(width: 1280, height: 840)
         let height = max(620, window.height * 0.9)
         return CGSize(width: max(820, min(window.width * 0.92, height * 1.5)), height: height)
+    }
+
+    /// Whether Fill is waiting for Generate's model to be downloaded (or was, and it couldn't be).
+    private var awaitingModel: Bool {
+        guard edges == .fill, method == .generate else { return false }
+        return ModelDownloadNote.isFetching(.generativeFill)
+            || (fillWhenInstalled && ModelDownloads.shared.failure[DownloadableModel.generativeFill.id] != nil)
     }
 
     private var canSave: Bool {
@@ -410,7 +428,8 @@ struct StitchSheet: View {
                     .fixedSize()
                     .help("Match Photo copies texture from the pictures. Generate draws what's missing with the model on this Mac, as Extend does.")
                     Button(filling == nil ? "Fill" : "Try Another") { fill() }
-                        .disabled(working != nil || preview == nil || previewFor != look || (preview?.coverage ?? 1) > 0.9995)
+                        .disabled(working != nil || preview == nil || previewFor != look || (preview?.coverage ?? 1) > 0.9995
+                                  || (method == .generate && ModelDownloadNote.isFetching(.generativeFill)))
                         .help(filling == nil ? "Fill what the pictures don't cover" : "Fill it again, differently")
                     if let preview, preview.coverage > 0.9995 {
                         Text("Nothing to fill").foregroundStyle(.secondary)
@@ -420,7 +439,10 @@ struct StitchSheet: View {
             }
         }
         .disabled(layout == nil || working != nil)
-        .onChange(of: method) { dropFilling() }
+        .onChange(of: method) {
+            dropFilling()
+            fillWhenInstalled = false
+        }
     }
 
     private var automaticTitle: String {
@@ -448,7 +470,8 @@ struct StitchSheet: View {
     private func fill() {
         guard let layout, let first = entries.first else { return }
         if method == .generate, !GenerativeModel.isInstalled {
-            // (Offered for download; chosen again once it's there.)
+            // (Offered for download, on top of this sheet; filled once it's here.)
+            fillWhenInstalled = true
             return model.offerDownload(.generativeFill) { }
         }
         if filling != nil { seed = UInt64.random(in: 1...UInt64.max) }

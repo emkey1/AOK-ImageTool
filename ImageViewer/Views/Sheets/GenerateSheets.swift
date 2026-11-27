@@ -404,6 +404,9 @@ struct NewImageSheet: View {
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
             Button("Get the Model…") { model.offerDownload(.generativeFill) {} }
+                .disabled(ModelDownloadNote.isFetching(.generativeFill))
+            // (The window says how the download is going too, but behind this sheet.)
+            ModelDownloadNote(model: .generativeFill)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: 8).fill(.quaternary))
