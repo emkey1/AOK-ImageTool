@@ -360,7 +360,7 @@ struct AdjustPanel: View {
         }
     }
 
-    /// Straightening without opening the crop tool: the corners it turns out of the frame are cropped away
+    /// Straightening and tilting without opening the crop tool: what they turn out of the frame is cropped away
     /// (the pipeline crops to the largest upright rectangle of the same shape).
     private func straightenSection(_ e: EditState) -> some View {
         PanelSection(title: "Straighten", systemImage: "level") {
@@ -376,6 +376,10 @@ struct AdjustPanel: View {
                 nudge("+1°", by: 1, e)
             }
             .controlSize(.small)
+            slider("Vertical", \.vertical, Tilt.range, format: { String(format: "%+.1f°", $0) }, undoName: "Vertical Perspective")
+                .help("Tilt the picture's top forward or back, to make lines that should be upright (a building's sides) upright")
+            slider("Horizontal", \.horizontal, Tilt.range, format: { String(format: "%+.1f°", $0) }, undoName: "Horizontal Perspective")
+                .help("Tilt the picture's side forward or back, to square up something photographed from one side")
         }
     }
 

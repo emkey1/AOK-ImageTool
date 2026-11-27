@@ -676,6 +676,8 @@ final class IntelligenceModel {
                 $0.perspective = quad
                 $0.crop = nil
                 $0.straighten = 0
+                $0.verticalTilt = nil
+                $0.horizontalTilt = nil
             }
         }
     }

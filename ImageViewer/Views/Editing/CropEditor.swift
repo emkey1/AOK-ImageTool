@@ -63,6 +63,8 @@ struct CropEditor: View {
     @State private var portrait = false
     @State private var renderTask: Task<Void, Never>?
     @State private var busy = false
+    /// A Straighten, Vertical or Horizontal slider is being dragged: a finer grid shows, to line things up by.
+    @State private var turning = false
     @State private var extending = false
     @State private var preview: PreviewFill?
     @State private var previewTask: Task<Void, Never>?
@@ -129,7 +131,7 @@ struct CropEditor: View {
                             .mask { pictureMask(size: fitted.size) }
                             .position(x: fitted.midX, y: fitted.midY)
                         CropOverlay(crop: Binding(get: { working.crop ?? Self.fullRect }, set: { working.crop = $0 }),
-                                    frame: fitted, bounds: b, dimFrame: boundsFrame, aspect: normalizedAspect)
+                                    frame: fitted, bounds: b, dimFrame: boundsFrame, aspect: normalizedAspect, fineGrid: turning)
                         if extending {
                             extendHint
                                 .position(x: geo.size.width / 2, y: 20)
@@ -151,6 +153,7 @@ struct CropEditor: View {
                 setExtending(true)
                 setMethod(method)
             }
+            if DebugHooks.scene == "crop-grid" { turning = true }
             if DebugHooks.extendOnLaunch {
                 setExtending(true)
                 aspect = .r16x9
@@ -244,25 +247,17 @@ struct CropEditor: View {
     private var controls: some View {
         VStack(spacing: 10) {
             HStack(spacing: 14) {
-                Image(systemName: "level")
-                    .foregroundStyle(.secondary)
-                Slider(value: Binding(get: { working.straighten }, set: { working.straighten = $0; render() }), in: -45...45) {
-                    Text("Straighten")
-                } onEditingChanged: { editing in
-                    if !editing { render() }
-                }
-                .frame(minWidth: 220)
-                Text(String(format: "%+.1f°", working.straighten))
-                    .monospacedDigit()
-                    .frame(width: 54, alignment: .trailing)
-                    .onTapGesture(count: 2) {
-                        working.straighten = 0
-                        render()
-                    }
-                    .help("Double-click to reset")
+                angleSlider("Straighten", symbol: "level", \.straighten, -45...45,
+                            help: "Turn the picture to level it")
                 Button("Auto") { autoStraighten() }
                     .disabled(busy)
                     .help("Level the horizon with Vision")
+            }
+            HStack(spacing: 22) {
+                angleSlider("Vertical", symbol: "trapezoid.and.line.vertical", \.vertical, Tilt.range,
+                            help: "Tilt the picture's top forward or back, to make lines that should be upright (a building's sides) upright")
+                angleSlider("Horizontal", symbol: "trapezoid.and.line.horizontal", \.horizontal, Tilt.range,
+                            help: "Tilt the picture's side forward or back, to square up something photographed from one side")
             }
             HStack(spacing: 10) {
                 Picker("Aspect", selection: $aspect) {
@@ -285,10 +280,11 @@ struct CropEditor: View {
                     Image(systemName: model.optionKeyDown ? "rotate.right" : "rotate.left")
                 }
                 .help("Rotate left. Option-click to rotate right.")
-                Button { geometryChange { $0.flip(horizontal: true) } } label: {
-                    Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                Button { geometryChange { $0.flip(horizontal: !NSEvent.modifierFlags.contains(.option)) } } label: {
+                    Image(systemName: model.optionKeyDown ? "arrow.up.and.down.righttriangle.up.righttriangle.down"
+                                                          : "arrow.left.and.right.righttriangle.left.righttriangle.right")
                 }
-                .help("Flip horizontal")
+                .help("Flip horizontal. Option-click to flip vertical.")
                 Button("Smart Crop") { smartCrop() }
                     .disabled(busy || extending)
                     .help("Frame the subject with Vision saliency")
@@ -322,6 +318,32 @@ struct CropEditor: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.bar)
+    }
+
+    /// A slider for one of the picture's angles, with its value beside it (double-click the value for zero).
+    private func angleSlider(_ title: String, symbol: String, _ angle: WritableKeyPath<EditState, Double>, _ range: ClosedRange<Double>,
+                             help: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: symbol)
+                .foregroundStyle(.secondary)
+                .frame(width: 20)
+            Slider(value: Binding(get: { working[keyPath: angle] }, set: { working[keyPath: angle] = $0; render() }), in: range) {
+                Text(title)
+            } onEditingChanged: { editing in
+                turning = editing
+                if !editing { render() }
+            }
+            .frame(minWidth: 150)
+            .help(help)
+            Text(String(format: "%+.1f°", working[keyPath: angle]))
+                .monospacedDigit()
+                .frame(width: 54, alignment: .trailing)
+                .onTapGesture(count: 2) {
+                    working[keyPath: angle] = 0
+                    render()
+                }
+                .help("Double-click to reset")
+        }
     }
 
     private var extendControls: some View {
@@ -428,6 +450,8 @@ struct CropEditor: View {
             result.extendPrompt = nil
         }
         if abs(result.straighten) < 0.05 { result.straighten = 0 }
+        if abs(result.vertical) < 0.05 { result.vertical = 0 }
+        if abs(result.horizontal) < 0.05 { result.horizontal = 0 }
         let previous = model.currentEdits
         // Extend making a copy: the original stays as it was; the extended picture is saved beside it.
         if result.cropExtendsBeyondImage, Prefs.makesCopy(.extend), let url = model.currentURL, let d = model.decoded, d.url == url {
@@ -598,6 +622,7 @@ struct CropOverlay: View {
     var bounds = CGRect(x: 0, y: 0, width: 1, height: 1)   // where the crop may go (past 0...1 = Extend)
     var dimFrame: CGRect?              // area dimmed outside the crop (default: the image)
     let aspect: CGFloat?               // normalized width / height, nil = free
+    var fineGrid = false               // more lines, while the picture is being straightened or tilted
 
     @State private var start: CGRect?
 
@@ -638,6 +663,19 @@ struct CropOverlay: View {
             }
             .stroke(Color.white.opacity(0.45), lineWidth: 0.7)
             .allowsHitTesting(false)
+
+            if fineGrid {
+                Path { p in
+                    for i in 1...8 where i % 3 != 0 {
+                        let x = r.minX + r.width * CGFloat(i) / 9
+                        let y = r.minY + r.height * CGFloat(i) / 9
+                        p.move(to: CGPoint(x: x, y: r.minY)); p.addLine(to: CGPoint(x: x, y: r.maxY))
+                        p.move(to: CGPoint(x: r.minX, y: y)); p.addLine(to: CGPoint(x: r.maxX, y: y))
+                    }
+                }
+                .stroke(Color.white.opacity(0.28), lineWidth: 0.5)
+                .allowsHitTesting(false)
+            }
 
             Rectangle()
                 .strokeBorder(Color.white, lineWidth: 1.5)

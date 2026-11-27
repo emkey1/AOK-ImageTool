@@ -30,6 +30,14 @@ enum DebugScenes {
                                (NSApplication.self, #selector(getter: NSApplication.isActive))] {
                 if let method = class_getInstanceMethod(cls, sel) { method_setImplementation(method, imp_implementationWithBlock(yes)) }
             }
+            #if DEBUG
+            // What the title bar's buttons and the controls go by on macOS 27 (AppKit's own, so only where they exist).
+            for name in ["hasKeyAppearance", "hasMainAppearance", "_hasKeyAppearance", "_hasMainAppearance", "_hasActiveAppearance", "_hasActiveControls"] {
+                if let method = class_getInstanceMethod(NSWindow.self, NSSelectorFromString(name)) {
+                    method_setImplementation(method, imp_implementationWithBlock(yes))
+                }
+            }
+            #endif
         }
         announceActive(window)
         // Again once SwiftUI has built the window's contents and toolbar.
@@ -65,6 +73,14 @@ enum DebugScenes {
         case "grid":
             model.gridThumbnailSize = 200
             model.viewMode = .grid
+        case "crop", "crop-grid":
+            // The Crop tool on a picture tilted and turned a little, its sliders showing (`crop-grid`: with the
+            // finer grid that shows while one of them is dragged).
+            model.updateEdits("Crop") {
+                $0.vertical = 8
+                $0.straighten = -1.5
+            }
+            model.activeTool = .crop
         case "remove":
             model.beginRemoveObjects()
         case "change":

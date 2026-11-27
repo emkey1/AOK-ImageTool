@@ -21,7 +21,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   stars too), written into the file's XMP (a sidecar for RAW) so Lightroom and Bridge see them; filter, sort by
   rating or Apple's judgment of the best shots, find duplicates and similar photos.
 - **Edit without fear.** Light, color, detail and filters, crop and straighten (by the degree or tenth of a degree, or
-  Auto, which levels the horizon). Copy one picture's edits and paste them onto a whole shoot (⇧⌘C, ⇧⌘V), or save a
+  Auto, which levels the horizon), and Photos' Vertical and Horizontal sliders, which make a building's leaning
+  sides upright. Copy one picture's edits and paste them onto a whole shoot (⇧⌘C, ⇧⌘V), or save a
   look as a preset and put it on any picture with a click. Nothing touches the picture until you Save, every change
   can be undone, and unsaved edits survive quitting.
 - **Adjust one object on its own:** click a person or thing and its light, color and detail change by themselves,

@@ -2056,6 +2056,336 @@ enum SelfTest {
         }
     }
 
+    /// Crop's Vertical and Horizontal: the tilt is the one Core Image's own perspective filter makes, the way
+    /// Photos' sliders go; what's kept is all picture; the picture lands where the tilt says; turning and flipping carry the
+    /// tilt along; marks and points map back onto the image; a background covers a tilted picture; the edits keep
+    /// and drop the tilt as they do the straightening. (`AOK_SELFTEST_ONLY=tilt` runs just these.)
+    private static func tiltChecks(decodedByName: [String: DecodedImage], out: URL) async {
+        let renderer = EditRenderer.shared
+        func bitmap(_ image: CIImage, _ rect: CGRect) -> [UInt8] {
+            let w = Int(rect.width), h = Int(rect.height)
+            var px = [UInt8](repeating: 0, count: w * h * 4)
+            renderer.context.render(image, toBitmap: &px, rowBytes: w * 4, bounds: rect, format: .RGBA8, colorSpace: CGColorSpace(name: CGColorSpace.sRGB))
+            return px
+        }
+        func tilted(_ vertical: Double, _ horizontal: Double, _ straighten: Double = 0) -> EditState {
+            var e = EditState()
+            e.vertical = vertical
+            e.horizontal = horizontal
+            e.straighten = straighten
+            return e
+        }
+
+        // 1. One axis at a time it's Core Image's CIPerspectiveRotate, the other way round (as Photos' sliders go).
+        var apple: [String] = []
+        for (size, vertical, horizontal, roll) in [(CGSize(width: 600, height: 400), 12.0, 0.0, 0.0), (CGSize(width: 600, height: 400), 0.0, -17.0, 0.0),
+                                                    (CGSize(width: 400, height: 600), -25.0, 0.0, 0.0), (CGSize(width: 500, height: 500), 0.0, 30.0, 0.0),
+                                                    (CGSize(width: 600, height: 400), 0.0, 0.0, 9.0)] {
+            let t = Tilt(size: size, vertical: vertical, horizontal: horizontal, straighten: roll)
+            let c = t.corners
+            let xs = [c.topLeft.x, c.topRight.x, c.bottomRight.x, c.bottomLeft.x], ys = [c.topLeft.y, c.topRight.y, c.bottomRight.y, c.bottomLeft.y]
+            guard let filter = CIFilter(name: "CIPerspectiveRotate") else { apple.append("no filter"); break }
+            filter.setValue(CIImage(color: .white).cropped(to: CGRect(origin: .zero, size: size)), forKey: kCIInputImageKey)
+            filter.setValue(-vertical * .pi / 180, forKey: "inputPitch")
+            filter.setValue(-horizontal * .pi / 180, forKey: "inputYaw")
+            filter.setValue(roll * .pi / 180, forKey: "inputRoll")
+            guard let theirs = filter.outputImage?.extent else { apple.append("no output"); continue }
+            let w = xs.max()! - xs.min()!, h = ys.max()! - ys.min()!
+            // (Theirs is in whole pixels, rounded outward.) Which end grows is Photos': the bottom for a positive
+            // Vertical, the right side for a positive Horizontal.
+            let grows = vertical > 0 ? c.topRight.x - c.topLeft.x < c.bottomRight.x - c.bottomLeft.x - 20
+                : vertical < 0 ? c.topRight.x - c.topLeft.x > c.bottomRight.x - c.bottomLeft.x + 20
+                : horizontal > 0 ? c.topLeft.y - c.bottomLeft.y < c.topRight.y - c.bottomRight.y - 20
+                : horizontal < 0 ? c.topLeft.y - c.bottomLeft.y > c.topRight.y - c.bottomRight.y + 20 : true
+            if abs(w - theirs.width) > 3 || abs(h - theirs.height) > 3 || !grows {
+                apple.append(String(format: "%.0f/%.0f/%.0f on %.0f×%.0f: %.0f×%.0f, theirs %.0f×%.0f", vertical, horizontal, roll, size.width, size.height, w, h, theirs.width, theirs.height))
+            }
+        }
+        check(apple.isEmpty, "a tilt is the one Core Image's perspective filter makes" + (apple.isEmpty ? "" : ": not \(apple.joined(separator: "; "))"))
+        // And it goes the way Photos' sliders go, as far. Measured in Photos 10 (macOS 15) on a 1600 × 1000 sign
+        // with three lines of lettering: each line's ink, as fractions of the frame from its top left, in the
+        // sign itself, at Vertical +12° (left, right, top, bottom) and at Horizontal +12° (left and right only:
+        // where a slanted line's top and bottom are depends on its letters).
+        var photos: [String] = []
+        let sign = CGSize(width: 1600, height: 1000)
+        let lettering = [CGRect(x: 0.0775, y: 0.1950, width: 0.6175, height: 0.1010), CGRect(x: 0.0769, y: 0.4180, width: 0.6825, height: 0.0580),
+                         CGRect(x: 0.0756, y: 0.5940, width: 0.6769, height: 0.0430)]
+        let atVertical = [(0.0611, 0.7031, 0.1782, 0.2806), (0.0437, 0.7787, 0.4100, 0.4740), (0.0313, 0.7802, 0.6067, 0.6557)]
+        let atHorizontal = [(0.0597, 0.7394), (0.0597, 0.8261), (0.0582, 0.8159)]
+        func tiltedBox(_ line: CGRect, _ t: Tilt) -> CGRect {
+            let corners = [CGPoint(x: line.minX, y: line.minY), CGPoint(x: line.maxX, y: line.minY), CGPoint(x: line.maxX, y: line.maxY),
+                           CGPoint(x: line.minX, y: line.maxY)].map { p -> CGPoint in
+                let k = t.kept(CGPoint(x: p.x * sign.width, y: (1 - p.y) * sign.height))
+                return CGPoint(x: k.x / t.keptSize.width, y: 1 - k.y / t.keptSize.height)
+            }
+            let xs = corners.map(\.x), ys = corners.map(\.y)
+            return CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+        }
+        for (i, line) in lettering.enumerated() {
+            let up = tiltedBox(line, Tilt(size: sign, vertical: 12, horizontal: 0, straighten: 0)), theirs = atVertical[i]
+            if abs(up.minX - theirs.0) > 0.006 || abs(up.maxX - theirs.1) > 0.006 || abs(up.minY - theirs.2) > 0.004 || abs(up.maxY - theirs.3) > 0.004 {
+                photos.append(String(format: "Vertical, line %d: x %.4f...%.4f y %.4f...%.4f", i + 1, up.minX, up.maxX, up.minY, up.maxY))
+            }
+            let side = tiltedBox(line, Tilt(size: sign, vertical: 0, horizontal: 12, straighten: 0))
+            if abs(side.minX - atHorizontal[i].0) > 0.006 || abs(side.maxX - atHorizontal[i].1) > 0.006 {
+                photos.append(String(format: "Horizontal, line %d: x %.4f...%.4f", i + 1, side.minX, side.maxX))
+            }
+        }
+        check(photos.isEmpty, "and it goes the way Photos' sliders go, as far" + (photos.isEmpty ? "" : ": not \(photos.joined(separator: "; "))"))
+
+        // 2. What's kept is the picture's own shape, lies inside the tilted picture and reaches its edge.
+        var loose: [String] = []
+        for size in [CGSize(width: 1200, height: 800), CGSize(width: 800, height: 1200), CGSize(width: 1000, height: 1000), CGSize(width: 2400, height: 600)] {
+            for (v, h, r) in [(8.0, 0.0, 0.0), (0.0, -12.0, 0.0), (15.0, 10.0, 0.0), (-30.0, 30.0, 0.0), (30.0, 30.0, 45.0), (-6.0, 4.0, -7.0), (0.3, 0.0, 0.0)] {
+                let t = Tilt(size: size, vertical: v, horizontal: h, straighten: r)
+                let k = t.keptSize
+                let corners = [CGPoint.zero, CGPoint(x: k.width, y: 0), CGPoint(x: k.width, y: k.height), CGPoint(x: 0, y: k.height)].map(t.picture)
+                // (A pixel and a half of leeway: what's kept is in whole pixels, rounded outward.)
+                let inside = corners.allSatisfy { $0.x > -1.5 && $0.y > -1.5 && $0.x < size.width + 1.5 && $0.y < size.height + 1.5 }
+                let nearest = corners.map { min($0.x, $0.y, size.width - $0.x, size.height - $0.y) }.min()!
+                let shape = abs(k.width / k.height - size.width / size.height) < 0.01 * size.width / size.height
+                let back = t.picture(t.kept(CGPoint(x: size.width * 0.3, y: size.height * 0.7)))
+                let roundTrip = hypot(back.x - size.width * 0.3, back.y - size.height * 0.7) < 0.01
+                if !inside || nearest > 2.5 || !shape || !roundTrip {
+                    loose.append(String(format: "%.0f×%.0f at %.1f/%.1f/%.1f (kept %.0f×%.0f, nearest %.1f)", size.width, size.height, v, h, r, k.width, k.height, nearest))
+                }
+            }
+        }
+        check(loose.isEmpty, "what a tilt keeps is the picture's shape, inside the tilted picture and up to its edge" + (loose.isEmpty ? "" : ": not \(loose.joined(separator: "; "))"))
+        let slight = Tilt(size: CGSize(width: 1200, height: 800), vertical: 0.3, horizontal: 0, straighten: 0).keptSize
+        check(slight.width > 1180 && slight.height > 786, "a slight tilt keeps nearly all of the picture (\(Int(slight.width))×\(Int(slight.height)) of 1200×800)")
+
+        // 3. The picture lands where the tilt says: dots at known places, found again in what's rendered. And
+        //    nothing see-through or dark is let in at the edges.
+        let dotSize = CGSize(width: 1200, height: 800)
+        let spots = [CGPoint(x: 600, y: 400), CGPoint(x: 420, y: 520), CGPoint(x: 800, y: 300), CGPoint(x: 500, y: 250), CGPoint(x: 700, y: 560)]
+        func dotPicture(_ at: CGPoint?) -> DecodedImage? {
+            var image = CIImage(color: CIColor(red: 0.9, green: 0.9, blue: 0.9)).cropped(to: CGRect(origin: .zero, size: dotSize))
+            if let at {
+                image = CIImage(color: .black).cropped(to: CGRect(x: at.x - 6, y: at.y - 6, width: 12, height: 12)).composited(over: image)
+            }
+            guard let cg = renderer.context.createCGImage(image, from: image.extent) else { return nil }
+            return DecodedImage(url: out.appendingPathComponent("dots.png"), cgImage: cg, isHDR: false, isAnimated: false, pageCount: 1, pageIndex: 0,
+                                typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+        }
+        var misplaced: [String] = []
+        var seeThrough = 0
+        for e in [tilted(14, 0), tilted(0, -11), tilted(-9, 13, 5)] {
+            let t = Tilt(size: dotSize, vertical: e.vertical, horizontal: e.horizontal, straighten: e.straighten)
+            if let plain = dotPicture(nil) {
+                let shown = renderer.makeImage(plain, edits: e, maxDimension: nil, stage: .full)
+                let px = bitmap(shown, shown.extent)
+                for i in stride(from: 0, to: px.count, by: 4) where px[i + 3] < 255 || px[i] < 200 { seeThrough += 1 }
+                if shown.extent.size != t.keptSize { misplaced.append("size \(shown.extent.size), not \(t.keptSize)") }
+            }
+            for spot in spots {
+                guard let d = dotPicture(spot) else { continue }
+                let shown = renderer.makeImage(d, edits: e, maxDimension: nil, stage: .full)
+                let px = bitmap(shown, shown.extent)
+                let w = Int(shown.extent.width), h = Int(shown.extent.height)
+                var sx = 0.0, sy = 0.0, n = 0.0
+                for y in 0..<h {
+                    for x in 0..<w where px[(y * w + x) * 4] < 110 {
+                        sx += Double(x) + 0.5
+                        sy += Double(h - y) - 0.5   // (rows come top first; Core Image's y goes up)
+                        n += 1
+                    }
+                }
+                let expected = t.kept(spot)
+                if n < 20 || hypot(sx / n - expected.x, sy / n - expected.y) > 1.5 {
+                    misplaced.append(String(format: "(%.0f, %.0f) at %.0f/%.0f/%.0f: found at (%.1f, %.1f), not (%.1f, %.1f)", spot.x, spot.y,
+                                            e.vertical, e.horizontal, e.straighten, n > 0 ? sx / n : -1, n > 0 ? sy / n : -1, expected.x, expected.y))
+                }
+            }
+        }
+        check(misplaced.isEmpty, "a tilted picture's points are where the tilt puts them" + (misplaced.isEmpty ? "" : ": not \(misplaced.joined(separator: "; "))"))
+        check(seeThrough == 0, "and nothing see-through or dark is let in at its edges" + (seeThrough == 0 ? "" : " (\(seeThrough) pixels)"))
+
+        // 4. On a photo: turning it a quarter turn, or flipping it, carries the tilt and the crop along (the same
+        //    picture, turned); a Live Photo's frames get the same shape; and a look at the result.
+        if let photo = decodedByName["Harbor Village.heic"] ?? decodedByName.values.first {
+            var e = tilted(11, -7, 3)
+            e.crop = CGRect(x: 0.08, y: 0.1, width: 0.8, height: 0.75)
+            func picture(_ edits: EditState) -> CIImage { renderer.makeImage(photo, edits: edits, maxDimension: 900, stage: .full) }
+            func difference(_ a: CIImage, _ b: CIImage) -> Double {
+                guard abs(a.extent.width - b.extent.width) <= 2, abs(a.extent.height - b.extent.height) <= 2 else { return 255 }
+                let rect = CGRect(x: 4, y: 4, width: min(a.extent.width, b.extent.width) - 8, height: min(a.extent.height, b.extent.height) - 8).integral
+                func atOrigin(_ i: CIImage) -> CIImage {
+                    // (Softened a little: the two were resampled differently, and edges a pixel apart shouldn't count.)
+                    i.transformed(by: CGAffineTransform(translationX: -i.extent.minX, y: -i.extent.minY)).clampedToExtent()
+                        .applyingFilter("CIGaussianBlur", parameters: [kCIInputRadiusKey: 2]).cropped(to: rect)
+                }
+                let x = bitmap(atOrigin(a), rect), y = bitmap(atOrigin(b), rect)
+                var sum = 0.0
+                for i in 0..<x.count { sum += abs(Double(x[i]) - Double(y[i])) }
+                return sum / Double(max(x.count, 1))
+            }
+            let plain = picture(e)
+            var right = e
+            right.rotate(clockwise: true)
+            var left = e
+            left.rotate(clockwise: false)
+            var mirrored = e
+            mirrored.flip(horizontal: true)
+            var upsideDown = e
+            upsideDown.flip(horizontal: false)
+            let differences = [difference(picture(right), plain.oriented(.right)), difference(picture(left), plain.oriented(.left)),
+                               difference(picture(mirrored), plain.oriented(.upMirrored)), difference(picture(upsideDown), plain.oriented(.downMirrored))]
+            // (And the comparison does tell pictures apart: the tilt left as it was, or turned the wrong way, shows.)
+            var stale = right
+            (stale.vertical, stale.horizontal) = (e.vertical, e.horizontal)
+            var wrongWay = right
+            wrongWay.horizontal = -wrongWay.horizontal
+            wrongWay.vertical = -wrongWay.vertical
+            let others = [difference(picture(stale), plain.oriented(.right)), difference(picture(wrongWay), plain.oriented(.right))]
+            check(differences.allSatisfy { $0 < 1.5 } && others.allSatisfy { $0 > 4 },
+                  "turning or flipping a tilted, cropped photo shows the same picture turned or flipped"
+                  + " (apart by \(differences.map { String(format: "%.2f", $0) }.joined(separator: ", ")) levels;"
+                  + " \(others.map { String(format: "%.1f", $0) }.joined(separator: " and ")) with the tilt not carried along)")
+            var twice = e
+            for _ in 0..<4 { twice.rotate(clockwise: true) }
+            var flippedBack = e
+            flippedBack.flip(horizontal: true)
+            flippedBack.flip(horizontal: true)
+            check(twice.vertical == e.vertical && twice.horizontal == e.horizontal && flippedBack.vertical == e.vertical
+                  && flippedBack.horizontal == e.horizontal && flippedBack.straighten == e.straighten,
+                  "four quarter turns, or two flips, leave the tilt as it was")
+
+            let full = renderer.outputSize(photo, edits: e)
+            let frame = renderer.applyToFrame(CIImage(cgImage: photo.cgImage), edits: e, still: photo, renderScale: 1)
+            check(abs(frame.extent.width - full.width) <= 1 && abs(frame.extent.height - full.height) <= 1 && full.width < photo.pixelSize.width,
+                  "a Live Photo's frames are tilted and cropped as the photo is (\(Int(frame.extent.width))×\(Int(frame.extent.height)), the photo \(Int(full.width))×\(Int(full.height)))")
+            let geometry = renderer.makeImage(photo, edits: e, maxDimension: nil, stage: .geometry).extent.size
+            let shownSize = renderer.shownGeometry(e, size: photo.pixelSize).shown
+            check(abs(shownSize.width - full.width) <= 1 && abs(shownSize.height - full.height) <= 1 && geometry.width > full.width,
+                  "the size worked out for a tilted, cropped photo is the size it renders at")
+            for (name, edits) in [("vertical", tilted(12, 0)), ("horizontal", tilted(0, 14)), ("both", tilted(-10, 8, 2))] {
+                if let cg = renderer.renderSync(photo, edits: edits, maxDimension: 1200)?.image { writeJPEG(cg, to: out.appendingPathComponent("tilt-\(name).jpg")) }
+            }
+        } else {
+            check(false, "a photo to tilt")
+        }
+
+        // 5. A mark drawn on the picture as shown lands where it was drawn on the image, and so does a point,
+        //    tilted on its own and with everything else.
+        let size = CGSize(width: 1200, height: 800)
+        let marked = CGRect(x: 520, y: 330, width: 130, height: 90)
+        let markImage = CIImage(color: .white).cropped(to: marked).composited(over: CIImage(color: .black).cropped(to: CGRect(origin: .zero, size: size)))
+        if let cg = renderer.context.createCGImage(markImage, from: markImage.extent) {
+            let d = DecodedImage(url: out.appendingPathComponent("tilt-mark.png"), cgImage: cg, isHDR: false, isAnimated: false, pageCount: 1, pageIndex: 0,
+                                 typeIdentifier: nil, properties: [:], sourceOrientation: .up, isVector: false)
+            var turned = tilted(10, -8, 4)
+            turned.quarterTurns = 1
+            turned.flipHorizontal = true
+            var everything = turned
+            everything.perspective = Quad(topLeft: CGPoint(x: 0.04, y: 0.96), topRight: CGPoint(x: 0.97, y: 0.92),
+                                          bottomRight: CGPoint(x: 0.98, y: 0.03), bottomLeft: CGPoint(x: 0.02, y: 0.06))
+            everything.crop = CGRect(x: 0.08, y: 0.06, width: 0.86, height: 0.88)
+            var extended = tilted(-6, 5)
+            extended.crop = CGRect(x: -0.2, y: -0.1, width: 1.4, height: 1.2)
+            var wrong: [String] = []
+            for (name, e) in [("tilted up", tilted(15, 0)), ("tilted sideways", tilted(0, -18)), ("tilted and straightened", tilted(-12, 9, -6)),
+                              ("tilted, turned and flipped", turned), ("tilted with everything else", everything), ("tilted and extended", extended),
+                              ("tilted as far as it goes", tilted(30, -30))] {
+                let shown = renderer.makeImage(d, edits: e, maxDimension: 1024, stage: .full)
+                let back = ObjectRemover.sourceMask(shown, shownWith: e, size: size)
+                let tolerance = size.width * 0.012
+                guard back.extent == CGRect(origin: .zero, size: size), let b = VisionServices.maskBounds(back, imageSize: size),
+                      abs(b.minX - marked.minX) <= tolerance, abs(b.maxX - marked.maxX) <= tolerance,
+                      abs(b.minY - marked.minY) <= tolerance, abs(b.maxY - marked.maxY) <= tolerance else {
+                    wrong.append("\(name) (mark at \(VisionServices.maskBounds(back, imageSize: size).map { "\($0.integral)" } ?? "nothing"), not \(marked))")
+                    continue
+                }
+                // The mark's own middle, where the picture as shown has it.
+                let g = renderer.shownGeometry(e, size: size)
+                var middle = CGPoint(x: marked.midX, y: marked.midY)
+                if let q = e.perspective {
+                    // (Where the document correction puts it isn't worked out here: found in the picture instead.)
+                    _ = q
+                    guard let m = VisionServices.maskBounds(shown, imageSize: shown.extent.size) else { wrong.append("\(name) (shown)"); continue }
+                    middle = CGPoint(x: m.midX, y: m.midY)
+                    let p = ObjectRemover.sourcePoint(middle, shownWith: e, shown: shown.extent.size, size: size)
+                    if hypot(p.x - marked.midX, p.y - marked.midY) > size.width * 0.02 { wrong.append("\(name) (point)") }
+                    continue
+                }
+                guard let tilt = g.tilt else { wrong.append("\(name) (no tilt)"); continue }
+                middle = tilt.kept(middle.applying(g.turned.inverted())).applying(g.affine.inverted())
+                let p = ObjectRemover.sourcePoint(middle, shownWith: e, shown: g.shown, size: size)
+                if hypot(p.x - marked.midX, p.y - marked.midY) > 0.5 { wrong.append("\(name) (point \(p))") }
+                // And the picture as shown has the mark around that point.
+                let scale = shown.extent.width / g.shown.width
+                if let m = VisionServices.maskBounds(shown, imageSize: shown.extent.size),
+                   hypot(m.midX - middle.x * scale, m.midY - middle.y * scale) > shown.extent.width * 0.02 {
+                    wrong.append("\(name) (shown at \(m.integral), expected around \(middle.x * scale), \(middle.y * scale))")
+                }
+            }
+            check(wrong.isEmpty, "marks and points on a tilted picture map back onto the image" + (wrong.isEmpty ? "" : ": not \(wrong.joined(separator: ", "))"))
+
+            // A background put behind a tilted picture covers all of the image (drawn out past what was shown).
+            let stripes = CIImage(color: CIColor(red: 0.2, green: 0.5, blue: 0.9)).cropped(to: CGRect(x: 0, y: 0, width: 300, height: 200))
+            var uncovered: [String] = []
+            for e in [tilted(12, 0), tilted(-20, 25, 10), tilted(30, 30, -45)] {
+                guard let frame = e.backdropFrame else { uncovered.append("no frame"); continue }
+                let placed = renderer.framedBackdrop(stripes, frame: frame, size: size)
+                let px = bitmap(placed.transformed(by: CGAffineTransform(scaleX: 0.25, y: 0.25)), CGRect(x: 0, y: 0, width: size.width / 4, height: size.height / 4))
+                var clear = 0
+                for i in stride(from: 3, to: px.count, by: 4) where px[i] < 250 { clear += 1 }
+                if clear > 0 || frame.verticalTilt != e.verticalTilt || frame.horizontalTilt != e.horizontalTilt {
+                    uncovered.append(String(format: "%.0f/%.0f/%.0f (%d pixels bare)", e.vertical, e.horizontal, e.straighten, clear))
+                }
+            }
+            check(uncovered.isEmpty, "a background behind a tilted picture covers the whole image" + (uncovered.isEmpty ? "" : ": not \(uncovered.joined(separator: ", "))"))
+        }
+
+        // 6. The edits: a tilt is the picture's own, like its straightening.
+        var e = tilted(9, -4, 2)
+        e.exposure = 0.4
+        e.extendFill = ExtendFill(path: "/nowhere.heic", canvas: CGRect(x: -0.1, y: 0, width: 1.2, height: 1))
+        var fillKept = e
+        fillKept.vertical = 9
+        var fillDropped = e
+        fillDropped.horizontal = 6
+        check(fillKept.extendFill != nil && fillDropped.extendFill == nil, "changing a tilt makes Extend fill again; setting it to what it was doesn't")
+        var reset = e
+        reset.resetAdjustments()
+        var pasted = EditState()
+        pasted.vertical = -3
+        pasted.takeAdjustments(from: e)
+        var geometryReset = e
+        geometryReset.resetGeometry()
+        check(reset.vertical == 9 && reset.horizontal == -4 && reset.exposure == 0 && !e.adjustments.isTilted && e.adjustments.exposure == 0.4
+              && pasted.vertical == -3 && pasted.horizontal == 0 && pasted.exposure == 0.4 && !geometryReset.isTilted && geometryReset.exposure == 0.4
+              && !tilted(5, 0).hasAdjustments && tilted(5, 0).hasGeometryChange,
+              "Reset Adjustments and Paste Edits keep a picture's own tilt, Copy Edits leaves it out, and the Crop tool's Reset takes it off")
+        var quarter = tilted(10, 0)
+        quarter.rotate(clockwise: true)
+        var mirror = tilted(10, 6, 3)
+        mirror.flip(horizontal: true)
+        var over = tilted(10, 6, 3)
+        over.flip(horizontal: false)
+        check(quarter.vertical == 0 && quarter.horizontal == -10 && mirror.vertical == 10 && mirror.horizontal == -6 && mirror.straighten == -3
+              && over.vertical == -10 && over.horizontal == 6 && over.straighten == -3,
+              "a top pushed back is the right side pushed back after a turn to the right; a flip swaps the side that's forward")
+        var faint = EditState()
+        faint.vertical = 0.02
+        faint.horizontal = -0.03
+        var zeroed = tilted(4, 0)
+        zeroed.vertical = 0
+        check(faint.isIdentity && !tilted(0.2, 0).isIdentity && zeroed == EditState() && zeroed.verticalTilt == nil,
+              "a tilt too slight to see isn't an edit, and one set back to zero is no edit at all")
+        let encoder = JSONEncoder()
+        let old = (try? encoder.encode(EditState())).map { String(decoding: $0, as: UTF8.self) } ?? ""
+        let kept = (try? encoder.encode(e)).flatMap { try? JSONDecoder().decode(EditState.self, from: $0) }
+        let frame = e.backdropFrame.flatMap { try? encoder.encode($0) }.flatMap { try? JSONDecoder().decode(BackdropFrame.self, from: $0) }
+        let earlierFrame = try? JSONDecoder().decode(BackdropFrame.self, from: Data(#"{"quarterTurns":1,"flipHorizontal":false,"flipVertical":false,"straighten":2}"#.utf8))
+        check(!old.contains("Tilt") && (try? JSONDecoder().decode(EditState.self, from: Data(old.utf8))) == EditState() && kept == e
+              && frame?.verticalTilt == 9 && frame?.horizontalTilt == -4 && earlierFrame?.quarterTurns == 1 && earlierFrame?.verticalTilt == nil,
+              "edits saved before there were tilts still open, and tilts are saved with the edits")
+        // Past what the sliders allow (an edit written by hand, say), it's held to their range.
+        let most = Tilt(size: size, vertical: 80, horizontal: -75, straighten: 0).keptSize
+        check(most == Tilt(size: size, vertical: 30, horizontal: -30, straighten: 0).keptSize && most.width > 100, "a tilt past the sliders' range is held to it")
+    }
+
     /// Auto Straighten: a horizon's tilt measured; no false horizon in a photo without lines; a room's receding
     /// lines don't tilt it; uprights leaning apart in perspective still show the camera's tilt; lines converging
     /// in perspective aren't a horizon.
@@ -2241,6 +2571,13 @@ enum SelfTest {
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
         }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "tilt" {
+            print("\n[Vertical and Horizontal]")
+            await tiltChecks(decodedByName: decodedByName, out: out)
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
         if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "straighten" {
             print("\n[Straighten]")
             await straightenChecks(decodedByName: decodedByName)
@@ -2337,6 +2674,9 @@ enum SelfTest {
         }
 
         // 3. Export with metadata stripping.
+        print("\n[Vertical and Horizontal]")
+        await tiltChecks(decodedByName: decodedByName, out: out)
+
         print("\n[Export]")
         if let d = decodedByName["rotated-exif6.jpg"], let rendered = EditRenderer.shared.renderSync(d, edits: EditState(), maxDimension: 300) {
             for format in [ExportFormat.jpeg, .heic, .avif, .png, .tiff] where ExportFormat.writable.contains(format) {

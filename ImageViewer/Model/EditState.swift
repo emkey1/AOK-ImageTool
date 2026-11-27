@@ -67,6 +67,8 @@ nonisolated struct BackdropFrame: Codable, Equatable, Hashable, Sendable {
     var straighten: Double = 0
     var crop: CGRect?
     var perspective: Quad?
+    var verticalTilt: Double?
+    var horizontalTilt: Double?
 
     /// Edits that change the picture's shape this way, and nothing else.
     var edits: EditState {
@@ -75,6 +77,8 @@ nonisolated struct BackdropFrame: Codable, Equatable, Hashable, Sendable {
         e.flipHorizontal = flipHorizontal
         e.flipVertical = flipVertical
         e.straighten = straighten
+        e.verticalTilt = verticalTilt
+        e.horizontalTilt = horizontalTilt
         e.crop = crop
         e.perspective = perspective
         return e
@@ -229,6 +233,16 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     var straighten: Double = 0 {        // degrees, clockwise positive
         didSet { if straighten != oldValue { extendFill = nil } }
     }
+    /// Crop's Vertical and Horizontal, in degrees: the picture tilted in depth, as Photos has it, after the turns
+    /// and flips and together with the straightening (see `Tilt`). Positive pushes the top back (brings the right
+    /// side forward), as Photos' sliders do. nil is none. (Optional, like everything added later, so saved edits
+    /// still decode.)
+    var verticalTilt: Double? {
+        didSet { if verticalTilt != oldValue { extendFill = nil } }
+    }
+    var horizontalTilt: Double? {
+        didSet { if horizontalTilt != oldValue { extendFill = nil } }
+    }
     var crop: CGRect?                   // normalized, top-left origin, in post-rotation space; past 0...1 = Extend
     var perspective: Quad? {            // document/keystone correction, applied first
         didSet { if perspective != oldValue { extendFill = nil } }
@@ -247,6 +261,24 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     }
 
     var effectiveExtendMethod: ExtendMethod { extendMethod ?? .match }
+
+    /// The tilts as plain numbers, for sliders: 0 is none.
+    var vertical: Double {
+        get { verticalTilt ?? 0 }
+        set { verticalTilt = newValue == 0 ? nil : newValue }
+    }
+    var horizontal: Double {
+        get { horizontalTilt ?? 0 }
+        set { horizontalTilt = newValue == 0 ? nil : newValue }
+    }
+
+    var isTilted: Bool { vertical != 0 || horizontal != 0 }
+
+    /// How a picture `size` big (turned and flipped) is tilted and straightened; nil when it isn't tilted (it's
+    /// then straightened on its own, as it always was).
+    func tilt(of size: CGSize) -> Tilt? {
+        isTilted ? Tilt(size: size, vertical: vertical, horizontal: horizontal, straighten: straighten) : nil
+    }
 
     /// Objects painted out (Remove Objects), in the order they were removed. Extend continues the result.
     var removals: [Removal]? {
@@ -299,6 +331,8 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
             e[keyPath: key] = 0
         }
         if abs(e.straighten) < 0.05 { e.straighten = 0 }
+        if abs(e.vertical) < 0.05 { e.verticalTilt = nil }
+        if abs(e.horizontal) < 0.05 { e.horizontalTilt = nil }
         e.quarterTurns = ((e.quarterTurns % 4) + 4) % 4
         if let c = e.crop, abs(c.minX) < 0.0005, abs(c.minY) < 0.0005, abs(c.width - 1) < 0.0005, abs(c.height - 1) < 0.0005 { e.crop = nil }
         if e.removals?.isEmpty == true { e.removals = nil }
@@ -342,7 +376,7 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     }
 
     var hasGeometryChange: Bool {
-        quarterTurns % 4 != 0 || flipHorizontal || flipVertical || straighten != 0 || crop != nil || perspective != nil
+        quarterTurns % 4 != 0 || flipHorizontal || flipVertical || straighten != 0 || isTilted || crop != nil || perspective != nil
     }
 
     /// Where a background put behind the picture now goes (see `BackdropFrame`): nil when it shows the image as
@@ -351,7 +385,8 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         let s = shown
         guard s.hasGeometryChange else { return nil }
         return BackdropFrame(quarterTurns: s.quarterTurns, flipHorizontal: s.flipHorizontal, flipVertical: s.flipVertical,
-                             straighten: s.straighten, crop: s.crop, perspective: s.perspective)
+                             straighten: s.straighten, crop: s.crop, perspective: s.perspective,
+                             verticalTilt: s.verticalTilt, horizontalTilt: s.horizontalTilt)
     }
 
     var hasAdjustments: Bool {
@@ -360,6 +395,8 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         copy.flipHorizontal = false
         copy.flipVertical = false
         copy.straighten = 0
+        copy.verticalTilt = nil
+        copy.horizontalTilt = nil
         copy.crop = nil
         copy.perspective = nil
         copy.extendFill = nil
@@ -371,9 +408,11 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         return !copy.isIdentity
     }
 
-    /// Rotates the visible image by 90°, carrying the crop rectangle along.
+    /// Rotates the visible image by 90°, carrying the crop rectangle and the tilt along (what was its top, pushed
+    /// back, is now its side).
     mutating func rotate(clockwise: Bool) {
         quarterTurns = (quarterTurns + (clockwise ? 1 : 3)) % 4
+        (vertical, horizontal) = clockwise ? (horizontal, -vertical) : (-horizontal, vertical)
         extendFill = nil
         if let c = crop {
             crop = clockwise
@@ -388,6 +427,7 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         let sourceHorizontal = (quarterTurns % 2 == 0) == horizontal
         if sourceHorizontal { flipHorizontal.toggle() } else { flipVertical.toggle() }
         straighten = -straighten
+        if horizontal { self.horizontal = -self.horizontal } else { vertical = -vertical }
         extendFill = nil
         if let c = crop {
             crop = horizontal
@@ -397,18 +437,18 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
     }
 
     /// What belongs to this picture alone, as opposed to its adjustments (light, color, detail, the filter): its
-    /// turn, crop and straightening, Extend, retouching, cutout and background, and its selected objects'
+    /// turn, crop, straightening and tilt, Extend, retouching, cutout and background, and its selected objects'
     /// adjustments (their selections fit only this picture).
-    private var ownParts: (Int, Bool, Bool, Double, CGRect?, Quad?, Cutout?, Backdrop?, Double?, [Removal]?, UInt64?, ExtendMethod?,
-                           String?, [LocalAdjustment]?, ExtendFill?) {
+    private var ownParts: (Int, Bool, Bool, Double, Double?, Double?, CGRect?, Quad?, Cutout?, Backdrop?, Double?, [Removal]?, UInt64?,
+                           ExtendMethod?, String?, [LocalAdjustment]?, ExtendFill?) {
         get {
-            (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-             removals, extendSeed, extendMethod, extendPrompt, localAdjustments, extendFill)
+            (quarterTurns, flipHorizontal, flipVertical, straighten, verticalTilt, horizontalTilt, crop, perspective, cutout, background,
+             matchLighting, removals, extendSeed, extendMethod, extendPrompt, localAdjustments, extendFill)
         }
         set {
-            // The fill comes last: setting straighten or perspective clears it.
-            (quarterTurns, flipHorizontal, flipVertical, straighten, crop, perspective, cutout, background, matchLighting,
-             removals, extendSeed, extendMethod, extendPrompt, localAdjustments, extendFill) = newValue
+            // The fill comes last: setting straighten, a tilt or perspective clears it.
+            (quarterTurns, flipHorizontal, flipVertical, straighten, verticalTilt, horizontalTilt, crop, perspective, cutout, background,
+             matchLighting, removals, extendSeed, extendMethod, extendPrompt, localAdjustments, extendFill) = newValue
         }
     }
 
@@ -439,6 +479,8 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         flipHorizontal = false
         flipVertical = false
         straighten = 0
+        verticalTilt = nil
+        horizontalTilt = nil
         crop = nil
         perspective = nil
         extendFill = nil

@@ -70,9 +70,9 @@ nonisolated extension Stitch {
 
     /// Which way was down when the picture was taken, in its own directions as it shows (x to its right, y down
     /// it, z into it), when the file says: an iPhone writes what its motion sensor read. Only for a picture
-    /// that hasn't been turned, flipped or straightened here (cropping doesn't change its directions).
+    /// that hasn't been turned, flipped, straightened or tilted here (cropping doesn't change its directions).
     static func down(from properties: [String: Any], edits: EditState) -> SIMD3<Double>? {
-        guard edits.quarterTurns == 0, !edits.flipHorizontal, !edits.flipVertical, edits.straighten == 0, edits.perspective == nil,
+        guard edits.quarterTurns == 0, !edits.flipHorizontal, !edits.flipVertical, edits.straighten == 0, !edits.isTilted, edits.perspective == nil,
               let maker = properties[kCGImagePropertyMakerAppleDictionary as String] as? [String: Any],
               let reading = maker["8"] as? [Any], reading.count == 3 else { return nil }
         let a = reading.compactMap { ($0 as? NSNumber)?.doubleValue ?? ($0 as? String).flatMap(Double.init) }

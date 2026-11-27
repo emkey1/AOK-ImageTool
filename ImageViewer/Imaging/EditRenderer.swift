@@ -235,10 +235,14 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     /// How the picture as `e` shows it in full (`makeImage`'s `.full` stage, `shown` big at full size) maps back
     /// onto the image's own pixels (`size` big): `affine` undoes the crop, the straightening and the turns and
     /// flips, onto the image as its document correction leaves it (`corrected` big), and `quad` (when there's
-    /// one) is where that correction took it from.
+    /// one) is where that correction took it from. A tilted picture (Vertical, Horizontal) goes in three steps
+    /// instead: `affine` undoes the crop, onto what the tilt keeps; `tilt` undoes the tilt and the straightening;
+    /// and `turned` the turns and flips.
     struct ShownGeometry {
         let shown: CGSize
         let affine: CGAffineTransform
+        var tilt: Tilt?
+        var turned = CGAffineTransform.identity
         let corrected: CGSize
         let quad: Quad?
         let size: CGSize
@@ -265,7 +269,14 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         case 3: orient(.left)
         default: break
         }
-        if e.straighten != 0 {
+        let tilt = e.tilt(of: rect.size)
+        var turned = CGAffineTransform.identity
+        if let tilt {
+            // (Not a step an affine transform can hold: what follows starts again from what the tilt keeps.)
+            turned = forward.inverted()
+            forward = .identity
+            rect = CGRect(origin: .zero, size: tilt.keptSize)
+        } else if e.straighten != 0 {
             let center = CGPoint(x: rect.midX, y: rect.midY)
             let rotation = CGAffineTransform(translationX: center.x, y: center.y)
                 .rotated(by: -e.straighten * .pi / 180)
@@ -285,7 +296,8 @@ nonisolated final class EditRenderer: @unchecked Sendable {
                 rect = CGRect(origin: .zero, size: kept.size)
             }
         }
-        return ShownGeometry(shown: rect.size, affine: forward.inverted(), corrected: corrected, quad: e.perspective, size: size)
+        return ShownGeometry(shown: rect.size, affine: forward.inverted(), tilt: tilt, turned: turned, corrected: corrected,
+                             quad: e.perspective, size: size)
     }
 
     /// `mask`, drawn over the picture as `e` shows it in full (at any scale), on the image's own pixels (`size`
@@ -317,12 +329,14 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     }
 
     /// `image`, over the picture as shown (`g.shown` big at the origin), on the image's own pixels: the crop, the
-    /// straightening and the turns and flips undone, then the document correction. `under` fills what it doesn't
-    /// cover, so the result is exactly the image's size.
+    /// straightening (and tilt) and the turns and flips undone, then the document correction. `under` fills what
+    /// it doesn't cover, so the result is exactly the image's size.
     private func carriedToSource(_ image: CIImage, _ g: ShownGeometry, under: CIImage?) -> CIImage {
         let corrected = CGRect(origin: .zero, size: g.corrected)
         // (Exactly the corrected image's size: the perspective below maps its corners.)
-        var m = image.transformed(by: g.affine).cropped(to: corrected)
+        var m = image.transformed(by: g.affine)
+        if let tilt = g.tilt { m = untilted(m, tilt).transformed(by: g.turned) }
+        m = m.cropped(to: corrected)
         if let under { m = m.composited(over: under.cropped(to: corrected)) }
         if let q = g.quad {
             func p(_ n: CGPoint) -> CIVector { CIVector(x: n.x * g.size.width, y: n.y * g.size.height) }
@@ -342,7 +356,8 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     func sourcePoint(_ p: CGPoint, shownWith e: EditState, shown: CGSize, size: CGSize) -> CGPoint {
         let g = shownGeometry(e, size: size)
         guard shown.width > 0, shown.height > 0 else { return p }
-        let q = CGPoint(x: p.x * g.shown.width / shown.width, y: p.y * g.shown.height / shown.height).applying(g.affine)
+        var q = CGPoint(x: p.x * g.shown.width / shown.width, y: p.y * g.shown.height / shown.height).applying(g.affine)
+        if let tilt = g.tilt { q = tilt.picture(q).applying(g.turned) }
         guard let quad = g.quad, g.corrected.width > 0, g.corrected.height > 0 else { return q }
         // The document correction undone: the unit square onto the quad (Heckbert's projective mapping), with
         // its corners (0, 0), (1, 0), (1, 1) and (0, 1) at the bottom left, bottom right, top right and top left.
@@ -375,9 +390,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     func applyToFrame(_ frame: CIImage, edits e: EditState, still: DecodedImage, renderScale: CGFloat) -> CIImage {
         var img = normalized(frame)
         if let q = e.perspective { img = perspectiveCorrected(img, q) }
-        img = applyOrientation(img, e)
-        if e.straighten != 0 { img = straightened(img, degrees: e.straighten) }
-        img = normalized(img)
+        img = straightenedAndTilted(applyOrientation(img, e), e)
         let frameRect = img.extent
         img = applyAdjustments(img, e, decoded: still, scale: renderScale)
         if let c = e.crop, !e.cropExtendsBeyondImage {
@@ -388,15 +401,54 @@ nonisolated final class EditRenderer: @unchecked Sendable {
     }
 
     /// `img` (the image's own pixels, or anything over them, such as a selection) through the edits' changes of
-    /// shape before the crop: the document correction, then the turns, flips and straightening.
+    /// shape before the crop: the document correction, then the turns, flips, straightening and tilt.
     private func shaped(_ img: CIImage, _ e: EditState) -> CIImage {
         var img = img
         if let q = e.perspective { img = perspectiveCorrected(img, q) }
-        img = applyOrientation(img, e)
-        if e.straighten != 0 {
-            img = straightened(img, degrees: e.straighten)
+        return straightenedAndTilted(applyOrientation(img, e), e)
+    }
+
+    /// `img` (turned and flipped already) straightened, and tilted in depth when the edits tilt it, at the origin.
+    private func straightenedAndTilted(_ img: CIImage, _ e: EditState) -> CIImage {
+        let img = normalized(img)
+        if let tilt = e.tilt(of: img.extent.size) { return tilted(img, tilt) }
+        return e.straighten != 0 ? straightened(img, degrees: e.straighten) : img
+    }
+
+    /// `img` (at the origin) tilted and straightened in one go, and cut to what the tilt keeps.
+    private func tilted(_ img: CIImage, _ tilt: Tilt) -> CIImage {
+        // Its edge drawn out a little first: what's kept touches the tilted picture's edge, and nothing
+        // see-through should be blended in there.
+        let drawn = img.extent.insetBy(dx: -2, dy: -2)
+        func p(_ x: CGFloat, _ y: CGFloat) -> CIVector { CIVector(cgPoint: tilt.kept(CGPoint(x: x, y: y))) }
+        return img.clampedToExtent().cropped(to: drawn).applyingFilter("CIPerspectiveTransform", parameters: [
+            "inputTopLeft": p(drawn.minX, drawn.maxY), "inputTopRight": p(drawn.maxX, drawn.maxY),
+            "inputBottomRight": p(drawn.maxX, drawn.minY), "inputBottomLeft": p(drawn.minX, drawn.minY),
+        ]).cropped(to: CGRect(origin: .zero, size: tilt.keptSize))
+    }
+
+    /// The other way: `image`, over what the tilt keeps (and around it, for a picture drawn out past its edges),
+    /// on the picture before it was tilted. What `image` doesn't cover stays see-through.
+    private func untilted(_ image: CIImage, _ tilt: Tilt) -> CIImage {
+        // All of the picture, as the tilt shows it, comes from within this (cut back toward what's kept in the
+        // unlikely case that a corner of it has no place in the picture).
+        let c = tilt.corners
+        let xs = [c.topLeft.x, c.topRight.x, c.bottomRight.x, c.bottomLeft.x], ys = [c.topLeft.y, c.topRight.y, c.bottomRight.y, c.bottomLeft.y]
+        let kept = CGRect(origin: .zero, size: tilt.keptSize)
+        var region = CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
+            .union(kept).insetBy(dx: -2, dy: -2)
+        for _ in 0..<12 where !tilt.reaches(region) {
+            region = CGRect(x: (region.minX + kept.minX) / 2, y: (region.minY + kept.minY) / 2,
+                            width: (region.width + kept.width) / 2, height: (region.height + kept.height) / 2)
         }
-        return normalized(img)
+        if !tilt.reaches(region) { region = kept }
+        // (Exactly the region's size, see-through where the image isn't: the transform maps its corners.)
+        func p(_ x: CGFloat, _ y: CGFloat) -> CIVector { CIVector(cgPoint: tilt.picture(CGPoint(x: x, y: y))) }
+        return image.cropped(to: region).composited(over: CIImage(color: .clear).cropped(to: region))
+            .applyingFilter("CIPerspectiveTransform", parameters: [
+                "inputTopLeft": p(region.minX, region.maxY), "inputTopRight": p(region.maxX, region.maxY),
+                "inputBottomRight": p(region.maxX, region.minY), "inputBottomLeft": p(region.minX, region.minY),
+            ]).cropped(to: CGRect(origin: .zero, size: tilt.size))
     }
 
     /// The selected objects' adjustments that change something, each with its selection stretched over the image
