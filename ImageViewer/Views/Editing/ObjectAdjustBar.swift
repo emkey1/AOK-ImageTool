@@ -25,6 +25,11 @@ struct ObjectAdjustBar: View {
                         .disabled(model.objectSession?.redo.isEmpty ?? true)
                         .help("Redo (⇧⌘Z)")
                 }
+                Button("Edit Selection…") {
+                    if let target = model.currentAdjustTarget { model.editSelection(of: target) }
+                }
+                .disabled(model.currentAdjustTarget == nil)
+                .help("Change what's selected: paint in what was missed, or take away what shouldn't be adjusted")
                 Button("Select Another…") { model.activeTool = .selectToAdjust }
                     .help("Click another object to adjust it on its own")
                 Button("Cancel") { model.cancelAdjustingObjects() }
@@ -58,7 +63,7 @@ struct ObjectAdjustBar: View {
             return "Select an object to adjust."
         }
         let which = objects.count > 1 ? "Object \(index + 1) of \(objects.count)" : "The object"
-        return "\(which): the Adjust panel's sliders change it alone. The rest of the picture stays as it is."
+        return "\(which): the Adjust panel's sliders change it alone."
     }
 
     private var doneHelp: String {

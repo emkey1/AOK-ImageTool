@@ -221,6 +221,7 @@ final class PhotosLibrary {
         var paths = (e.removals?.map(\.path) ?? []) + (e.localAdjustments?.map(\.mask) ?? [])
         if let path = e.extendFill?.path { paths.append(path) }
         if case .image(let path, _) = e.background { paths.append(path) }
+        if case .object(let id) = e.cutout { paths.append(SelectionStore.cutoutURL(id).path) }
         guard !paths.isEmpty else { return }
         Prefs.set(keptFiles.union(paths).sorted(), PrefKey.photosEditFiles)
     }

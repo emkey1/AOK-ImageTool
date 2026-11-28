@@ -43,6 +43,10 @@ enum ActiveTool: Equatable {
     /// Remove and Change Objects, and Clone & Heal: the tools that paint over the picture, with their own undo,
     /// zoom and brush.
     var paintsObjects: Bool { self == .removeObjects || self == .changeObjects || self == .cloneHeal }
+
+    /// Those and Select Object: the tools with a picture of their own to zoom and a brush, whose steps ⌘Z takes
+    /// back.
+    var hasCanvas: Bool { paintsObjects || self == .selectObject || self == .selectToAdjust }
 }
 
 /// What the canvas should draw right now.
@@ -118,6 +122,9 @@ final class ViewerModel {
     /// The selected object the Adjust panel's sliders change, instead of the whole picture, in Adjust Objects
     /// (see `currentAdjustTarget`).
     var adjustTarget: AdjustTarget?
+    /// The object whose selection Select Object is open to change (Edit Selection… in Adjust Objects), rather than
+    /// to select another.
+    var selectionEdit: AdjustTarget?
     /// Adjust Objects in progress (see `ObjectSession`).
     var objectSession: ObjectSession?
     var showFilmstrip: Bool = Prefs.showFilmstrip {
@@ -146,6 +153,7 @@ final class ViewerModel {
             if activeTool != nil { pickingWhiteBalance = false }
             // Adjust Objects put away some other way (another picture, the grid) is cancelled.
             if objectSession != nil, activeTool != .adjustObjects, activeTool != .selectToAdjust { leaveObjectSession() }
+            if activeTool != .selectToAdjust { selectionEdit = nil }
         }
     }
     /// The image the open tool was opened on.

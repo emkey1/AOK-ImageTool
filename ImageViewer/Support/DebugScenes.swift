@@ -81,6 +81,10 @@ enum DebugScenes {
                 $0.straighten = -1.5
             }
             model.activeTool = .crop
+        case "select", "select-alone", "select-touchup":
+            // Select Object with what's under a click selected (`select-alone`: shown on its own; `select-touchup`:
+            // part of it painted out and being painted back in).
+            model.activeTool = .selectObject
         case "remove":
             model.beginRemoveObjects()
         case "change":

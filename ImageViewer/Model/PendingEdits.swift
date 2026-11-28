@@ -72,8 +72,11 @@ final class PendingEdits {
             if let restrictedTo, !restrictedTo.contains(url) { continue }
             let modDate = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             var edits = entry.edits
-            // Object masks come from a click-to-select session that's gone; subject masks are recomputed on demand.
-            if case .object = edits.cutout { edits.removeCutout() }
+            // A selected object's cutout is kept in a file (one from before they were isn't there: its selection
+            // went with the session it was made in); subject masks are recomputed on demand.
+            if case .object(let id) = edits.cutout, !FileManager.default.fileExists(atPath: SelectionStore.cutoutURL(id).path) {
+                edits.removeCutout()
+            }
             // A missing Extend fill is simply made again (same seed, same result).
             if let fill = edits.extendFill, !FileManager.default.fileExists(atPath: fill.path) { edits.extendFill = nil }
             if case .image(let picture, _) = edits.background, !FileManager.default.fileExists(atPath: picture) {
@@ -111,9 +114,13 @@ final class PendingEdits {
         Set(entries.values.flatMap { $0.edits.removals?.map(\.path) ?? [] })
     }
 
-    /// Selections of objects that pending edits adjust on their own.
+    /// Selections of objects that pending edits adjust on their own, or cut out.
     var selectionPaths: Set<String> {
-        Set(entries.values.flatMap { $0.edits.localAdjustments?.map(\.mask) ?? [] })
+        var paths = Set(entries.values.flatMap { $0.edits.localAdjustments?.map(\.mask) ?? [] })
+        for entry in entries.values {
+            if case .object(let id) = entry.edits.cutout { paths.insert(SelectionStore.cutoutURL(id).path) }
+        }
+        return paths
     }
 
     // MARK: - Storage

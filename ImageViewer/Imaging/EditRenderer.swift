@@ -25,10 +25,24 @@ nonisolated final class MaskStore: @unchecked Sendable {
         return id
     }
 
+    /// A selection cut out (`mask`, on the image's own pixels, `size` big), kept in Application Support as
+    /// well, so the picture is still cut out after a relaunch (when the file couldn't be written, until then).
+    func keepObjectMask(_ mask: CIImage, size: CGSize) -> UUID {
+        let id = addObjectMask(mask)
+        try? SelectionStore.write(mask, size: size, to: SelectionStore.cutoutURL(id))
+        return id
+    }
+
     func mask(for cutout: Cutout, url: URL) -> CIImage? {
         switch cutout {
-        case .subject: subjectMask(for: url)
-        case .object(let id): lock.withLock { objectMasks[id] }
+        case .subject:
+            return subjectMask(for: url)
+        case .object(let id):
+            if let mask = lock.withLock({ objectMasks[id] }) { return mask }
+            // (From before the relaunch: read once, then kept.)
+            guard let kept = SelectionStore.load(SelectionStore.cutoutURL(id).path) else { return nil }
+            lock.withLock { objectMasks[id] = kept }
+            return kept
         }
     }
 
@@ -312,6 +326,35 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         return carriedToSource(shown, g, under: CIImage(color: .black))
     }
 
+    /// A mask on the image's own pixels (any size: stretched over it), over the picture as `e` shows it in full
+    /// (`shownGeometry`'s `shown` big, at the origin): `sourceMask` the other way, for starting Select Object
+    /// from what's cut out or adjusted already. Nothing is selected where there's none of the image (an Extend
+    /// fill).
+    func shownMask(_ mask: CIImage, shownWith e: EditState, size: CGSize) -> CIImage {
+        let ext = CGRect(origin: .zero, size: size)
+        let m = mask.extent
+        guard m.width > 0, m.height > 0, ext.width > 0, ext.height > 0 else { return mask }
+        let fitted = mask
+            .transformed(by: CGAffineTransform(translationX: -m.minX, y: -m.minY))
+            .transformed(by: CGAffineTransform(scaleX: ext.width / m.width, y: ext.height / m.height))
+            .cropped(to: ext)
+        return cropped(shaped(fitted, e), as: e)
+    }
+
+    /// A mask shaped as the picture is (`shaped`), cropped as it is too: black where the crop reaches past it.
+    private func cropped(_ shapedMask: CIImage, as e: EditState) -> CIImage {
+        let frame = shapedMask.extent
+        var m = shapedMask.composited(over: CIImage(color: .black))
+        if let c = e.crop {
+            var rect = Self.pixelRect(c, in: frame).integral
+            if !e.cropExtendsBeyondImage { rect = rect.intersection(frame) }
+            m = rect.width >= 1 && rect.height >= 1 ? m.cropped(to: rect) : m.cropped(to: frame)
+        } else {
+            m = m.cropped(to: frame)
+        }
+        return normalized(m)
+    }
+
     /// A background picture filling the picture as `frame` showed it (scaled to fill, centered, upright), on the
     /// image's own pixels (`size` big), so that after the frame's turns and crop it's upright and fills what was
     /// shown. Past what was shown its edges are drawn out (seen only if the crop is widened later).
@@ -478,18 +521,9 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         var selected = LocalAdjustment(mask: path)
         selected.exposure = 1   // (so it isn't left out as changing nothing)
         probe.localAdjustments = [selected]
-        guard var m = localLayers(probe, onto: ext).first?.mask else { return nil }
+        guard let layer = localLayers(probe, onto: ext).first?.mask else { return nil }
         // Cropped as the picture is (onto an Extend fill, nothing is selected).
-        let frame = m.extent
-        m = m.composited(over: CIImage(color: .black))
-        if let c = e.crop {
-            var rect = Self.pixelRect(c, in: frame).integral
-            if !e.cropExtendsBeyondImage { rect = rect.intersection(frame) }
-            if rect.width >= 1, rect.height >= 1 { m = m.cropped(to: rect) } else { m = m.cropped(to: frame) }
-        } else {
-            m = m.cropped(to: frame)
-        }
-        m = normalized(m)
+        let m = cropped(layer, as: e)
         let shown = picture.extent
         let shade = CIImage(color: CIColor(red: 0, green: 0, blue: 0, alpha: 0.62)).cropped(to: shown).composited(over: picture)
         let out = picture.applyingFilter("CIBlendWithMask", parameters: [

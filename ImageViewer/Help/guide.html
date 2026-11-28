@@ -58,6 +58,7 @@
   <a href="#change">Changing objects</a>
   <a href="#clone">Clone &amp; Heal</a>
   <a href="#newimage">New images from a description</a>
+  <a href="#select">Selecting objects</a>
   <a href="#cutouts">Subjects and backgrounds</a>
   <a href="#intelligence">Apple Intelligence</a>
   <a href="#files">Saving, exporting and files</a>
@@ -160,7 +161,7 @@
 <p>Edits never touch the file until you <a href="#files">Save</a>. Every change can be undone (<kbd>⌘Z</kbd>), and unsaved edits are still there after you quit and reopen the app.</p>
 <ul>
   <li><b>Adjust</b> (<kbd>E</kbd>, or the toolbar button) has <b>Straighten</b> (an angle slider, buttons that turn the picture 1° or 0.1° at a time, <b>Auto</b>, and <b>Vertical</b> and <b>Horizontal</b>, which tilt it as they do in the <a href="#crop">Crop tool</a>; what they turn out of the frame is cropped away), <a href="#whitebalance"><b>White Balance</b></a>, <b>Light</b> (exposure, brightness, contrast, highlights, shadows), <b>Color</b> (saturation, vibrance), <b>Detail</b> (sharpness, noise reduction, vignette) and 13 <b>filters</b>, each previewed on your photo (<b>Intensity</b> sets how strong the chosen one is), and your own <a href="#presets"><b>presets</b></a>. Double-click a slider's name to reset it.</li>
-  <li id="objects"><b>Adjust Objects</b> changes one object on its own, leaving the rest of the photo as it is. Click <b>Adjust Objects…</b> under <b>Objects</b> in Adjust (or choose it in the Intelligence menu), click the person or thing in the photo (click more to add to it, <kbd>⌥</kbd>-click to leave something out), and click <b>Adjust</b>. Adjust's White Balance, Light, Color and Detail sliders then change just that object, fading into the rest at its edges, with a small picture of it (the rest darkened) above them. <b>Select Another…</b> adds more objects, each chosen from the <b>Adjusting</b> menu; the trash button takes one's adjustments away; <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd> step through your changes, and <b>Reset Object</b> sets one's sliders back. <b>Done</b> saves the result as a copy, “<i>name</i> (Adjusted)”, which <a href="#stacks">stacks</a> on the original; the original stays as it was. <b>Cancel</b> leaves the photo as it was. With <b>Adjust Objects makes a copy</b> turned off in <b>Settings › Editing</b>, the adjustments become an edit of the photo instead (non-destructive, undoable, saved with Save); they turn and crop with it, Copy Edits leaves them out, Reset Adjustments takes them away, and Adjust Objects opens on them to change them again. (Select Object… in the Intelligence menu has <b>Adjust</b> too.)</li>
+  <li id="objects"><b>Adjust Objects</b> changes one object on its own, leaving the rest of the photo as it is. Click <b>Adjust Objects…</b> under <b>Objects</b> in Adjust (or choose it in the Intelligence menu), click the person or thing in the photo (click more to add to it, <kbd>⌥</kbd>-click to leave something out, and paint to add what a click missed or <kbd>⌥</kbd>-paint to take away, as in <a href="#select">Select Object</a>), and click <b>Adjust</b>. Adjust's White Balance, Light, Color and Detail sliders then change just that object, fading into the rest at its edges, with a small picture of it (the rest darkened) above them. <b>Select Another…</b> adds more objects, each chosen from the <b>Adjusting</b> menu; <b>Edit Selection…</b> opens the selection of the one being adjusted again, to paint in what was missed or take away what shouldn't be adjusted (it keeps its adjustments); the trash button takes one's adjustments away; <kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd> step through your changes, and <b>Reset Object</b> sets one's sliders back. <b>Done</b> saves the result as a copy, “<i>name</i> (Adjusted)”, which <a href="#stacks">stacks</a> on the original; the original stays as it was. <b>Cancel</b> leaves the photo as it was. With <b>Adjust Objects makes a copy</b> turned off in <b>Settings › Editing</b>, the adjustments become an edit of the photo instead (non-destructive, undoable, saved with Save); they turn and crop with it, Copy Edits leaves them out, Reset Adjustments takes them away, and Adjust Objects opens on them to change them again. (Select Object… in the Intelligence menu has <b>Adjust</b> too.)</li>
   <li id="whitebalance"><b>White Balance</b> takes out a color cast: the orange of indoor lamps, the blue of shade, the green of fluorescent light, the yellow of an old print.
     <ul>
       <li><b>Pick</b> (the eyedropper), then click something in the photo that should be white or gray: a wall, a shirt, a cloud, paper. The whole photo is corrected so it is. Pick something lit, not in deep shadow or blown out; <kbd>Esc</kbd> puts the eyedropper away. Clicking a <b>face</b> works too: skin isn't gray, so on a face it's balanced for natural skin instead, leaving skin that already looks natural as it is.</li>
@@ -289,10 +290,26 @@
 <p>It uses the <a href="#model">generative fill model</a> (the first time, it offers the download). For an animation, illustration or sketch, <b>Illustration, Animation or Sketch…</b> hands the description to Image Playground, on Macs with Apple Intelligence; what you pick there is saved the same way.</p>
 <p class="note">The pictures come from a model trained on photos at 512 pixels: good for scenes, landscapes, animals and objects, weaker at hands, faces in a crowd and lettering. Each one is new: describe it differently, or Generate Again, if it isn't right.</p>
 
+<h2 id="select">Selecting objects</h2>
+<p><b>Intelligence › Select Object…</b> (or <b>Select Object…</b> in the Intelligence panel) selects a person or thing in a photo, to cut it out, copy it, save it on its own, or adjust it by itself. <a href="#objects">Adjust Objects</a> selects the same way.</p>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="guide-select-dark.heic">
+  <img class="shot" src="guide-select-light.heic" alt="Select Object on a photo of a red fox in snow: the fox is selected, in color with a white line around it, and the rest of the picture is gray and dark. One ear was left out and is being painted back in with the brush. Below are Show (Dimmed, Tinted, Alone), zoom, the brush slider, and Copy, Save as PNG, Adjust, Cancel and Cut Out.">
+</picture>
+<ul>
+  <li><b>Click</b> an object to select it; click more to add, <kbd>⌥</kbd>-click to leave something out.</li>
+  <li><b>Paint</b> where a click missed part of something, or took too much: painting over a part adds it to the selection, <kbd>⌥</kbd>-painting takes it away, and circling something takes everything inside the circle. <kbd>[</kbd> and <kbd>]</kbd>, or the slider, size the brush, which stays the same size on screen, so zoomed in it paints finer detail. What you paint stays as you painted it when a later click finds more.</li>
+  <li><b>See what's selected.</b> It has a line around it, and <b>Show</b> chooses the rest: <b>Dimmed</b> (the rest of the picture gray and dark), <b>Tinted</b> (the selection tinted, the rest as it is: good for something dark on a dark background), or <b>Alone</b> (only the selection, as cutting it out leaves it: the way to check that nothing is missing). <b>Zoom in</b> to look at its edges: pinch, <kbd>⌘</kbd>-scroll, <kbd>⌘+</kbd> and <kbd>⌘−</kbd> (or the buttons in the bar), and scroll to move around; <kbd>⌘0</kbd> fits the picture again.</li>
+  <li><kbd>⌘Z</kbd> and <kbd>⇧⌘Z</kbd> step back and forward through your clicks and strokes; <b>Clear</b> starts over.</li>
+  <li>Then <b>Cut Out</b> keeps only the selection (still undoable, and what's <a href="#cutouts">behind it</a> can be a color, a blur or another picture); <b>Copy</b> and <b>Save as PNG…</b> take it as a picture of its own; <b>Adjust</b> changes <a href="#objects">its light and color on its own</a>.</li>
+  <li><b>To change a selection later</b>, choose Select Object… again on a picture that's cut out (by Cut Out, or by Remove Background): the whole picture shows, with what's cut out selected. Paint in what's missing, or take away what shouldn't be there, and <b>Cut Out</b> replaces it. In Adjust Objects, <b>Edit Selection…</b> does the same for the object being adjusted.</li>
+</ul>
+<p>What a click finds depends on the macOS: see <a href="#macos">Which macOS has what</a>. Painting works on all of them.</p>
+
 <h2 id="cutouts">Subjects and backgrounds</h2>
 <ul>
   <li><b>Remove Background</b> (<kbd>⌥⌘B</kbd>, or in the Intelligence panel) keeps the subject: a person, pet, object or several. Choose it again to restore the background.</li>
-  <li><b>Select Object…</b> (Intelligence menu) lets you pick exactly what to keep. Click an object to select it, click more to add, <kbd>⌥</kbd>-click to leave something out. Then <b>Cut Out</b> (keeps only the selection, still undoable), <b>Copy</b>, <b>Save as PNG…</b>, or <b>Adjust</b> (<a href="#objects">its light and color on its own</a>).</li>
+  <li><b>Select Object…</b> (Intelligence menu, or the Intelligence panel) lets you pick exactly what to keep, by clicking and painting: see <a href="#select">Selecting objects</a>. Then <b>Cut Out</b> (keeps only the selection, still undoable), <b>Copy</b>, <b>Save as PNG…</b>, or <b>Adjust</b> (<a href="#objects">its light and color on its own</a>). To change a cutout later, choose Select Object… again.</li>
   <li><b>Copy Subject</b> <kbd>⌥⇧⌘C</kbd> puts just the subject on the clipboard, ready to paste into Keynote, Messages or a document.</li>
   <li><b>A new background.</b> With the background removed, or for a picture that already has transparency (a logo, a saved cutout), choose what goes behind it in the Intelligence panel or <b>Intelligence › Background</b>: transparent, a color, the original blurred (a portrait look), a picture of your own, or a generated one:
     <ul>
@@ -401,6 +418,7 @@
   <tr><td><kbd>⇧⌘X</kbd></td><td><a href="#remove">Remove objects</a>; in it, <kbd>[</kbd> <kbd>]</kbd> size the brush, <kbd>⌘+</kbd> <kbd>⌘−</kbd> <kbd>⌘0</kbd> zoom, and <kbd>⌘Z</kbd> <kbd>⇧⌘Z</kbd> step through its removals</td></tr>
   <tr><td><kbd>⇧⌘J</kbd></td><td><a href="#change">Change objects</a>, with the same keys; <kbd>⌥</kbd>-click or <kbd>⌥</kbd>-paint takes away from the selection</td></tr>
   <tr><td><kbd>⇧⌘H</kbd></td><td><a href="#clone">Clone &amp; heal</a>, with the same keys; <kbd>⌥</kbd>-click sets where to copy from</td></tr>
+  <tr><td><kbd>[</kbd> <kbd>]</kbd> <kbd>⌘Z</kbd></td><td>In <a href="#select">Select Object</a> (Intelligence menu), the same keys: brush size, zoom, and stepping through clicks and strokes; <kbd>⌥</kbd>-click or <kbd>⌥</kbd>-paint takes away from the selection</td></tr>
   <tr><td><kbd>⌘N</kbd> <kbd>⌥⌘O</kbd> <kbd>⌘`</kbd></td><td>New window, open in a new window, next window</td></tr>
   <tr><td><kbd>⌥⌘N</kbd></td><td>New folder, opened</td></tr>
   <tr><td><kbd>⇧⌘N</kbd></td><td><a href="#newimage">New image from a description</a></td></tr>
@@ -427,7 +445,7 @@
   <tr><td>Describe, Ask, suggested names</td><td>—</td><td>—</td><td>✓¹ from Vision's labels</td><td>✓¹ looks at the image</td></tr>
   <tr><td>Upscale with AI, Sharpen Enlarged Images</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
   <tr><td>Exporting as AVIF (opening AVIF works everywhere)</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
-  <tr><td>Select Object refining with more clicks</td><td>the object under the click</td><td>same</td><td>same</td><td>✓</td></tr>
+  <tr><td>What a click selects in Select Object (painting works everywhere)</td><td>the whole object under it: a person, a pet, a thing in front</td><td>same</td><td>same</td><td>any object or part, each click refining what the ones before found</td></tr>
   <tr><td>Extend › Generate, Background › Generate on This Mac</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">generative fill model</a> is installed. With Apple Intelligence (macOS 26 and later), it also describes the setting and the subject for the model.</td></tr>
   <tr><td>Colorize</td><td colspan="4">Any version, on Apple silicon, once the <a href="#model">colorizing model</a> is installed</td></tr>
   <tr><td>Fix Blur</td><td colspan="4">Any version, on Apple silicon, once its <a href="#model">models</a> are installed</td></tr>

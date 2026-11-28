@@ -27,6 +27,8 @@ Apple's on-device intelligence, on files or on your Photos library. Your picture
   can be undone, and unsaved edits survive quitting.
 - **Adjust one object on its own:** click a person or thing and its light, color and detail change by themselves,
   fading into the rest of the photo at its edges.
+- **Select exactly what you mean:** click objects to select them, see the selection outlined (or on its own), and
+  paint in what a click missed or paint out what it shouldn't have taken; then cut it out, copy it, or adjust it.
 - **Your Photos library too.** Open photos from Photos (Live Photos stay live), edit them here, and Save sends the edit
   back as a Photos edit you can revert, synced by iCloud Photos. Or use Photos' Image ▸ Edit With, or import photos
   into a folder as ordinary files.

@@ -149,13 +149,13 @@ extension ViewerModel {
             pasteImage()
             return true
         }
-        // In Remove and Change Objects (and Adjust Objects), ⌘Z and ⇧⌘Z step through its changes, and ⌘+, ⌘− and ⌘0
-        // zoom its picture.
-        if mods == .command, activeTool?.paintsObjects == true || activeTool == .adjustObjects, event.charactersIgnoringModifiers?.lowercased() == "z" {
+        // In Remove and Change Objects and Select Object (and Adjust Objects), ⌘Z and ⇧⌘Z step through its changes,
+        // and ⌘+, ⌘− and ⌘0 zoom its picture.
+        if mods == .command, activeTool?.hasCanvas == true || activeTool == .adjustObjects, event.charactersIgnoringModifiers?.lowercased() == "z" {
             NotificationCenter.default.post(name: event.modifierFlags.contains(.shift) ? .toolRedo : .toolUndo, object: self)
             return true
         }
-        if activeTool?.paintsObjects == true, mods == .command || mods.isEmpty, let step = Self.zoomStep(event.charactersIgnoringModifiers) {
+        if activeTool?.hasCanvas == true, mods == .command || mods.isEmpty, let step = Self.zoomStep(event.charactersIgnoringModifiers) {
             NotificationCenter.default.post(name: .toolZoom, object: self, userInfo: ["step": step])
             return true
         }
@@ -200,8 +200,8 @@ extension ViewerModel {
                 NotificationCenter.default.post(name: .toolCommit, object: self)
                 return true
             default:
-                // [ and ] size Remove and Change Objects' brush.
-                if activeTool?.paintsObjects == true, let ch = event.charactersIgnoringModifiers, ch == "[" || ch == "]" {
+                // [ and ] size the brush of Remove and Change Objects and Select Object.
+                if activeTool?.hasCanvas == true, let ch = event.charactersIgnoringModifiers, ch == "[" || ch == "]" {
                     NotificationCenter.default.post(name: .toolBrush, object: self, userInfo: ["larger": ch == "]"])
                     return true
                 }

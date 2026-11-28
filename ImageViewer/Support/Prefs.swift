@@ -12,6 +12,8 @@ nonisolated enum PrefKey {
     static let extendMethod = "extendMethod"
     static let removalMethod = "removalMethod"
     static let removalBrush = "removalBrush"
+    static let selectionBrush = "selectionBrush"
+    static let selectionLook = "selectionLook"
     static let cloneHeals = "cloneHeals"
     static let checkerboard = "checkerboardForTransparency"
     static let upscaleSmallImages = "upscaleSmallImages"
@@ -188,6 +190,16 @@ nonisolated enum Prefs {
     static var removalBrush: Double {
         let v = d.double(forKey: PrefKey.removalBrush)
         return v > 0 ? v : 40
+    }
+
+    /// Select Object's brush diameter, in points on screen, and how it shows the selection.
+    static var selectionBrush: Double {
+        let v = d.double(forKey: PrefKey.selectionBrush)
+        return v > 0 ? v : 24
+    }
+
+    static var selectionLook: ObjectSelection.Look {
+        d.string(forKey: PrefKey.selectionLook).flatMap(ObjectSelection.Look.init(rawValue:)) ?? .dimmed
     }
 
     /// Saves a preference, except in debug-hook runs (screenshots, `-debugExtend`), which share the

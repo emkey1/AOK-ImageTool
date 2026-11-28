@@ -170,6 +170,27 @@ extension ViewerModel {
         activeTool = .adjustObjects
     }
 
+    /// Edit Selection… in Adjust Objects: Select Object opens on `target`'s selection, to add what it missed or
+    /// take away what it shouldn't have.
+    func editSelection(of target: AdjustTarget) {
+        guard objectSession?.url == target.url, target.url == currentURL else { return }
+        selectionEdit = target
+        activeTool = .selectToAdjust
+    }
+
+    /// Done there: `mask` (on the image's own pixels, `size` big) is `target`'s selection from now on, its
+    /// adjustments as they were (one of Adjust Objects' steps, when it has some).
+    func replaceSelection(of target: AdjustTarget, with mask: CIImage, size: CGSize) throws {
+        let path = try SelectionStore.save(mask, size: size)
+        if currentEdits.localAdjustments?.contains(where: { $0.id == target.id }) == true {
+            changeObjects { $0.setLocalMask(path, of: target.id) }
+        }
+        adjustTarget = AdjustTarget(url: target.url, id: target.id, mask: path)
+        inspectorTab = .adjust
+        showInspector = true
+        activeTool = .adjustObjects
+    }
+
     /// Cancel in Select Object, in Adjust Objects: back to the objects there are, or out if there are none.
     func cancelSelectingToAdjust() {
         guard objectSession != nil, let url = currentURL else { return activeTool = nil }
@@ -217,9 +238,17 @@ extension ViewerModel {
     }
 
     /// (With none being adjusted, the first there is. One whose adjustments a step took away can still be
-    /// adjusted: its selection is kept.)
+    /// adjusted: its selection is kept. And one whose selection a step changed, or changed back, is adjusted
+    /// through the selection it has now.)
     private func keepTargetValid() {
-        guard adjustTarget == nil, let url = currentURL, let first = currentEdits.localAdjustments?.first else { return }
+        guard let url = currentURL else { return }
+        if let t = adjustTarget, t.url == url {
+            if let now = currentEdits.localAdjustments?.first(where: { $0.id == t.id }), now.mask != t.mask {
+                adjustTarget = AdjustTarget(url: url, id: t.id, mask: now.mask)
+            }
+            return
+        }
+        guard adjustTarget == nil, let first = currentEdits.localAdjustments?.first else { return }
         adjustTarget = AdjustTarget(url: url, id: first.id, mask: first.mask)
     }
 
@@ -279,6 +308,12 @@ nonisolated extension EditState {
         localAdjustments = list
     }
 
+    /// Gives the selected object `id` another selection (`mask`), its adjustments as they were.
+    mutating func setLocalMask(_ mask: String, of id: UUID) {
+        guard let i = localAdjustments?.firstIndex(where: { $0.id == id }) else { return }
+        localAdjustments?[i].mask = mask
+    }
+
     /// Takes the selected object `id`'s adjustments away.
     mutating func removeLocalAdjustment(_ id: UUID) {
         localAdjustments?.removeAll { $0.id == id }
@@ -296,8 +331,21 @@ nonisolated enum SelectionStore {
         AppStorageLocation.support.appendingPathComponent("Selections")
     }
 
+    /// Where an object's cutout (`Cutout.object`) is kept, so it's still cut out after a relaunch.
+    static func cutoutURL(_ id: UUID) -> URL {
+        directory.appendingPathComponent("cutout-" + id.uuidString).appendingPathExtension("png")
+    }
+
     /// Keeps `mask` (white = selected, on the image's own pixels, `size` big) and returns its path.
     static func save(_ mask: CIImage, size: CGSize) throws -> String {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
+        try write(mask, size: size, to: url)
+        return url.path
+    }
+
+    /// `mask` as a grayscale PNG at `url`, at most `maxSide` on its long side.
+    static func write(_ mask: CIImage, size: CGSize, to url: URL) throws {
         let s = min(1, maxSide / max(size.width, size.height, 1))
         let w = max(1, Int((size.width * s).rounded())), h = max(1, Int((size.height * s).rounded()))
         let ext = mask.extent
@@ -312,10 +360,8 @@ nonisolated enum SelectionStore {
                                  space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
                                  provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
         else { throw ImageWriteError.finalizeFailed }
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent(UUID().uuidString).appendingPathExtension("png")
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try ImageWriter.writeAsIs(gray, to: url, format: .png, quality: 1)
-        return url.path
     }
 
     /// A kept selection as a mask, its values as they were kept (not taken for gray levels).

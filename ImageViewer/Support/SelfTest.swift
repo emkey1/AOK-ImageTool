@@ -2056,6 +2056,287 @@ enum SelfTest {
         }
     }
 
+    /// Select Object's selection: what's painted is added or taken away exactly, a circled area is taken whole,
+    /// what Vision finds changes only what it changed, each step can be taken back, and the selection shows three
+    /// ways. Opened again it starts from what's cut out or adjusted (a selection goes onto the picture as shown
+    /// and back); an object's cutout outlasts a relaunch; and Adjust Objects' Edit Selection gives an object
+    /// another selection and keeps its adjustments. (`AOK_SELFTEST_ONLY=select` runs just these.)
+    private static func selectionChecks(decodedByName: [String: DecodedImage], out: URL) async {
+        let w = 400, h = 300
+        func block(_ rect: CGRect, value: UInt8 = 255) -> [UInt8] {
+            (0..<(w * h)).map { rect.contains(CGPoint(x: Double($0 % w) + 0.5, y: Double($0 / w) + 0.5)) ? value : 0 }
+        }
+
+        // Painting: exactly what's painted, in or out; a circled area whole.
+        var s = ObjectSelection(width: w, height: h)
+        check(s.isEmpty && !s.canUndo, "nothing is selected to begin with")
+        let across = [CGPoint(x: 100, y: 150), CGPoint(x: 300, y: 150)]
+        s.paint(across, diameter: 40, subtract: false)
+        let expected = (200.0 * 40 + Double.pi * 400) / Double(w * h)
+        check(s.value(x: 200, y: 150) == 255 && s.value(x: 200, y: 167) == 255 && s.value(x: 200, y: 173) == 0 && s.value(x: 85, y: 150) == 255
+              && s.value(x: 76, y: 150) == 0 && abs(s.coverage - expected) < 0.002,
+              "painting adds what's painted and no more (\(String(format: "%.4f", s.coverage)) of the picture, \(String(format: "%.4f", expected)) painted)")
+        let painted = s.mask
+        check(!s.paint(across, diameter: 30, subtract: false) && s.mask == painted, "painting over what's selected already changes nothing, and isn't a step")
+        s.paint([CGPoint(x: 200, y: 100), CGPoint(x: 200, y: 200)], diameter: 20, subtract: true)
+        check(s.value(x: 200, y: 150) == 0 && s.value(x: 195, y: 150) == 0 && s.value(x: 215, y: 150) == 255 && s.value(x: 120, y: 150) == 255,
+              "painting with ⌥ takes away what's painted and no more")
+        var circled = ObjectSelection(width: w, height: h)
+        let ring = (0...40).map { i -> CGPoint in
+            let a = Double(i) / 40 * 2 * Double.pi
+            return CGPoint(x: 200 + 70 * cos(a), y: 150 + 70 * sin(a))
+        }
+        circled.paint(ring, diameter: 8, subtract: false)
+        var line = ObjectSelection(width: w, height: h)
+        line.paint(Array(ring.prefix(20)), diameter: 8, subtract: false)
+        check(circled.value(x: 200, y: 150) == 255 && circled.value(x: 200, y: 60) == 0 && line.value(x: 200, y: 150) == 0,
+              "circling something takes all of it; a stroke that doesn't come round takes only what it covers")
+
+        // What Vision finds changes the selection only where its result changed.
+        let left = CGRect(x: 40, y: 60, width: 120, height: 180), right = CGRect(x: 240, y: 60, width: 100, height: 100)
+        var r = ObjectSelection(width: w, height: h)
+        r.refine(block(left), adding: CGPoint(x: 0.25, y: 0.5), exclude: false)
+        r.paint([CGPoint(x: 200, y: 260), CGPoint(x: 220, y: 260)], diameter: 20, subtract: false)        // painted in, outside it
+        r.paint([CGPoint(x: 60, y: 80), CGPoint(x: 80, y: 80)], diameter: 16, subtract: true)              // painted out of it
+        let lessLeft = CGRect(x: 40, y: 60, width: 120, height: 120)                                       // (its bottom third left out)
+        let both = zip(block(lessLeft), block(right)).map { max($0, $1) }
+        r.refine(both, adding: CGPoint(x: 0.72, y: 0.63), exclude: false)
+        check(r.value(x: 100, y: 120) == 255 && r.value(x: 290, y: 110) == 255 && r.value(x: 100, y: 220) == 0,
+              "a later click adds what it finds and takes away what it no longer does")
+        check(r.value(x: 210, y: 260) == 255 && r.value(x: 70, y: 80) == 0 && r.included.count == 2 && r.marks.count == 2,
+              "and what was painted in, or out, stays as painted")
+        var soft = ObjectSelection(width: w, height: h)
+        soft.refine(block(left, value: 128), adding: CGPoint(x: 0.25, y: 0.5), exclude: false)
+        soft.refine(block(left, value: 200), adding: CGPoint(x: 0.3, y: 0.5), exclude: false)
+        soft.paint([CGPoint(x: 100, y: 150)], diameter: 30, subtract: false)
+        check(soft.value(x: 60, y: 100) == 200 && soft.value(x: 100, y: 150) == 255, "a soft edge stays as soft as it was found (\(soft.value(x: 60, y: 100)) of 255)")
+
+        // An object found on its own (before macOS 27, or to take away with nothing clicked yet).
+        var t = ObjectSelection(width: w, height: h)
+        t.take(block(left), subtract: false, at: CGPoint(x: 0.25, y: 0.5))
+        let unchanged = t.take(block(left), subtract: false, at: CGPoint(x: 0.25, y: 0.5))
+        t.take(block(right), subtract: false, at: CGPoint(x: 0.72, y: 0.63))
+        t.take(block(left), subtract: true, at: CGPoint(x: 0.25, y: 0.5))
+        check(!unchanged && t.value(x: 100, y: 120) == 0 && t.value(x: 290, y: 110) == 255 && t.marks.map(\.added) == [true, true, false],
+              "clicked objects add up, and ⌥-clicking one takes it away again")
+
+        // Steps: each taken back and made again exactly; a new one after taking some back starts from there.
+        var u = ObjectSelection(width: w, height: h)
+        var history: [[UInt8]] = [u.mask]
+        u.refine(block(left), adding: CGPoint(x: 0.25, y: 0.5), exclude: false); history.append(u.mask)
+        u.paint(across, diameter: 30, subtract: false); history.append(u.mask)
+        u.paint([CGPoint(x: 100, y: 100), CGPoint(x: 100, y: 200)], diameter: 24, subtract: true); history.append(u.mask)
+        u.clear(); history.append(u.mask)
+        var back = true
+        for i in stride(from: history.count - 2, through: 0, by: -1) { back = back && u.undo() && u.mask == history[i] }
+        let atStart = !u.canUndo && u.isEmpty && u.included.isEmpty && u.marks.isEmpty
+        var forward = true
+        for i in 1..<history.count { forward = forward && u.redo() && u.mask == history[i] }
+        check(back && atStart && forward && !u.canRedo && u.isEmpty, "⌘Z takes back each click, stroke and Clear exactly, and ⇧⌘Z makes them again")
+        u.undo(); u.undo()
+        u.paint([CGPoint(x: 350, y: 30)], diameter: 20, subtract: false)
+        check(!u.canRedo && u.value(x: 350, y: 30) == 255 && u.value(x: 100, y: 100) == 255 && u.included.count == 1,
+              "a new step after taking some back goes on from there")
+
+        // Showing it: the rest gray and dark with a line around the selection; the selection tinted; or alone.
+        func rgba(_ image: CGImage) -> [UInt8] {
+            var px = [UInt8](repeating: 0, count: image.width * image.height * 4)
+            let ctx = CGContext(data: &px, width: image.width, height: image.height, bitsPerComponent: 8, bytesPerRow: image.width * 4,
+                                space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
+            return px
+        }
+        var colors = [UInt8](repeating: 255, count: w * h * 4)
+        for i in 0..<(w * h) { colors[i * 4] = 200; colors[i * 4 + 1] = UInt8(60 + (i % w) / 4); colors[i * 4 + 2] = 40 }
+        var sel = ObjectSelection(width: w, height: h)
+        sel.take(block(left), subtract: false, at: CGPoint(x: 0.25, y: 0.5))
+        if let ctx = CGContext(data: &colors, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                               bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+           let picture = ctx.makeImage(), let mask = sel.image,
+           let dimmed = ObjectSelection.shown(picture, mask: mask, look: .dimmed), let tinted = ObjectSelection.shown(picture, mask: mask, look: .tinted),
+           let alone = ObjectSelection.shown(picture, mask: mask, look: .alone) {
+            let (po, pd, pt, pa) = (rgba(picture), rgba(dimmed), rgba(tinted), rgba(alone))
+            func px(_ p: [UInt8], _ x: Int, _ y: Int) -> (Int, Int, Int, Int) { let i = (y * w + x) * 4; return (Int(p[i]), Int(p[i + 1]), Int(p[i + 2]), Int(p[i + 3])) }
+            func near(_ a: (Int, Int, Int, Int), _ b: (Int, Int, Int, Int)) -> Bool { abs(a.0 - b.0) <= 3 && abs(a.1 - b.1) <= 3 && abs(a.2 - b.2) <= 3 }
+            let inside = (100, 150), outside = (300, 220), edge = (40, 150)
+            func oi_g(_ p: [UInt8], _ x: Int, _ y: Int) -> Int { Int(p[(y * w + x) * 4 + 1]) }
+            let o = px(pd, outside.0, outside.1), original = px(po, outside.0, outside.1)
+            check(near(px(pd, inside.0, inside.1), px(po, inside.0, inside.1)) && abs(o.0 - o.1) <= 3 && abs(o.1 - o.2) <= 3 && o.0 < original.0 * 3 / 4,
+                  "Dimmed shows the selection as it is and the rest gray and dark (\(original.0),\(original.1),\(original.2) → \(o.0),\(o.1),\(o.2))")
+            // (At this size the line is two pixels of the edge, a little of the picture showing through them.)
+            let e0 = px(pd, edge.0, edge.1), e1 = px(pd, edge.0 - 1, edge.1), halo = px(pd, edge.0 - 3, edge.1)
+            check(min(e0.0, e0.1, e0.2) > 170 && min(e1.0, e1.1, e1.2) > 170 && halo.0 < o.0 - 8,
+                  "with a white line around the selection, dark outside it (\(e1.1) and \(e0.1) on its edge, where the picture is \(oi_g(po, edge.0, edge.1)) and the rest \(o.1); \(halo.1) just outside)")
+            let ti = px(pt, inside.0, inside.1), oi = px(po, inside.0, inside.1)
+            check(ti.2 > oi.2 + 40 && ti.0 < oi.0 - 20 && near(px(pt, outside.0, outside.1), original), "Tinted tints the selection and leaves the rest as it is")
+            let ai = px(pa, inside.0, inside.1)
+            check(ai.3 == 255 && near(ai, oi) && px(pa, outside.0, outside.1).3 == 0, "Alone shows the selection and nothing else")
+        } else {
+            check(false, "show a selection")
+        }
+
+        // A selection goes onto the image's own pixels (where a cutout is kept) and back onto the picture as it's
+        // shown, to start from when Select Object opens again: turned, flipped, straightened, tilted, cropped.
+        if let fox = decodedByName["Red Fox.heic"] {
+            let quad = Quad(topLeft: CGPoint(x: 0.04, y: 0.95), topRight: CGPoint(x: 0.92, y: 0.98),
+                            bottomRight: CGPoint(x: 0.96, y: 0.06), bottomLeft: CGPoint(x: 0.03, y: 0.02))
+            let shapes: [(String, (inout EditState) -> Void)] = [
+                ("as taken", { _ in }),
+                ("turned right and cropped", { $0.quarterTurns = 1; $0.crop = CGRect(x: 0.05, y: 0.08, width: 0.9, height: 0.8) }),
+                ("turned left and flipped", { $0.quarterTurns = 3; $0.flipHorizontal = true }),
+                ("straightened and cropped", { $0.straighten = 6; $0.crop = CGRect(x: 0.1, y: 0.05, width: 0.8, height: 0.85) }),
+                ("tilted", { $0.vertical = 9; $0.horizontal = -6; $0.straighten = 2 }),
+                ("corrected and turned over", { $0.perspective = quad; $0.quarterTurns = 2 }),
+            ]
+            var worst = 1.0, worstName = ""
+            for (name, shape) in shapes {
+                var e = EditState()
+                shape(&e)
+                let full = EditRenderer.shared.outputSize(fox, edits: e)
+                let scale = 512 / max(full.width, full.height)
+                let sw = Int((full.width * scale).rounded()), sh = Int((full.height * scale).rounded())
+                // An L in the middle of the picture as shown (so a turn the wrong way shows).
+                var shape = ObjectSelection(width: sw, height: sh)
+                let a = CGRect(x: Double(sw) * 0.3, y: Double(sh) * 0.25, width: Double(sw) * 0.15, height: Double(sh) * 0.5)
+                let b = CGRect(x: Double(sw) * 0.3, y: Double(sh) * 0.6, width: Double(sw) * 0.4, height: Double(sh) * 0.15)
+                shape.take((0..<(sw * sh)).map { i in
+                    let p = CGPoint(x: Double(i % sw) + 0.5, y: Double(i / sw) + 0.5)
+                    return a.contains(p) || b.contains(p) ? 255 : 0
+                }, subtract: false, at: .zero)
+                guard let mask = shape.image else { continue }
+                let source = EditRenderer.shared.sourceMask(mask, shownWith: e, size: fox.pixelSize)
+                let again = ObjectSelection.bytes(of: EditRenderer.shared.shownMask(source, shownWith: e, size: fox.pixelSize), width: sw, height: sh)
+                var both = 0, either = 0
+                for i in 0..<(sw * sh) {
+                    let x = shape.mask[i] > 127, y = again[i] > 127
+                    if x && y { both += 1 }
+                    if x || y { either += 1 }
+                }
+                let overlap = either > 0 ? Double(both) / Double(either) : 0
+                if overlap < worst { worst = overlap; worstName = name }
+            }
+            check(worst > 0.96, "a selection kept on the image comes back where it was on the picture as shown (at worst \(String(format: "%.3f", worst)) the same\(worstName.isEmpty ? "" : ", " + worstName))")
+            // And it's the right way round: what's down the image's left side is along the top of the picture turned right.
+            var turnedRight = EditState()
+            turnedRight.quarterTurns = 1
+            if let strip = ObjectSelection.image(block(CGRect(x: 40, y: 60, width: 80, height: 180)), width: w, height: h) {
+                let over = ObjectSelection.bytes(of: EditRenderer.shared.shownMask(strip, shownWith: turnedRight, size: CGSize(width: w, height: h)), width: h, height: w)
+                func at(_ x: Double, _ y: Double) -> UInt8 { over[Int(y * Double(w)) * h + Int(x * Double(h))] }
+                check(over.count == w * h && at(0.5, 0.2) == 255 && at(0.2, 0.5) == 0 && at(0.5, 0.8) == 0 && at(0.1, 0.2) == 0,
+                      "and the right way round on a turned picture")
+            }
+
+            // Really: the fox clicked, part of it painted out (as a click might have missed it) and painted back in.
+            let small = VisionServices.downscaledSync(fox.cgImage, maxDimension: 1024)
+            if let found = try? await VisionServices.instanceMask(for: small, at: CGPoint(x: 0.75, y: 0.5)) {
+                var f = ObjectSelection(width: small.width, height: small.height)
+                f.take(ObjectSelection.bytes(of: found, width: small.width, height: small.height), subtract: false, at: CGPoint(x: 0.75, y: 0.5))
+                let whole = f.coverage
+                let cx = Double(small.width) * 0.75, cy = Double(small.height) * 0.5
+                let missed = [CGPoint(x: cx - 30, y: cy), CGPoint(x: cx + 30, y: cy)]
+                f.paint(missed, diameter: 60, subtract: true)
+                let less = f.coverage
+                f.paint(missed, diameter: 64, subtract: false)
+                check(whole > 0.05 && whole < 0.7 && less < whole - 0.003 && abs(f.coverage - whole) < 0.002 && f.value(x: Int(cx), y: Int(cy)) == 255,
+                      "a part a click missed is painted back in (the fox: \(String(format: "%.3f", whole)) of the picture, \(String(format: "%.3f", less)) with a part missing, \(String(format: "%.3f", f.coverage)) painted back)")
+
+                // Cut out: kept in a file as well, so the picture is still cut out after a relaunch; pending edits drop
+                // a cutout whose selection is gone.
+                if let mask = f.image {
+                    let id = MaskStore.shared.keepObjectMask(EditRenderer.shared.sourceMask(mask, shownWith: EditState(), size: fox.pixelSize), size: fox.pixelSize)
+                    var cut = EditState()
+                    cut.cutout = .object(id)
+                    let kept = SelectionStore.load(SelectionStore.cutoutURL(id).path).map { ObjectSelection.bytes(of: $0, width: small.width, height: small.height) }
+                    var differing = 0
+                    if let kept { for i in 0..<kept.count where abs(Int(kept[i]) - Int(f.mask[i])) > 40 { differing += 1 } }
+                    check(kept != nil && Double(differing) / Double(f.mask.count) < 0.004,
+                          "a cutout's selection is kept in a file (\(differing) of \(f.mask.count) pixels differ)")
+                    if let image = EditRenderer.shared.renderSync(fox, edits: cut, maxDimension: 512)?.image {
+                        let px = rgba(image)
+                        func alpha(_ x: Double, _ y: Double) -> Int { Int(px[(Int(y * Double(image.height)) * image.width + Int(x * Double(image.width))) * 4 + 3]) }
+                        check(alpha(0.75, 0.5) == 255 && alpha(0.1, 0.1) == 0, "cutting out keeps the selection and nothing else")
+                    }
+                    let fm = FileManager.default
+                    let file = out.appendingPathComponent("select-pending.heic").standardizedFileURL
+                    try? fm.removeItem(at: file)
+                    try? fm.copyItem(at: fox.url, to: file)
+                    let storeURL = out.appendingPathComponent("SelectPendingEdits.json")
+                    try? fm.removeItem(at: storeURL)
+                    let store = PendingEdits(fileURL: storeURL)
+                    let modDate = try? URL(fileURLWithPath: file.path).resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                    var pending = cut
+                    pending.exposure = 0.25
+                    store.set(pending, for: file, modificationDate: modDate)
+                    store.flush()
+                    let keptPaths = PendingEdits(fileURL: storeURL).selectionPaths
+                    let restored = PendingEdits(fileURL: storeURL).restore(in: out, recursive: false, restrictedTo: [file])[file]
+                    try? fm.removeItem(at: SelectionStore.cutoutURL(id))
+                    let without = PendingEdits(fileURL: storeURL).restore(in: out, recursive: false, restrictedTo: [file])[file]
+                    check(restored?.cutout == .object(id) && keptPaths.contains(SelectionStore.cutoutURL(id).path) && without?.cutout == nil && without?.exposure == 0.25,
+                          "an object's cutout is still there after a relaunch, and dropped only if its selection is gone")
+                    try? fm.removeItem(at: storeURL)
+                    try? fm.removeItem(at: file)
+                }
+            } else {
+                check(false, "find the fox under a click")
+            }
+        } else {
+            check(false, "Red Fox test image")
+        }
+
+        // Adjust Objects' Edit Selection: the object gets another selection and keeps its adjustments; it's a step
+        // that ⌘Z takes back; Cancel leaves the selection as it was.
+        let fm = FileManager.default
+        let folder = out.appendingPathComponent("edit-selection")
+        try? fm.removeItem(at: folder)
+        try? fm.createDirectory(at: folder, withIntermediateDirectories: true)
+        let photo = folder.appendingPathComponent("Gray.png").standardizedFileURL
+        var gray = [UInt8](repeating: 128, count: w * h * 4)
+        for i in 0..<(w * h) { gray[i * 4 + 3] = 255 }
+        if let ctx = CGContext(data: &gray, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                               bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+           let image = ctx.makeImage(),
+           (try? ImageWriter.write(image, to: photo, format: .png, quality: 1, sourceProperties: [:], metadata: .keepAll)) != nil,
+           let first = ObjectSelection.image(block(left), width: w, height: h), let second = ObjectSelection.image(block(right), width: w, height: h) {
+            let model = ViewerModel()
+            model.openFolder(folder, selecting: photo)
+            model.select(photo)
+            for _ in 0..<100 where model.decoded?.url != photo { try? await Task.sleep(for: .milliseconds(50)) }
+            let size = CGSize(width: w, height: h)
+            model.beginAdjustingObjects()
+            try? model.adjustSelection(first, of: photo, size: size)
+            if let target = model.adjustTarget {
+                model.changeObjects { $0.setLocalValue(\.exposure, 1, of: target.id, mask: target.mask) }
+                model.editSelection(of: target)
+                check(model.activeTool == .selectToAdjust && model.selectionEdit == target, "Edit Selection… opens Select Object on the object being adjusted")
+                model.cancelSelectingToAdjust()
+                check(model.activeTool == .adjustObjects && model.selectionEdit == nil && model.adjustTarget == target, "Cancel there goes back to it as it was")
+                model.editSelection(of: target)
+                try? model.replaceSelection(of: target, with: second, size: size)
+                let now = model.currentEdits.localAdjustments?.first
+                check(model.activeTool == .adjustObjects && model.selectionEdit == nil && model.adjustTarget?.id == target.id
+                      && now?.id == target.id && now?.exposure == 1 && now?.mask != target.mask && model.adjustTarget?.mask == now?.mask
+                      && model.currentEdits.localAdjustments?.count == 1,
+                      "Done there gives the object the new selection and keeps its adjustments")
+                if let d = model.decoded, let rendered = EditRenderer.shared.renderSync(d, edits: model.currentEdits, maxDimension: nil)?.image, rendered.width == w {
+                    let px = rgba(rendered)
+                    func green(_ x: Int, _ y: Int) -> Int { Int(px[(y * w + x) * 4 + 1]) }
+                    check(green(290, 110) > 160 && abs(green(100, 150) - 128) <= 2, "what's adjusted is what's selected now (\(green(290, 110))), not what was (\(green(100, 150)))")
+                }
+                model.undoObjectChange()
+                let undone = model.currentEdits.localAdjustments?.first?.mask == target.mask && model.adjustTarget?.mask == target.mask
+                model.redoObjectChange()
+                check(undone && model.currentEdits.localAdjustments?.first?.mask == now?.mask && model.adjustTarget?.mask == now?.mask,
+                      "⌘Z takes the new selection back, and ⇧⌘Z gives it again")
+                model.cancelAdjustingObjects()
+            } else {
+                check(false, "select an object to adjust")
+            }
+        } else {
+            check(false, "make the picture for Edit Selection")
+        }
+    }
+
     /// Crop's Vertical and Horizontal: the tilt is the one Core Image's own perspective filter makes, the way
     /// Photos' sliders go; what's kept is all picture; the picture lands where the tilt says; turning and flipping carry the
     /// tilt along; marks and points map back onto the image; a background covers a tilted picture; the edits keep
@@ -2567,6 +2848,16 @@ enum SelfTest {
         if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "places" {
             print("\n[Places]")
             await placesChecks(decodedByName: decodedByName)
+            print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
+            try? FileManager.default.removeItem(at: AppStorageLocation.support)
+            exit(failures == 0 ? 0 : 1)
+        }
+        if ProcessInfo.processInfo.environment["AOK_SELFTEST_ONLY"] == "select" {
+            print("\n[Select Object]")
+            await selectionChecks(decodedByName: decodedByName, out: out)
+            for (key, value) in savedPrefs {
+                if let value { UserDefaults.standard.set(value, forKey: key) } else { UserDefaults.standard.removeObject(forKey: key) }
+            }
             print("\n\(failures == 0 ? "ALL CHECKS PASSED" : "\(failures) CHECK(S) FAILED")")
             try? FileManager.default.removeItem(at: AppStorageLocation.support)
             exit(failures == 0 ? 0 : 1)
@@ -3738,6 +4029,8 @@ enum SelfTest {
         await whiteBalanceChecks(out: out)
         print("\n[Objects adjusted on their own]")
         await localAdjustmentChecks(out: out)
+        print("\n[Select Object]")
+        await selectionChecks(decodedByName: decodedByName, out: out)
         print("\n[New Image]")
         await newImageChecks(out: out)
         print("\n[Ratings, captions, Copy Edits]")
