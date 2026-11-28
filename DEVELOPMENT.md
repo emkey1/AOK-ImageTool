@@ -24,7 +24,7 @@ upscaling asks VideoToolbox (`SuperResolution.isSupported`) and is hidden where 
 There's no Intel Mac to test on, so the Intel half is checked under Rosetta, in the macOS 15 VM (first with 1.4.0).
 An Intel-only Debug build (add `ARCHS=x86_64 ONLY_ACTIVE_ARCH=NO` to the build line; Debug otherwise builds only the
 Mac's own architecture) passes the self-test there, check for check as the Apple silicon build run without models
-does (`AOK_MODELS_DIR` pointing at an empty folder; 311 checks with 1.5.0), and `open --arch x86_64 -a
+does (`AOK_MODELS_DIR` pointing at an empty folder; 347 checks with 1.6.0), and `open --arch x86_64 -a
 AOK-ImageTool.app` runs a release as Intel code to look at. That exercises the Intel code and the “needs Apple silicon” paths; it says nothing about Intel
 graphics or how fast a real Intel Mac is.
 
