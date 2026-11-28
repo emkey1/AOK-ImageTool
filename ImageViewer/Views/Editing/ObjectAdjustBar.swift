@@ -31,7 +31,7 @@ struct ObjectAdjustBar: View {
                 .disabled(model.currentAdjustTarget == nil)
                 .help("Change what's selected: paint in what was missed, or take away what shouldn't be adjusted")
                 Button("Select Another…") { model.activeTool = .selectToAdjust }
-                    .help("Click another object to adjust it on its own")
+                    .help("Click another object, or paint over it, to adjust it on its own")
                 Button("Cancel") { model.cancelAdjustingObjects() }
                     .keyboardShortcut(.cancelAction)
                 Button("Done") { model.finishAdjustingObjects() }

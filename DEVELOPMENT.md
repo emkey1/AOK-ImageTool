@@ -194,23 +194,29 @@ either way, so Extend, retouching and Live Photo frames need nothing of their ow
 **Select Object** (`Views/Editing/ObjectSelectEditor.swift`, `Model/ObjectSelection.swift`) builds its selection on
 the picture as it's shown (rendered up to 2048 pixels): one byte a pixel, in steps. A click asks Vision for what's
 there: on macOS 27 all the clicks together (`VisionServices.objectMask`, iterative segmentation, each click refining
-what the ones before found), earlier the foreground instance under the click (`instanceMask`), which is added, or
-with ⌥ taken away. A stroke is drawn into the mask as painted (a loop also fills what it encloses). Every step
-changes the selection as it then is: Vision's new result is applied as its difference from its last one
-(`ObjectSelection.refine`), so what was painted in or out stays that way wherever the result didn't change, and the
-order of clicks and strokes is the order they were made in. Each step keeps the selection before it (packed with
-LZ4: masks are mostly runs of black and white), for ⌘Z. `ObjectSelection.shown` draws the picture with the selection
-on it: the rest gray and dark (Dimmed), the selection tinted, or the selection alone over the view's checkerboard;
-the line around it follows where it's half selected, so it's as strong along fur as along a hard edge, and is drawn
-again when the zoom has changed enough to make it too thick or thin. The selection is carried onto the image's own
-pixels when it's used (`EditRenderer.sourceMask`) and back onto the picture as shown when the tool opens on one
-there already is (`shownMask`): what's cut out (the picture is then shown without its cutout, to select in), or the
-object Adjust Objects is adjusting (`ViewerModel.selectionEdit`, set by Edit Selection…; Done there gives the object
-the new selection's file and keeps its adjustments, as one of Adjust Objects' steps). A cut-out object's selection
-is kept in Application Support's `Selections` too (`cutout-<id>.png`, `MaskStore.keepObjectMask`), so the cutout
-outlasts a relaunch as the rest of a picture's pending edits do, and is pruned at launch with the other selections
-nothing refers to (edits saved to Photos count: `PhotosLibrary.keepFiles`). The zoom and brush code mirrors `RemoveObjectsEditor`'s (`ActiveTool.hasCanvas` routes ⌘Z, the
-zoom keys and [ ] to both).
+what the ones before found), earlier the foreground instance under the click (`instanceMask`), which is added, or with
+⌥ taken away (`ObjectSelection.take`; on 27 a ⌥-click with nothing clicked yet, or a combined request that fails, is
+worked out on its own and applied the same way). A stroke is drawn into the mask as painted (a loop also fills what it
+encloses). Every step changes the selection as it then is: Vision's new result is applied as its difference from its
+last one (`ObjectSelection.refine`), so what was painted in stays in, and what was painted out stays out wherever a
+later result doesn't newly cover it (a whole instance added again, as on macOS 15, does), and the order of clicks and
+strokes is the order they were made in. Each of the last 60 steps keeps the selection before it (and Vision's result,
+both packed with LZ4: masks are mostly runs of black and white), for ⌘Z. `ObjectSelection.shown` draws the picture
+with the selection on it: the rest gray and dark (Dimmed), the selection tinted, or the selection alone over the
+view's checkerboard; the line around it follows where it's half selected, so it's as strong along fur as along a hard
+edge, and is drawn again when the zoom has changed enough to make it too thick or thin. The selection is carried onto
+the image's own pixels when it's used (`EditRenderer.sourceMask`) and back onto the picture as shown when the tool
+opens on one there already is (`shownMask`): what's cut out (the picture is then shown without its cutout, to select
+in), or the object Adjust Objects is adjusting (`ViewerModel.selectionEdit`, set by Edit Selection…; Done there gives
+the object the new selection's file and keeps its adjustments, as one of Adjust Objects' steps when it has some; with
+nothing changed, Done is Cancel). A selection that goes on from one it opened with keeps that one where the picture as
+shown doesn't reach (`sourceMask`'s `outside`): touching up a cutout on a cropped picture mustn't cut away what's
+beyond the crop. Clear starts over, without it (`ObjectSelection.startedOver`). A cut-out object's selection is kept
+in Application Support's `Selections` too (`cutout-<id>.png`, up to 4096 pixels, `MaskStore.keepObjectMask`), so the
+cutout outlasts a relaunch as the rest of a picture's pending edits do, and is pruned at launch with the other
+selections nothing refers to (edits saved to Photos count: `PhotosLibrary.keepFiles`; and one of those whose cutout
+file isn't on this Mac is opened as the picture it made, `EditState.referencedFilesExist`). The zoom and brush code
+mirrors `RemoveObjectsEditor`'s (`ActiveTool.hasCanvas` routes ⌘Z, the zoom keys and [ ] to both).
 
 **White balance** (`Imaging/WhiteBalance.swift`) is Warmth and Tint, applied by `CITemperatureAndTint` right after
 Auto enhance. The filter is a 3 × 3 matrix in linear light, so both helpers search it rather than model it. The
@@ -361,7 +367,7 @@ build/Build/Products/Debug/AOK-ImageTool.app/Contents/MacOS/AOK-ImageTool -selfT
 
 The self-test uses its own temporary storage and restores any preferences it changes, so it's safe to run while you're using the app. It checks the generative fill's scheduler and noise every time, and runs a real generation when the model is installed. `-debugExtend` (Debug builds) opens the first image straight into the Crop tool extending to 16:9 (add `-debugGenerate` for Generate), for checking that UI.
 
-The Guide's and the README's screenshots come from `-debugScene viewer|grid|adjust|adjust-object|presets|pictureonly|intelligence|info|stack-open|crop|crop-grid|select|select-alone|select-touchup|remove|change|clone|fixblur|blackwhite|newimage|stitch` (`select` opens Select Object and clicks the picture's subject, `select-alone` shows it on its own, and `select-touchup`, the Guide's picture, has part of it painted out and being painted back in; `crop` opens the Crop tool on the picture tilted a little, and `crop-grid` shows the finer grid a dragged slider brings up; `adjust-object` selects the picture's subject and adjusts it on its own; `presets` saves two presets in the run's temporary storage and puts the first on the picture; `pictureonly` is F's full screen as far as a window in the background can show it, with the toolbar, sidebar, inspector and filmstrip put away and the picture on black, but the window left a window). The tool scenes set the tool part way through on particular demo photos (`showSceneForGuide` in `RemoveObjectsEditor`: the boat in Sailboat outlined, the apple in Fruit Bowl selected with "green" typed, a Clone & Heal stroke over Desert Canyon's shrubs); `newimage` opens New Image from Description and paints its previews; `stack-open` wants a folder with a stack in it. They're captured with `screencapture -l` of the window (with its sheet, for the sheets), with `-debugAppearance light|dark` and `-debugWindowSize 1280x800`. Runs with any of these switches use temporary storage and never save preferences. The screenshots were taken with a copy of the app under its own bundle ID, so its recents and window positions stay apart from yours. The demo photos in them were generated by the app's own model.
+The Guide's and the README's screenshots come from `-debugScene viewer|grid|adjust|adjust-object|presets|pictureonly|intelligence|info|stack-open|crop|crop-grid|select|select-alone|select-touchup|select-adjust|remove|change|clone|fixblur|blackwhite|newimage|combine|stitch` (`select` opens Select Object and clicks a spot chosen for Red Fox, where the fox is (`showSceneForGuide` in `ObjectSelectEditor`), `select-alone` shows it on its own, and `select-touchup`, the Guide's picture, has part of it painted out and being painted back in; `select-adjust` opens Adjust Objects on selecting an object, and `combine` Combine Pictures with Mountain Lake behind; `crop` opens the Crop tool on the picture tilted a little, and `crop-grid` shows the finer grid a dragged slider brings up; `adjust-object` selects the picture's subject and adjusts it on its own; `presets` saves two presets in the run's temporary storage and puts the first on the picture; `pictureonly` is F's full screen as far as a window in the background can show it, with the toolbar, sidebar, inspector and filmstrip put away and the picture on black, but the window left a window). The tool scenes set the tool part way through on particular demo photos (`showSceneForGuide` in `RemoveObjectsEditor`: the boat in Sailboat outlined, the apple in Fruit Bowl selected with "green" typed, a Clone & Heal stroke over Desert Canyon's shrubs); `newimage` opens New Image from Description and paints its previews; `stack-open` wants a folder with a stack in it. They're captured with `screencapture -l` of the window (with its sheet, for the sheets), with `-debugAppearance light|dark` and `-debugWindowSize 1280x800`. Runs with any of these switches use temporary storage and never save preferences. The screenshots were taken with a copy of the app under its own bundle ID, so its recents and window positions stay apart from yours. The demo photos in them were generated by the app's own model.
 
 In Debug builds, `AOK_MODELS_DIR` and `AOK_MODELS_URL` point the models folder and the model downloads somewhere else (for testing the downloader against a local server), and `-extendTest -download generative-fill|colorize` downloads and installs one headlessly. `AOK_SELFTEST_ONLY=remove|change|clone|wb|local|presets|fullscreen|fixes|newimage|blur|quality|tags|combine|stitch|watch|select|straighten|tilt|places|download` runs just those self-test sections (`local`: objects adjusted on their own; `select`: Select Object's selection, painting, steps and going back to one; `presets`: saved presets, their file and applying them; `fullscreen`: what F puts away and brings back, without a window) (`remove` also runs `change`; `download` fetches the LaMa, Restormer and GFPGAN archives from `AOK_MODELS_URL`). `AOK_SELFTEST_LIVE=1` adds checks that ask Apple Maps and Wikipedia themselves (`places`). `-extendTest -fixBlur <image> <out.png> [focus|shake|none] [faces]` runs Fix Blur on one picture (with `SHAKE=<pixels>`, on a copy shaken first, to compare with the original).
 

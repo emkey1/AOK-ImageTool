@@ -4,8 +4,9 @@ import Foundation
 
 /// Select Object's selection: a soft-edged mask over the picture as it's shown (one byte a pixel, rows
 /// top-down, 255 = selected), built up in steps that can each be taken back: the objects found under clicks,
-/// and what's painted in or out by hand. Every step changes the selection as it then is, so what was painted
-/// stays painted when a later click finds more, and a click can bring back what was painted out.
+/// and what's painted in or out by hand. Every step changes the selection as it then is: what was painted in
+/// stays in when a later click finds more, and what was painted out stays out unless a later click finds that
+/// part anew.
 nonisolated struct ObjectSelection: Sendable {
     /// A click, for showing where it was (normalized, lower-left origin, as Vision has it).
     struct Mark: Equatable, Sendable {
@@ -45,17 +46,21 @@ nonisolated struct ObjectSelection: Sendable {
     private(set) var included: [CGPoint] = []
     private(set) var excluded: [CGPoint] = []
     private var found: [UInt8]?
+    private var foundPacked: Data?
     private(set) var marks: [Mark] = []
+    /// Clear started it over: it no longer goes on from what it was opened with.
+    private(set) var startedOver = false
     private var undone: [Step] = []
     private var redone: [Step] = []
 
-    /// The selection as it was before a step (its mask packed: mostly runs of black and white).
+    /// The selection as it was before a step (its masks packed: mostly runs of black and white).
     private struct Step: Sendable {
         let mask: Data
         let included: [CGPoint]
         let excluded: [CGPoint]
-        let found: [UInt8]?
+        let found: Data?
         let marks: [Mark]
+        let startedOver: Bool
     }
 
     /// Nothing selected, or `mask` (`width` × `height` bytes, rows top-down) to start from.
@@ -76,6 +81,10 @@ nonisolated struct ObjectSelection: Sendable {
 
     /// Nothing is selected.
     var isEmpty: Bool { !mask.contains { $0 > Self.threshold } }
+
+    /// Nothing is selected and no click is in play (one that left everything out still refines the next): there's
+    /// nothing for Clear to do.
+    var isBlank: Bool { isEmpty && marks.isEmpty }
 
     /// How much of the picture is selected, 0...1.
     var coverage: Double {
@@ -135,19 +144,22 @@ nonisolated struct ObjectSelection: Sendable {
         }
         mask = changed
         found = result
+        foundPacked = Self.packed(result)
         if exclude { excluded.append(point) } else { included.append(point) }
         marks.append(Mark(point: point, added: !exclude))
     }
 
     /// Nothing selected any more (a step, like the others).
     mutating func clear() {
-        guard !isEmpty || !marks.isEmpty else { return }
+        guard !isBlank else { return }
         remember()
         mask = [UInt8](repeating: 0, count: mask.count)
         included = []
         excluded = []
         found = nil
+        foundPacked = nil
         marks = []
+        startedOver = true
     }
 
     @discardableResult
@@ -167,7 +179,7 @@ nonisolated struct ObjectSelection: Sendable {
     }
 
     private var current: Step {
-        Step(mask: Self.packed(mask), included: included, excluded: excluded, found: found, marks: marks)
+        Step(mask: Self.packed(mask), included: included, excluded: excluded, found: foundPacked, marks: marks, startedOver: startedOver)
     }
 
     private mutating func remember() {
@@ -180,8 +192,10 @@ nonisolated struct ObjectSelection: Sendable {
         mask = Self.unpacked(step.mask, count: mask.count)
         included = step.included
         excluded = step.excluded
-        found = step.found
+        foundPacked = step.found
+        found = step.found.map { Self.unpacked($0, count: mask.count) }
         marks = step.marks
+        startedOver = step.startedOver
     }
 
     /// `other` (the picture's size) laid into the selection within `bounds` (pixels from the top left): the

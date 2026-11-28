@@ -2137,6 +2137,17 @@ enum SelfTest {
         u.paint([CGPoint(x: 350, y: 30)], diameter: 20, subtract: false)
         check(!u.canRedo && u.value(x: 350, y: 30) == 255 && u.value(x: 100, y: 100) == 255 && u.included.count == 1,
               "a new step after taking some back goes on from there")
+        // Clear: there while a click is still in play (one that left everything out), and it starts over, which
+        // ⌘Z takes back too.
+        var c = ObjectSelection(width: w, height: h)
+        c.take(block(left), subtract: false, at: CGPoint(x: 0.25, y: 0.5))
+        c.take(block(left), subtract: true, at: CGPoint(x: 0.25, y: 0.5))
+        let inPlay = c.isEmpty && !c.isBlank && !c.startedOver
+        c.clear()
+        let cleared = c.isBlank && c.startedOver && c.marks.isEmpty
+        c.undo()
+        check(inPlay && cleared && !c.isBlank && !c.startedOver && c.marks.count == 2,
+              "Clear has something to do while clicks are in play, starts the selection over, and is taken back like any step")
 
         // Showing it: the rest gray and dark with a line around the selection; the selection tinted; or alone.
         func rgba(_ image: CGImage) -> [UInt8] {
@@ -2225,6 +2236,29 @@ enum SelfTest {
                 check(over.count == w * h && at(0.5, 0.2) == 255 && at(0.2, 0.5) == 0 && at(0.5, 0.8) == 0 && at(0.1, 0.2) == 0,
                       "and the right way round on a turned picture")
             }
+            // Touching up a selection on a cropped picture keeps what it had outside the crop (a person cut out, the
+            // picture cropped to head and shoulders, a strand of hair painted in: the rest of them stays selected).
+            let top = CGRect(x: 40, y: 20, width: 120, height: 80), bottom = CGRect(x: 240, y: 200, width: 120, height: 80)
+            var halved = EditState()
+            halved.crop = CGRect(x: 0, y: 0, width: 1, height: 0.5)
+            let size = CGSize(width: w, height: h)
+            if let whole = ObjectSelection.image(zip(block(top), block(bottom)).map { max($0, $1) }, width: w, height: h) {
+                var seen = ObjectSelection(width: w, height: h / 2,
+                                           mask: ObjectSelection.bytes(of: EditRenderer.shared.shownMask(whole, shownWith: halved, size: size), width: w, height: h / 2))
+                let shownBefore = seen.coverage
+                seen.paint([CGPoint(x: 200, y: 75)], diameter: 30, subtract: false)
+                if let touched = seen.image {
+                    func source(_ outside: CIImage?) -> [UInt8] {
+                        ObjectSelection.bytes(of: EditRenderer.shared.sourceMask(touched, shownWith: halved, size: size, outside: outside), width: w, height: h)
+                    }
+                    let kept = source(whole), dropped = source(nil)
+                    func at(_ p: [UInt8], _ r: CGRect) -> Int { Int(p[Int(r.midY) * w + Int(r.midX)]) }
+                    let dot = kept.filter { $0 > 127 }.count - (block(top) + block(bottom)).filter { $0 > 127 }.count
+                    check(shownBefore > 0.02 && at(kept, top) == 255 && at(kept, bottom) == 255 && at(dropped, top) + at(dropped, bottom) == 255
+                          && dot > 500 && dot < 900,
+                          "touching up a selection on a cropped picture keeps what it had outside the crop (and adds the \(dot) pixels painted in)")
+                }
+            }
 
             // Really: the fox clicked, part of it painted out (as a click might have missed it) and painted back in.
             let small = VisionServices.downscaledSync(fox.cgImage, maxDimension: 1024)
@@ -2251,6 +2285,10 @@ enum SelfTest {
                     if let kept { for i in 0..<kept.count where abs(Int(kept[i]) - Int(f.mask[i])) > 40 { differing += 1 } }
                     check(kept != nil && Double(differing) / Double(f.mask.count) < 0.004,
                           "a cutout's selection is kept in a file (\(differing) of \(f.mask.count) pixels differ)")
+                    var elsewhere = EditState()
+                    elsewhere.cutout = .object(UUID())
+                    check(cut.referencedFilesExist && !elsewhere.referencedFilesExist,
+                          "a cutout whose selection isn't on this Mac (an edit from another Mac, in Photos) isn't taken for one that can be opened")
                     if let image = EditRenderer.shared.renderSync(fox, edits: cut, maxDimension: 512)?.image {
                         let px = rgba(image)
                         func alpha(_ x: Double, _ y: Double) -> Int { Int(px[(Int(y * Double(image.height)) * image.width + Int(x * Double(image.width))) * 4 + 3]) }
@@ -2279,6 +2317,34 @@ enum SelfTest {
                 }
             } else {
                 check(false, "find the fox under a click")
+            }
+
+            // macOS 27: the clicks are worked out together. One to leave part of the fox out changes what Vision
+            // found there, and leaves what was painted in and out as it was; ⌘Z takes it back exactly.
+            if #available(macOS 27, *) {
+                let click = CGPoint(x: 0.75, y: 0.5), legs = CGPoint(x: 0.69, y: 0.22)
+                let sw = small.width, sh = small.height
+                if let one = try? await VisionServices.objectMask(for: small, included: [click], excluded: []) {
+                    var j = ObjectSelection(width: sw, height: sh)
+                    j.refine(ObjectSelection.bytes(of: one, width: sw, height: sh), adding: click, exclude: false)
+                    let whole = j.coverage
+                    j.paint([CGPoint(x: 40, y: 40)], diameter: 40, subtract: false)                                       // in, far from it
+                    j.paint([CGPoint(x: Double(sw) * 0.75, y: Double(sh) * 0.5)], diameter: 30, subtract: true)          // out of its middle
+                    let before = j.mask
+                    if let two = try? await VisionServices.objectMask(for: small, included: [click], excluded: [legs]) {
+                        j.refine(ObjectSelection.bytes(of: two, width: sw, height: sh), adding: legs, exclude: true)
+                        let after = j.coverage
+                        let kept = j.value(x: 40, y: 40) == 255 && j.value(x: Int(Double(sw) * 0.75), y: Int(Double(sh) * 0.5)) == 0
+                        let lists = j.included.count == 1 && j.excluded.count == 1 && j.marks.map(\.added) == [true, false]
+                        j.undo()
+                        check(whole > 0.05 && whole < 0.7 && kept && lists && after < whole + 0.01 && j.mask == before && j.excluded.isEmpty,
+                              "on macOS 27 a click to leave part out refines what was found and leaves what was painted alone (the fox \(String(format: "%.3f", whole)) of the picture, then \(String(format: "%.3f", after)))")
+                    } else {
+                        check(false, "refine a selection with a click to leave out (macOS 27)")
+                    }
+                } else {
+                    print("  • iterative segmentation unavailable: the clicks worked out together aren't checked")
+                }
             }
         } else {
             check(false, "Red Fox test image")
@@ -3478,7 +3544,7 @@ enum SelfTest {
             store.set(objectOnly, for: selected, modificationDate: modDate(selected))
             store.flush()
             let restored = PendingEdits(fileURL: storeURL).restore(in: out, recursive: false, restrictedTo: nil)
-            check(restored == [edited: e], "edits restored from disk; object-only cutout dropped")
+            check(restored == [edited: e], "edits restored from disk; an object's cutout whose selection is gone is dropped")
             try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(60)], ofItemAtPath: edited.path)
             let reloaded = PendingEdits(fileURL: storeURL)
             check(reloaded.restore(in: out, recursive: false, restrictedTo: nil).isEmpty, "edits dropped once the file changes")

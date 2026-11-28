@@ -489,11 +489,13 @@ nonisolated struct EditState: Codable, Equatable, Sendable {
         extendPrompt = nil
     }
 
-    /// The pictures the edits use (an Extend fill, a background, removed objects' patches) are all on this Mac.
+    /// The pictures the edits use (an Extend fill, a background, removed objects' patches, the selections of
+    /// adjusted objects and of one cut out) are all on this Mac.
     var referencedFilesExist: Bool {
         var paths = (removals ?? []).map(\.path) + (localAdjustments ?? []).map(\.mask)
         if let fill = extendFill { paths.append(fill.path) }
         if case .image(let path, _) = background { paths.append(path) }
+        if case .object(let id) = cutout { paths.append(SelectionStore.cutoutURL(id).path) }
         return paths.allSatisfy { FileManager.default.fileExists(atPath: $0) }
     }
 

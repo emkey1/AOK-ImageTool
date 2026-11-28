@@ -324,8 +324,10 @@ nonisolated extension EditState {
 /// Selections whose objects are adjusted on their own (`LocalAdjustment.mask`), kept in Application Support so
 /// the edit keeps working across relaunches (with pending edits).
 nonisolated enum SelectionStore {
-    /// Selections are kept at most this big (on the long side): their edges are soft anyway.
+    /// Selections are kept at most this big (on the long side): their edges are soft anyway. A cutout's, which
+    /// is the picture's edge from then on (and may be seen close up, in a crop), is kept finer.
     static let maxSide: CGFloat = 2048
+    static let maxCutoutSide: CGFloat = 4096
 
     static var directory: URL {
         AppStorageLocation.support.appendingPathComponent("Selections")
@@ -345,7 +347,7 @@ nonisolated enum SelectionStore {
     }
 
     /// `mask` as a grayscale PNG at `url`, at most `maxSide` on its long side.
-    static func write(_ mask: CIImage, size: CGSize, to url: URL) throws {
+    static func write(_ mask: CIImage, size: CGSize, to url: URL, maxSide: CGFloat = SelectionStore.maxSide) throws {
         let s = min(1, maxSide / max(size.width, size.height, 1))
         let w = max(1, Int((size.width * s).rounded())), h = max(1, Int((size.height * s).rounded()))
         let ext = mask.extent

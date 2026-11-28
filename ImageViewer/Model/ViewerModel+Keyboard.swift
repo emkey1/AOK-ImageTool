@@ -40,6 +40,7 @@ extension ViewerModel {
             Shortcut(keys: "R  ·  ⇧R", action: "Rotate right / left"),
             Shortcut(keys: "C", action: "Crop & straighten"),
             Shortcut(keys: "⇧⌘X", action: "Remove objects ([ ] brush, ⌘+ ⌘− ⌘0 zoom)"),
+            Shortcut(keys: "[ ]  ·  ⌘+ ⌘−  ·  ⌘Z", action: "In Select Object: brush, zoom, step back"),
             Shortcut(keys: "\\  ·  Hold M", action: "Show original (before / after)"),
             Shortcut(keys: "⌥↩", action: "Rename"),
             Shortcut(keys: "⌘S  ·  ⇧⌘E", action: "Save / Export"),

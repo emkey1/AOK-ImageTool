@@ -29,7 +29,8 @@ nonisolated final class MaskStore: @unchecked Sendable {
     /// well, so the picture is still cut out after a relaunch (when the file couldn't be written, until then).
     func keepObjectMask(_ mask: CIImage, size: CGSize) -> UUID {
         let id = addObjectMask(mask)
-        try? SelectionStore.write(mask, size: size, to: SelectionStore.cutoutURL(id))
+        // (Finer than an adjusted object's selection: a cutout's edge is the picture's.)
+        try? SelectionStore.write(mask, size: size, to: SelectionStore.cutoutURL(id), maxSide: SelectionStore.maxCutoutSide)
         return id
     }
 
@@ -316,14 +317,28 @@ nonisolated final class EditRenderer: @unchecked Sendable {
 
     /// `mask`, drawn over the picture as `e` shows it in full (at any scale), on the image's own pixels (`size`
     /// big), where removals and cutouts live. What has none of the image under it (an Extend fill) is dropped.
-    func sourceMask(_ mask: CIImage, shownWith e: EditState, size: CGSize) -> CIImage {
+    /// Where the picture as shown doesn't reach (outside its crop, or what straightening or a tilt left out),
+    /// nothing is marked, or what `outside` marks there (a mask on the image's own pixels, any size): the
+    /// selection a touched-up one started from, which it keeps where it couldn't be seen.
+    func sourceMask(_ mask: CIImage, shownWith e: EditState, size: CGSize, outside: CIImage? = nil) -> CIImage {
         let g = shownGeometry(e, size: size)
         let ext = mask.extent
         guard ext.width > 0, ext.height > 0, g.shown.width > 0, g.shown.height > 0 else { return mask }
         let shown = mask.transformed(by: CGAffineTransform(translationX: -ext.minX, y: -ext.minY))
             .transformed(by: CGAffineTransform(scaleX: g.shown.width / ext.width, y: g.shown.height / ext.height))
         // (Exactly the image's size: a mask is stretched over the picture by its extent.)
-        return carriedToSource(shown, g, under: CIImage(color: .black))
+        guard let outside, outside.extent.width > 0, outside.extent.height > 0, !outside.extent.isInfinite else {
+            return carriedToSource(shown, g, under: CIImage(color: .black))
+        }
+        let source = CGRect(origin: .zero, size: size)
+        let o = outside.extent
+        let rest = outside
+            .transformed(by: CGAffineTransform(translationX: -o.minX, y: -o.minY))
+            .transformed(by: CGAffineTransform(scaleX: size.width / o.width, y: size.height / o.height))
+            .cropped(to: source)
+            .composited(over: CIImage(color: .black).cropped(to: source))
+        // (Carried back with nothing under it, it's see-through wherever the picture as shown doesn't reach.)
+        return carriedToSource(shown, g, under: nil).composited(over: rest).cropped(to: source)
     }
 
     /// A mask on the image's own pixels (any size: stretched over it), over the picture as `e` shows it in full

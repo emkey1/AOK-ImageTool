@@ -277,9 +277,10 @@ struct AdjustPanel: View {
                     .help("The object being adjusted (the rest is darkened here only)")
             }
             HStack(spacing: 8) {
-                Text("Select Another… under the picture adds one.")
+                Text("Under the picture, Edit Selection… changes what's selected and Select Another… adds an object.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 Spacer()
                 if let object {
                     Button(role: .destructive) {

@@ -35,6 +35,8 @@ struct ObjectSelectEditor: View {
     /// object, when it's one of Adjust Objects'.
     @State private var startedSelected = false
     @State private var editing: AdjustTarget?
+    /// That selection, on the image's own pixels: kept where the picture as shown doesn't reach (outside its crop).
+    @State private var startMask: CIImage?
     /// Zoom, relative to the picture fitting the view (1), and how far it's moved (points).
     @State private var zoom: CGFloat = 1
     @State private var pan: CGSize = .zero
@@ -175,6 +177,7 @@ struct ObjectSelectEditor: View {
             let bytes = await Task.detached(priority: .userInitiated) { ObjectSelection.bytes(of: over, width: w, height: h) }.value
             start = ObjectSelection(width: w, height: h, mask: bytes)
             startedSelected = !start.isEmpty
+            startMask = initial
         }
         picture = output
         selection = start
@@ -321,7 +324,7 @@ struct ObjectSelectEditor: View {
         if look == .alone { return "What's selected, on its own. Switch to Dimmed or Tinted to paint in what's missing." }
         if startedSelected, !selection.canUndo {
             return (editing != nil ? "This is what's being adjusted." : "This is what's cut out now.")
-                + " Paint over what's missing to add it; ⌥-paint takes away. Clicking finds whole objects."
+                + " Paint over what's missing to add it; ⌥-paint takes away. Clicking finds objects."
         }
         return "Selected. Paint over what's missing to add it, or click it; with ⌥, they take away. ⌘Z steps back."
     }
@@ -373,12 +376,12 @@ struct ObjectSelectEditor: View {
             HStack(spacing: 10) {
                 Button { undo() } label: { Image(systemName: "arrow.uturn.backward") }
                     .disabled(busy || selection?.canUndo != true)
-                    .help("Take back the last click or stroke (⌘Z)")
+                    .help("Take back the last click, stroke or Clear (⌘Z)")
                 Button { redo() } label: { Image(systemName: "arrow.uturn.forward") }
                     .disabled(busy || selection?.canRedo != true)
                     .help("Redo (⇧⌘Z)")
                 Button("Clear") { clear() }
-                    .disabled(busy || nothingSelected)
+                    .disabled(busy || selection?.isBlank != false)
                     .help("Select nothing, to start again")
                 Spacer()
                 if toAdjust {
@@ -539,10 +542,12 @@ struct ObjectSelectEditor: View {
     // MARK: What's done with it
 
     /// The selection on the image's own pixels (where a cutout and an adjusted object live, whatever the
-    /// picture's turned, straightened or cropped to).
+    /// picture's turned, straightened or cropped to). One that goes on from what the tool opened with keeps
+    /// that where the picture as shown doesn't reach: touching up a cutout on a cropped picture mustn't cut away
+    /// what's outside the crop. (Clear starts over, without it.)
     private func sourceMask(_ d: DecodedImage) -> CIImage? {
         guard let selection, !selection.isEmpty, let mask = selection.image else { return nil }
-        return EditRenderer.shared.sourceMask(mask, shownWith: shown, size: d.pixelSize)
+        return EditRenderer.shared.sourceMask(mask, shownWith: shown, size: d.pixelSize, outside: selection.startedOver ? nil : startMask)
     }
 
     private func cutOut() {
