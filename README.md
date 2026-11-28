@@ -66,7 +66,7 @@ Extend a square photo to 16:9, with new content generated on this Mac:
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="Screenshots/extend-dark.jpg">
-    <img src="Screenshots/extend-light.jpg" width="760" alt="The Crop tool extending a square photo of a red fox to 16:9, with Fill set to Generate and the new area generated on both sides.">
+    <img src="Screenshots/extend-light.jpg" width="760" alt="The Crop tool extending a square photo of a red fox to 16:9, with Fill set to Generate and the new area generated on both sides; the Straighten, Vertical and Horizontal sliders are below the picture.">
   </picture>
 </p>
 

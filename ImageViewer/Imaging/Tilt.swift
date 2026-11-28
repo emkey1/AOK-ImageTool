@@ -10,7 +10,7 @@ import simd
 /// rectangle of the picture's own shape, around its middle, that the tilted picture fills.
 ///
 /// Which way the sliders go, and how far, is Photos' (compared in Photos 10 on macOS 15: at Vertical +12° and at
-/// Horizontal +12° a sign's lettering was within a pixel or two of where this puts it). That's the opposite of
+/// Horizontal +12° a sign's lettering was within 2 to 5 pixels, of 1,374, of where this puts it). That's the opposite of
 /// CIPerspectiveRotate's pitch and yaw.
 ///
 /// Points are in pixels with the origin at the bottom left (Core Image's), in the picture (`size` big, already

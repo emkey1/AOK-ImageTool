@@ -373,7 +373,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         return CGPoint(x: (a * u + b * v + c[0].0) / w, y: (d * u + f * v + c[0].1) / w)
     }
 
-    /// The picture as white balance sees it: turned and straightened, with Auto enhance, before light and color
+    /// The picture as white balance sees it: turned, straightened and tilted, with Auto enhance, before light and color
     /// (and uncropped, so a spot is found by where it is before the crop). For the eyedropper and Auto.
     func whiteBalanceInput(_ decoded: DecodedImage, edits e: EditState, maxDimension: CGFloat?) -> CIImage {
         var img = makeImage(decoded, edits: e, maxDimension: maxDimension, stage: .geometry)
@@ -383,7 +383,7 @@ nonisolated final class EditRenderer: @unchecked Sendable {
         return img
     }
 
-    /// The edits that hold for every frame of a Live Photo (perspective, turns, straightening, light and
+    /// The edits that hold for every frame of a Live Photo (perspective, turns, straightening, tilt, light and
     /// color, filters, crop, vignette) on one frame, upright. `still` is the photo they were made on (Auto's
     /// recipe comes from it); `renderScale` is the frame's size relative to it. A cutout, a background and
     /// Extend are for the still only.

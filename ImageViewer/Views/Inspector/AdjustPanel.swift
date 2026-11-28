@@ -496,7 +496,7 @@ struct AdjustPanel: View {
                     // (In Adjust Objects, a step of its own: Cancel and Done take or keep them all.)
                     if objectMode { return model.changeObjects(from: start) }
                     model.commitEdits(from: start, actionName: undoName ?? title)
-                    // (Straightening an extended photo makes its extension again.)
+                    // (Straightening or tilting an extended photo makes its extension again.)
                     model.refillExtensionIfNeeded()
                 }
             },

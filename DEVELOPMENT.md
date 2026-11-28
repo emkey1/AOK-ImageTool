@@ -175,10 +175,10 @@ repaint drifts a little in color and would show as a seam. Then super resolution
 perspective sliders, made to do what Photos' do. The picture, after its turns and flips, is shown as its camera would
 have seen it turned by those angles: pixels become rays through a lens 28/43.27 of the picture's diagonal long (28 mm
 on 35 mm film), the rays are turned, and they meet the plane again, which is one 3 × 3 homography. One axis at a time
-that is exactly Core Image's `CIPerspectiveRotate` (same lens, same ±30° range; the self-test compares them), with
+that is exactly Core Image's `CIPerspectiveRotate` (same lens, and its pitch and yaw go to ±30° too; the self-test compares the tilted outline's size with the filter's), with
 the angles the other way round, because that's how Photos' sliders go: a positive Vertical pushes the top back and a
 positive Horizontal brings the right side forward. (Compared in Photos 10 on macOS 15: at +12° on either slider a
-sign's lettering was within a pixel or two of where `Tilt` puts it, and Photos keeps the same rectangle. The self-test
+sign's lettering was within 2 to 5 pixels (of 1,374) of where `Tilt` puts it, and Photos keeps the same rectangle. The self-test
 holds a few of those positions.) With both, the turn is a single one about an axis lying in the picture rather than pitch then yaw, so the two
 sliders don't come in an order and a quarter turn or a flip carries the tilt along exactly (`EditState.rotate`,
 `flip`). Straighten is part of the same matrix, so a tilted picture is resampled once. What's kept (`keptSize`) is the
@@ -193,7 +193,7 @@ either way, so Extend, retouching and Live Photo frames need nothing of their ow
 **White balance** (`Imaging/WhiteBalance.swift`) is Warmth and Tint, applied by `CITemperatureAndTint` right after
 Auto enhance. The filter is a 3 × 3 matrix in linear light, so both helpers search it rather than model it. The
 eyedropper averages a small spot of the picture as white balance sees it (`EditRenderer.whiteBalanceInput`: turned,
-straightened and auto-enhanced, uncropped; the click is mapped through the crop) and finds, coarse to fine, the
+straightened, tilted and auto-enhanced, uncropped; the click is mapped through the crop) and finds, coarse to fine, the
 setting that makes it gray. On a face (Vision's face boxes) it aims for natural skin instead: in log red/green and
 blue/green, typical skin is 0.70 from gray at −25° (the ColorChecker's light and dark skin, cheeks in real photos), and
 skin within an ellipse around it (0.22 along, 0.17 across) is left alone; skin outside is brought inside it, further in
@@ -253,7 +253,7 @@ pictures that share a quarter to a half of themselves, so the matching is our ow
 4. **The view.** The pictures are looked at from one view, a rotation of the middle picture's camera: ahead is where
    the cameras look between them; down is what the files say (an iPhone writes its motion sensor's reading in its maker
    note, key 8: gravity along the phone's axes, which `Stitch.down` turns into the picture's own directions for the
-   back camera, if the picture hasn't been turned here; of the four ways round a picture can be shown, it's the one
+   back camera, if the picture hasn't been turned, flipped, straightened or tilted here; of the four ways round a picture can be shown, it's the one
    with down nearest the picture's bottom, which is how the camera turned it, so a picture saved again with its turn
    applied reads right too) or, failing that, the normal of
    the plane the cameras' left-to-right directions lie in (a panned camera keeps its sides level), when they turned at
@@ -341,7 +341,7 @@ The self-test uses its own temporary storage and restores any preferences it cha
 
 The Guide's and the README's screenshots come from `-debugScene viewer|grid|adjust|adjust-object|presets|pictureonly|intelligence|info|stack-open|crop|crop-grid|remove|change|clone|fixblur|blackwhite|newimage|stitch` (`crop` opens the Crop tool on the picture tilted a little, and `crop-grid` shows the finer grid a dragged slider brings up; `adjust-object` selects the picture's subject and adjusts it on its own; `presets` saves two presets in the run's temporary storage and puts the first on the picture; `pictureonly` is F's full screen as far as a window in the background can show it, with the toolbar, sidebar, inspector and filmstrip put away and the picture on black, but the window left a window). The tool scenes set the tool part way through on particular demo photos (`showSceneForGuide` in `RemoveObjectsEditor`: the boat in Sailboat outlined, the apple in Fruit Bowl selected with "green" typed, a Clone & Heal stroke over Desert Canyon's shrubs); `newimage` opens New Image from Description and paints its previews; `stack-open` wants a folder with a stack in it. They're captured with `screencapture -l` of the window (with its sheet, for the sheets), with `-debugAppearance light|dark` and `-debugWindowSize 1280x800`. Runs with any of these switches use temporary storage and never save preferences. The screenshots were taken with a copy of the app under its own bundle ID, so its recents and window positions stay apart from yours. The demo photos in them were generated by the app's own model.
 
-In Debug builds, `AOK_MODELS_DIR` and `AOK_MODELS_URL` point the models folder and the model downloads somewhere else (for testing the downloader against a local server), and `-extendTest -download generative-fill|colorize` downloads and installs one headlessly. `AOK_SELFTEST_ONLY=remove|change|clone|wb|local|presets|fullscreen|newimage|blur|quality|tags|combine|stitch|watch|straighten|tilt|places|download` runs just those self-test sections (`local`: objects adjusted on their own; `presets`: saved presets, their file and applying them; `fullscreen`: what F puts away and brings back, without a window) (`remove` also runs `change`; `download` fetches the LaMa, Restormer and GFPGAN archives from `AOK_MODELS_URL`). `AOK_SELFTEST_LIVE=1` adds checks that ask Apple Maps and Wikipedia themselves (`places`). `-extendTest -fixBlur <image> <out.png> [focus|shake|none] [faces]` runs Fix Blur on one picture (with `SHAKE=<pixels>`, on a copy shaken first, to compare with the original).
+In Debug builds, `AOK_MODELS_DIR` and `AOK_MODELS_URL` point the models folder and the model downloads somewhere else (for testing the downloader against a local server), and `-extendTest -download generative-fill|colorize` downloads and installs one headlessly. `AOK_SELFTEST_ONLY=remove|change|clone|wb|local|presets|fullscreen|fixes|newimage|blur|quality|tags|combine|stitch|watch|straighten|tilt|places|download` runs just those self-test sections (`local`: objects adjusted on their own; `presets`: saved presets, their file and applying them; `fullscreen`: what F puts away and brings back, without a window) (`remove` also runs `change`; `download` fetches the LaMa, Restormer and GFPGAN archives from `AOK_MODELS_URL`). `AOK_SELFTEST_LIVE=1` adds checks that ask Apple Maps and Wikipedia themselves (`places`). `-extendTest -fixBlur <image> <out.png> [focus|shake|none] [faces]` runs Fix Blur on one picture (with `SHAKE=<pixels>`, on a copy shaken first, to compare with the original).
 
 **Full screen (F)** hides the toolbar with the window's own `NSToolbar.isVisible`, not SwiftUI's `.toolbar(.hidden, for: .windowToolbar)`: on macOS 27 the SwiftUI modifier empties the toolbar but keeps its height, which would leave a blank band across the top of the screen. The self-test covers the model's side; the window's side (really going full screen, a window that was already full screen, F during a slideshow, the pointer at the top of the screen) is checked by hand in the macOS 15 VM, where plain keys like F pass through VNC.
 

@@ -77,7 +77,7 @@ extension ViewerModel {
     }
 
     /// Makes Extend's fill when the crop reaches past the image and no current fill covers it — after an
-    /// Extend, and after anything that invalidates the fill (rotating, straightening, a bigger frame, undo).
+    /// Extend, and after anything that invalidates the fill (rotating, straightening, tilting, a bigger frame, undo).
     /// The result is added to the edits without an undo step of its own: the fill is derived data, and the
     /// saved seed makes it come out the same when it's made again. A generated fill shows a draft (the
     /// preview's quality) while its sharper second pass runs.
